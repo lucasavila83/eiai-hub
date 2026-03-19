@@ -15,6 +15,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
@@ -38,6 +39,20 @@ export default function RegisterPage() {
     }
 
     if (data.user) {
+      // signUp may not flush session cookies in time; sign in to ensure they're set.
+      // Also capture the access_token to pass as Authorization header fallback.
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) {
+        setError("Conta criada! Verifique seu e-mail para confirmar antes de continuar.");
+        setLoading(false);
+        return;
+      }
+      if (signInData.session?.access_token) {
+        setAccessToken(signInData.session.access_token);
+      }
       setUserId(data.user.id);
       setStep("org");
     }
@@ -49,9 +64,12 @@ export default function RegisterPage() {
     setLoading(true);
     setError(null);
 
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
     const res = await fetch("/api/org/create", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ name: orgName }),
     });
 

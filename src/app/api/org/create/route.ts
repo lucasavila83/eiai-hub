@@ -24,7 +24,19 @@ export async function POST(req: NextRequest) {
     }
   );
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  let { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  // Fallback: accept a Bearer token from the Authorization header.
+  // This handles the case where the client session lives in memory
+  // (e.g. right after signUp before cookies are flushed).
+  if (!user) {
+    const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+    if (bearer) {
+      const result = await supabase.auth.getUser(bearer);
+      user = result.data.user;
+      authError = result.error;
+    }
+  }
 
   if (authError || !user) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
