@@ -3,14 +3,14 @@
 -- ================================================
 
 -- Extensões necessárias
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ================================================
 -- TABELA: organizations
 -- ================================================
 CREATE TABLE IF NOT EXISTS organizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   slug TEXT UNIQUE NOT NULL,
   logo_url TEXT,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- TABELA: org_members
 -- ================================================
 CREATE TABLE IF NOT EXISTS org_members (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member', 'guest')),
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS org_members (
 -- TABELA: teams
 -- ================================================
 CREATE TABLE IF NOT EXISTS teams (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   description TEXT,
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS teams (
 -- TABELA: team_members
 -- ================================================
 CREATE TABLE IF NOT EXISTS team_members (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('lead', 'member')),
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS team_members (
 -- TABELA: channels
 -- ================================================
 CREATE TABLE IF NOT EXISTS channels (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   team_id UUID REFERENCES teams(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS channels (
 -- TABELA: channel_members
 -- ================================================
 CREATE TABLE IF NOT EXISTS channel_members (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS channel_members (
 -- TABELA: messages
 -- ================================================
 CREATE TABLE IF NOT EXISTS messages (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS messages (
 -- TABELA: message_reactions
 -- ================================================
 CREATE TABLE IF NOT EXISTS message_reactions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   emoji TEXT NOT NULL,
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS message_reactions (
 -- TABELA: boards
 -- ================================================
 CREATE TABLE IF NOT EXISTS boards (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   team_id UUID REFERENCES teams(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
@@ -148,7 +148,7 @@ CREATE TABLE IF NOT EXISTS boards (
 -- TABELA: columns
 -- ================================================
 CREATE TABLE IF NOT EXISTS columns (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   position INTEGER NOT NULL DEFAULT 0,
@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS columns (
 -- TABELA: cards
 -- ================================================
 CREATE TABLE IF NOT EXISTS cards (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   column_id UUID NOT NULL REFERENCES columns(id) ON DELETE CASCADE,
   board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS cards (
 -- TABELA: card_assignees
 -- ================================================
 CREATE TABLE IF NOT EXISTS card_assignees (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   card_id UUID NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -195,7 +195,7 @@ CREATE TABLE IF NOT EXISTS card_assignees (
 -- TABELA: card_comments
 -- ================================================
 CREATE TABLE IF NOT EXISTS card_comments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   card_id UUID NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS card_comments (
 -- TABELA: labels
 -- ================================================
 CREATE TABLE IF NOT EXISTS labels (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   color TEXT NOT NULL DEFAULT '#6366f1',
@@ -227,7 +227,7 @@ CREATE TABLE IF NOT EXISTS card_labels (
 -- TABELA: notifications
 -- ================================================
 CREATE TABLE IF NOT EXISTS notifications (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   type TEXT NOT NULL,
@@ -243,11 +243,11 @@ CREATE TABLE IF NOT EXISTS notifications (
 -- TABELA: invitations
 -- ================================================
 CREATE TABLE IF NOT EXISTS invitations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'member',
-  token TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
+  token TEXT UNIQUE NOT NULL DEFAULT replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
   invited_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
   accepted_at TIMESTAMPTZ,
   expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
