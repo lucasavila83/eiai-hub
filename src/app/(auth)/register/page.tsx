@@ -49,20 +49,16 @@ export default function RegisterPage() {
     setLoading(true);
     setError(null);
 
-    const slug = orgName
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "");
-
-    const { error } = await supabase.from("organizations").insert({
-      name: orgName,
-      slug: `${slug}-${Date.now()}`,
-      plan: "free",
+    const res = await fetch("/api/org/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: orgName }),
     });
 
-    if (error) {
-      setError(error.message);
+    const json = await res.json();
+
+    if (!res.ok) {
+      setError(json.error ?? "Erro ao criar organização");
       setLoading(false);
       return;
     }
