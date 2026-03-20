@@ -1,29 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
 
-export async function middleware(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Public routes — skip auth check entirely
-  const publicRoutes = ["/login", "/register", "/invite"];
-  const isPublic = publicRoutes.some((r) => pathname.startsWith(r));
-  const isApi = pathname.startsWith("/api/");
+  // Public routes — always allow
+  if (
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/register") ||
+    pathname.startsWith("/invite") ||
+    pathname.startsWith("/api/")
+  ) {
+    return NextResponse.next();
+  }
 
-  // Quick check: if no Supabase auth cookie exists, redirect to login
-  // This avoids calling getUser() when we know there's no session
+  // Check for Supabase auth cookie (fast, no API calls)
   const hasAuthCookie = request.cookies.getAll().some(
-    (c) => c.name.startsWith("sb-") && c.name.endsWith("-auth-token")
+    (c) => c.name.startsWith("sb-") && (c.name.includes("auth-token") || c.name.includes("access-token"))
   );
 
-  if (!hasAuthCookie && !isPublic && !isApi) {
+  if (!hasAuthCookie) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
-  }
-
-  // For authenticated requests, refresh the session
-  if (hasAuthCookie) {
-    return await updateSession(request);
   }
 
   return NextResponse.next();
