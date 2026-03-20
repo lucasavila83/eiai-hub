@@ -86,7 +86,7 @@ export default function MembersPage() {
     const json = await res.json();
     if (res.ok) {
       setInviteUrl(json.inviteUrl);
-      setSuccess(`Convite criado para ${email}`);
+      setSuccess(json.message || `Convite criado para ${email}`);
       setEmail("");
       loadInvitations();
     } else {
