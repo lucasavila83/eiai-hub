@@ -298,6 +298,38 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["subtasks"]["Row"], "id" | "created_at">;
         Update: Partial<Database["public"]["Tables"]["subtasks"]["Insert"]>;
       };
+      automations: {
+        Row: {
+          id: string;
+          org_id: string;
+          board_id: string | null;
+          name: string;
+          is_active: boolean;
+          trigger_type: "card_moved_to_column" | "card_created" | "card_overdue" | "card_completed";
+          trigger_config: Json;
+          action_type: "mark_completed" | "set_priority" | "assign_member" | "send_notification" | "move_to_column";
+          action_config: Json;
+          created_by: string | null;
+          run_count: number;
+          last_run_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["automations"]["Row"], "id" | "created_at" | "updated_at" | "run_count">;
+        Update: Partial<Database["public"]["Tables"]["automations"]["Insert"]>;
+      };
+      automation_logs: {
+        Row: {
+          id: string;
+          automation_id: string;
+          card_id: string | null;
+          status: "success" | "error";
+          details: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["automation_logs"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["automation_logs"]["Insert"]>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -322,3 +354,5 @@ export type Invitation = Database["public"]["Tables"]["invitations"]["Row"];
 export type Event = Database["public"]["Tables"]["events"]["Row"];
 export type EventParticipant = Database["public"]["Tables"]["event_participants"]["Row"];
 export type Subtask = Database["public"]["Tables"]["subtasks"]["Row"];
+export type Automation = Database["public"]["Tables"]["automations"]["Row"];
+export type AutomationLog = Database["public"]["Tables"]["automation_logs"]["Row"];

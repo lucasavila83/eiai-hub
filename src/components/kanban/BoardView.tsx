@@ -117,6 +117,20 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
       column_id: destination.droppableId,
       position: destination.index,
     }).eq("id", draggableId);
+
+    // Trigger automations if card moved to different column
+    if (source.droppableId !== destination.droppableId) {
+      fetch("/api/automations/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trigger_type: "card_moved_to_column",
+          board_id: board.id,
+          card_id: draggableId,
+          data: { column_id: destination.droppableId },
+        }),
+      }).catch(() => {});
+    }
   }
 
   async function addColumn() {
