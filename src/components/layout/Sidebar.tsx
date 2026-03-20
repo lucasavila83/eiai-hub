@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -8,6 +8,7 @@ import {
   MessageSquare, Kanban, Bell, Settings,
   Hash, Lock, ChevronDown, ChevronRight, ChevronLeft,
   Plus, LogOut, X, Loader2, Users, MessageCircle, Check,
+  MoreHorizontal, Trash2, EyeOff, UserCog,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
@@ -25,7 +26,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const router = useRouter();
   const supabase = createClient();
   const { channels, setChannels, unreadCounts, setUnreadCount } = useChatStore();
-  const { sidebarOpen, toggleSidebar, setActiveOrgId } = useUIStore();
+  const { sidebarOpen, setSidebarOpen, toggleSidebar, setActiveOrgId } = useUIStore();
   const [activeOrg, setActiveOrg] = useState<Organization | null>(
     organizations[0] || null
   );
@@ -33,6 +34,30 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [showCreateDM, setShowCreateDM] = useState(false);
   const [orgMembers, setOrgMembers] = useState<any[]>([]);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // Channel settings modal state
+  const [channelSettingsTarget, setChannelSettingsTarget] = useState<Channel | null>(null);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    type: "channel" | "dm";
+    item: any;
+  } | null>(null);
+
+  // Close context menu on click anywhere
+  useEffect(() => {
+    function handleClick() {
+      setContextMenu(null);
+    }
+    if (contextMenu) {
+      window.addEventListener("click", handleClick);
+      return () => window.removeEventListener("click", handleClick);
+    }
+  }, [contextMenu]);
 
   useEffect(() => {
     if (activeOrg) {
@@ -79,7 +104,6 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
       }, (payload: any) => {
         const msg = payload.new;
         if (msg.user_id !== profile.id) {
-          // If not viewing this channel, increment unread
           if (!pathname.includes(msg.channel_id)) {
             setUnreadCount(
               msg.channel_id,
@@ -139,6 +163,55 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     router.push("/login");
   }
 
+  async function handleArchiveDM(dmId: string) {
+    await supabase.from("channels").update({ is_archived: true }).eq("id", dmId);
+    setDmChannels((prev) => prev.filter((dm) => dm.id !== dmId));
+    if (pathname === `/chat/${dmId}`) {
+      router.push("/chat");
+    }
+  }
+
+  async function handleDeleteChannel(channelId: string) {
+    // Delete channel members first, then channel
+    await supabase.from("channel_members").delete().eq("channel_id", channelId);
+    await supabase.from("messages").delete().eq("channel_id", channelId);
+    await supabase.from("channels").delete().eq("id", channelId);
+    setChannels(channels.filter((ch) => ch.id !== channelId));
+    if (pathname === `/chat/${channelId}`) {
+      router.push("/chat");
+    }
+  }
+
+  // Hover handlers for expand/collapse
+  function handleMouseEnter() {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setSidebarOpen(true);
+  }
+
+  function handleMouseLeave() {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    hoverTimeoutRef.current = setTimeout(() => {
+      setSidebarOpen(false);
+    }, 300);
+  }
+
+  // Channel context menu
+  function handleChannelContextMenu(e: React.MouseEvent, channel: Channel) {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, type: "channel", item: channel });
+  }
+
+  // DM context menu
+  function handleDMContextMenu(e: React.MouseEvent, dm: Channel & { otherUser?: any }) {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, type: "dm", item: dm });
+  }
+
   const navItems = [
     { href: "/chat", icon: MessageSquare, label: "Chat" },
     { href: "/boards", icon: Kanban, label: "Boards" },
@@ -147,47 +220,59 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   ];
 
   return (
-    <div className="flex h-full shrink-0">
+    <div
+      ref={sidebarRef}
+      className="relative flex h-full shrink-0"
+      onMouseLeave={handleMouseLeave}
+    >
       {/* Narrow icon strip - always visible */}
-      <div className="w-14 bg-white border-r border-gray-200 flex flex-col items-center py-3 shrink-0">
-        {/* Lesco Logo */}
+      <div
+        className="w-14 bg-white border-r border-gray-200 flex flex-col items-center py-3 shrink-0 z-30"
+        onMouseEnter={handleMouseEnter}
+      >
+        {/* Lesco Icon */}
         <div className="mb-4">
           <Image
-            src="/lesco-logo.png"
+            src="/lesco-icon.png"
             alt="Lesco"
             width={32}
             height={32}
-            className="w-8 h-8"
+            className="w-8 h-8 rounded"
           />
         </div>
 
         {/* Nav Icons */}
         <nav className="flex flex-col items-center gap-1 flex-1">
-          {navItems.map(({ href, icon: Icon, label }) => (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => { if (!sidebarOpen) toggleSidebar(); }}
-              className={cn(
-                "relative w-10 h-10 flex items-center justify-center rounded-lg transition-colors group",
-                pathname.startsWith(href)
-                  ? "bg-primary/10 text-primary"
-                  : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-              )}
-              title={label}
-            >
-              <Icon className="w-5 h-5" />
-              {/* Tooltip */}
-              <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg">
-                {label}
-              </span>
-            </Link>
-          ))}
+          {navItems.map(({ href, icon: Icon, label }) => {
+            const hasUnread = href === "/chat" && Object.values(unreadCounts).some(c => c > 0);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "relative w-10 h-10 flex items-center justify-center rounded-lg transition-colors group",
+                  pathname.startsWith(href)
+                    ? "bg-primary/10 text-primary"
+                    : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                )}
+                title={label}
+              >
+                <Icon className="w-5 h-5" />
+                {hasUnread && !pathname.startsWith(href) && (
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
+                )}
+                {!sidebarOpen && (
+                  <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+                    {label}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
-        {/* Toggle + User Avatar at bottom */}
+        {/* Bottom: toggle + logout + avatar */}
         <div className="mt-auto flex flex-col items-center gap-2">
-          {/* Expand/Collapse toggle */}
           <button
             onClick={toggleSidebar}
             className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors group relative"
@@ -198,9 +283,6 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
             ) : (
               <ChevronRight className="w-5 h-5" />
             )}
-            <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg">
-              {sidebarOpen ? "Recolher" : "Expandir"}
-            </span>
           </button>
           <button
             onClick={handleLogout}
@@ -208,9 +290,11 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
             title="Sair"
           >
             <LogOut className="w-5 h-5" />
-            <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg">
-              Sair
-            </span>
+            {!sidebarOpen && (
+              <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+                Sair
+              </span>
+            )}
           </button>
           <div className="relative">
             <div
@@ -225,14 +309,20 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         </div>
       </div>
 
-      {/* Content panel - only visible when sidebarOpen */}
-      {sidebarOpen && (
-        <div className="w-52 bg-gray-50 border-r border-gray-200 flex flex-col h-full">
+      {/* Content panel - ABSOLUTELY positioned overlay */}
+      <div
+        className={cn(
+          "absolute top-0 bottom-0 left-14 bg-gray-50 border-r border-gray-200 flex flex-col h-full transition-all duration-200 ease-in-out overflow-hidden z-20 shadow-lg",
+          sidebarOpen ? "w-52 opacity-100" : "w-0 opacity-0 pointer-events-none"
+        )}
+        onMouseEnter={handleMouseEnter}
+      >
+        <div className="w-52 h-full flex flex-col">
           {/* Org Switcher */}
           <div className="p-3 border-b border-gray-200">
             <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 cursor-pointer">
               <div
-                className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white"
+                className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white shrink-0"
                 style={{ backgroundColor: generateColor(activeOrg?.name || "X") }}
               >
                 {getInitials(activeOrg?.name || "?")}
@@ -240,7 +330,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
               <span className="flex-1 text-sm font-semibold text-gray-900 truncate">
                 {activeOrg?.name || "Selecione org"}
               </span>
-              <ChevronDown className="w-4 h-4 text-gray-400" />
+              <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
             </div>
           </div>
 
@@ -264,30 +354,46 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                   const isActive = pathname === `/chat/${channel.id}`;
                   const unread = unreadCounts[channel.id] || 0;
                   return (
-                    <Link
+                    <div
                       key={channel.id}
-                      href={`/chat/${channel.id}`}
-                      className={cn(
-                        "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
-                        isActive
-                          ? "bg-primary/10 text-primary font-medium"
-                          : unread > 0
-                          ? "text-gray-900 font-semibold hover:bg-gray-100"
-                          : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                      )}
+                      className="group/channel relative"
+                      onContextMenu={(e) => handleChannelContextMenu(e, channel)}
                     >
-                      {channel.type === "private" ? (
-                        <Lock className="w-3.5 h-3.5 shrink-0" />
-                      ) : (
-                        <Hash className="w-3.5 h-3.5 shrink-0" />
-                      )}
-                      <span className="flex-1 truncate">{channel.name}</span>
-                      {unread > 0 && !isActive && (
-                        <span className="bg-red-500 text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
-                          {unread > 99 ? "99+" : unread}
-                        </span>
-                      )}
-                    </Link>
+                      <Link
+                        href={`/chat/${channel.id}`}
+                        className={cn(
+                          "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
+                          isActive
+                            ? "bg-primary/10 text-primary font-medium"
+                            : unread > 0
+                            ? "text-gray-900 font-semibold hover:bg-gray-100"
+                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                        )}
+                      >
+                        {channel.type === "private" ? (
+                          <Lock className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <Hash className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span className="flex-1 truncate">{channel.name}</span>
+                        {unread > 0 && !isActive && (
+                          <span className="bg-red-500 text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
+                            {unread > 99 ? "99+" : unread}
+                          </span>
+                        )}
+                      </Link>
+                      {/* Hover settings icon */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setChannelSettingsTarget(channel);
+                        }}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 opacity-0 group-hover/channel:opacity-100 transition-opacity"
+                        title="Configurações do canal"
+                      >
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -317,6 +423,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                     <Link
                       key={dm.id}
                       href={`/chat/${dm.id}`}
+                      onContextMenu={(e) => handleDMContextMenu(e, dm)}
                       className={cn(
                         "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
                         isActive
@@ -346,12 +453,9 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                       </div>
                       <span className="flex-1 truncate">{name}</span>
                       {unread > 0 && !isActive && (
-                        <div className="flex items-center gap-1">
-                          <MessageCircle className="w-3 h-3 text-red-500" />
-                          <span className="bg-red-500 text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
-                            {unread > 99 ? "99+" : unread}
-                          </span>
-                        </div>
+                        <span className="bg-red-500 text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
+                          {unread > 99 ? "99+" : unread}
+                        </span>
                       )}
                     </Link>
                   );
@@ -386,6 +490,72 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[180px]"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.type === "channel" && (
+            <>
+              <button
+                onClick={() => {
+                  setChannelSettingsTarget(contextMenu.item);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <UserCog className="w-4 h-4" />
+                Gerenciar membros
+              </button>
+              <button
+                onClick={() => {
+                  const channel = contextMenu.item;
+                  setContextMenu(null);
+                  if (window.confirm(`Tem certeza que deseja deletar o canal #${channel.name}? Esta ação não pode ser desfeita.`)) {
+                    handleDeleteChannel(channel.id);
+                  }
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Deletar canal
+              </button>
+            </>
+          )}
+          {contextMenu.type === "dm" && (
+            <button
+              onClick={() => {
+                handleArchiveDM(contextMenu.item.id);
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <EyeOff className="w-4 h-4" />
+              Ocultar conversa
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Channel Settings Modal */}
+      {channelSettingsTarget && (
+        <ChannelSettingsModal
+          channel={channelSettingsTarget}
+          orgMembers={orgMembers}
+          currentUserId={profile?.id || ""}
+          onClose={() => setChannelSettingsTarget(null)}
+          onDeleted={(channelId) => {
+            handleDeleteChannel(channelId);
+            setChannelSettingsTarget(null);
+          }}
+          onMembersUpdated={() => {
+            if (activeOrg) loadChannels(activeOrg.id);
+          }}
+        />
       )}
 
       {/* Create Channel Modal */}
@@ -423,6 +593,242 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 }
 
 // ============================================================
+// Channel Settings Modal (Manage Members + Delete)
+// ============================================================
+function ChannelSettingsModal({
+  channel,
+  orgMembers,
+  currentUserId,
+  onClose,
+  onDeleted,
+  onMembersUpdated,
+}: {
+  channel: Channel;
+  orgMembers: any[];
+  currentUserId: string;
+  onClose: () => void;
+  onDeleted: (channelId: string) => void;
+  onMembersUpdated: () => void;
+}) {
+  const supabase = createClient();
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [channelMembers, setChannelMembers] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  useEffect(() => {
+    loadChannelMembers();
+  }, [channel.id]);
+
+  async function loadChannelMembers() {
+    setLoading(true);
+    const { data } = await supabase
+      .from("channel_members")
+      .select("user_id")
+      .eq("channel_id", channel.id);
+    if (data) {
+      setChannelMembers(new Set(data.map((m: any) => m.user_id)));
+    }
+    setLoading(false);
+  }
+
+  function toggleMember(userId: string) {
+    setChannelMembers((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setChannelMembers(new Set(orgMembers.map((m: any) => m.user_id)));
+  }
+
+  function deselectAll() {
+    // Keep at least the current user
+    setChannelMembers(new Set([currentUserId]));
+  }
+
+  const allSelected = orgMembers.length > 0 && orgMembers.every((m: any) => channelMembers.has(m.user_id));
+
+  async function handleSaveMembers() {
+    setSaving(true);
+    // Get current members from DB
+    const { data: existing } = await supabase
+      .from("channel_members")
+      .select("user_id")
+      .eq("channel_id", channel.id);
+
+    const existingIds = new Set((existing || []).map((m: any) => m.user_id));
+    const targetIds = channelMembers;
+
+    // Members to add
+    const toAdd = Array.from(targetIds).filter((id) => !existingIds.has(id));
+    // Members to remove
+    const toRemove = Array.from(existingIds).filter((id) => !targetIds.has(id));
+
+    const now = new Date().toISOString();
+    if (toAdd.length > 0) {
+      await supabase.from("channel_members").insert(
+        toAdd.map((userId) => ({
+          channel_id: channel.id,
+          user_id: userId,
+          last_read_at: now,
+          notifications: "all" as const,
+        }))
+      );
+    }
+
+    if (toRemove.length > 0) {
+      for (const userId of toRemove) {
+        await supabase
+          .from("channel_members")
+          .delete()
+          .eq("channel_id", channel.id)
+          .eq("user_id", userId);
+      }
+    }
+
+    setSaving(false);
+    onMembersUpdated();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+            {channel.type === "private" ? <Lock className="w-4 h-4" /> : <Hash className="w-4 h-4" />}
+            {channel.name}
+          </h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Member management */}
+        <div className="space-y-3 mb-6">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+              <Users className="w-4 h-4 text-muted-foreground" />
+              Gerenciar membros
+            </label>
+            <button
+              type="button"
+              onClick={allSelected ? deselectAll : selectAll}
+              className="text-xs text-primary hover:text-primary/80 font-medium"
+            >
+              {allSelected ? "Desmarcar todos" : "Selecionar todos"}
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="border border-input rounded-lg max-h-48 overflow-y-auto">
+              {orgMembers.map((m: any) => {
+                const p = m.profiles;
+                const memberName = p?.full_name || p?.email || "?";
+                const isChecked = channelMembers.has(m.user_id);
+                return (
+                  <label
+                    key={m.user_id}
+                    className="flex items-center gap-3 px-3 py-2 hover:bg-accent/50 transition-colors cursor-pointer border-b border-input last:border-b-0"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleMember(m.user_id)}
+                      className="rounded border-input shrink-0"
+                    />
+                    <div className="relative shrink-0">
+                      {p?.avatar_url ? (
+                        <img src={p.avatar_url} alt={memberName} className="w-7 h-7 rounded-full object-cover" />
+                      ) : (
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                          style={{ backgroundColor: generateColor(memberName) }}
+                        >
+                          {getInitials(memberName)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground truncate">
+                        {memberName}
+                        {m.user_id === currentUserId && (
+                          <span className="text-xs text-muted-foreground ml-1">(você)</span>
+                        )}
+                      </p>
+                      {p?.email && (
+                        <p className="text-xs text-muted-foreground truncate">{p.email}</p>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {channelMembers.size} membro{channelMembers.size !== 1 ? "s" : ""} selecionado{channelMembers.size !== 1 ? "s" : ""}
+          </p>
+
+          <button
+            onClick={handleSaveMembers}
+            disabled={saving}
+            className="w-full bg-primary text-primary-foreground py-2 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            Salvar membros
+          </button>
+        </div>
+
+        {/* Delete channel */}
+        <div className="border-t border-border pt-4">
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Deletar canal
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm text-red-600 text-center">
+                Tem certeza? Todas as mensagens serão perdidas.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => onDeleted(channel.id)}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Create Channel Modal
 // ============================================================
 function CreateChannelModal({
@@ -448,7 +854,7 @@ function CreateChannelModal({
   const supabase = createClient();
 
   function toggleMember(userId: string) {
-    if (userId === currentUserId) return; // Creator is always selected
+    if (userId === currentUserId) return;
     setSelectedMembers((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) {
@@ -491,7 +897,6 @@ function CreateChannelModal({
       .single();
 
     if (data && !error) {
-      // Add all selected members as channel members
       const now = new Date().toISOString();
       const memberInserts = Array.from(selectedMembers).map((userId) => ({
         channel_id: data.id,
@@ -673,7 +1078,6 @@ function CreateDMModal({
     });
 
   async function startDM(targetUserId: string) {
-    // Check if DM already exists
     const existing = existingDMs.find(
       (dm: any) => dm.otherUser?.id === targetUserId
     );
