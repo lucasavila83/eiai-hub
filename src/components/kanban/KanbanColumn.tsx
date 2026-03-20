@@ -1,13 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Droppable, Draggable } from "@hello-pangea/dnd";
 import { KanbanCard } from "./KanbanCard";
-import { Plus, MoreHorizontal } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Palette, Gauge, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
 import { cn } from "@/lib/utils/helpers";
 import type { Column, Card } from "@/lib/types/database";
+
+const PRESET_COLORS = [
+  "#6366f1", // indigo
+  "#8b5cf6", // violet
+  "#ec4899", // pink
+  "#ef4444", // red
+  "#f97316", // orange
+  "#eab308", // yellow
+  "#22c55e", // green
+  "#06b6d4", // cyan
+];
 
 interface Props {
   column: Column;
@@ -15,15 +26,109 @@ interface Props {
   currentUserId: string;
   boardId: string;
   onCardClick?: (card: Card & { card_assignees: any[] }) => void;
+  onColumnUpdated?: (column: Column) => void;
+  onColumnDeleted?: (columnId: string) => void;
 }
 
-export function KanbanColumn({ column, cards, currentUserId, boardId, onCardClick }: Props) {
+export function KanbanColumn({ column, cards, currentUserId, boardId, onCardClick, onColumnUpdated, onColumnDeleted }: Props) {
   const supabase = createClient();
   const { addCard } = useKanbanStore();
   const [addingCard, setAddingCard] = useState(false);
   const [newCardTitle, setNewCardTitle] = useState("");
 
+  // Menu state
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [activeAction, setActiveAction] = useState<"rename" | "color" | "wip" | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Inline rename
+  const [editName, setEditName] = useState(column.name);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // WIP limit
+  const [wipValue, setWipValue] = useState(column.wip_limit?.toString() ?? "");
+
+  // Delete confirmation
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   const isOverLimit = column.wip_limit !== null && cards.length >= column.wip_limit;
+
+  // Close menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        closeMenu();
+      }
+    }
+    if (menuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [menuOpen]);
+
+  function closeMenu() {
+    setMenuOpen(false);
+    setActiveAction(null);
+    setConfirmDelete(false);
+  }
+
+  function openAction(action: "rename" | "color" | "wip") {
+    setActiveAction(action);
+    if (action === "rename") {
+      setEditName(column.name);
+      setTimeout(() => renameInputRef.current?.focus(), 0);
+    }
+    if (action === "wip") {
+      setWipValue(column.wip_limit?.toString() ?? "");
+    }
+  }
+
+  async function handleRename() {
+    const trimmed = editName.trim();
+    if (!trimmed || trimmed === column.name) {
+      setActiveAction(null);
+      return;
+    }
+    const { data } = await supabase
+      .from("columns")
+      .update({ name: trimmed })
+      .eq("id", column.id)
+      .select()
+      .single();
+    if (data) onColumnUpdated?.(data);
+    closeMenu();
+  }
+
+  async function handleColorChange(color: string) {
+    const { data } = await supabase
+      .from("columns")
+      .update({ color })
+      .eq("id", column.id)
+      .select()
+      .single();
+    if (data) onColumnUpdated?.(data);
+    closeMenu();
+  }
+
+  async function handleWipSave() {
+    const parsed = wipValue.trim() === "" ? null : parseInt(wipValue, 10);
+    if (wipValue.trim() !== "" && (isNaN(parsed as number) || (parsed as number) < 0)) return;
+    const { data } = await supabase
+      .from("columns")
+      .update({ wip_limit: parsed })
+      .eq("id", column.id)
+      .select()
+      .single();
+    if (data) onColumnUpdated?.(data);
+    closeMenu();
+  }
+
+  async function handleDelete() {
+    if (cards.length > 0) return;
+    const { error } = await supabase.from("columns").delete().eq("id", column.id);
+    if (!error) onColumnDeleted?.(column.id);
+    closeMenu();
+  }
 
   async function handleAddCard() {
     if (!newCardTitle.trim()) return;
@@ -52,20 +157,152 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, onCardClic
     <div className={cn("shrink-0 w-72 flex flex-col rounded-xl bg-muted/50 border", isOverLimit ? "border-destructive/50" : "border-border")}>
       {/* Column Header */}
       <div className="flex items-center justify-between px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: column.color }} />
-          <h3 className="font-semibold text-sm text-foreground">{column.name}</h3>
-          <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", isOverLimit ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: column.color }} />
+          {activeAction === "rename" ? (
+            <input
+              ref={renameInputRef}
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRename();
+                if (e.key === "Escape") { setActiveAction(null); setMenuOpen(false); }
+              }}
+              onBlur={handleRename}
+              className="font-semibold text-sm text-foreground bg-background border border-input rounded px-1.5 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          ) : (
+            <h3 className="font-semibold text-sm text-foreground truncate">{column.name}</h3>
+          )}
+          <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium shrink-0", isOverLimit ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>
             {cards.length}{column.wip_limit ? `/${column.wip_limit}` : ""}
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 relative" ref={menuRef}>
           <button onClick={() => setAddingCard(true)} className="text-muted-foreground hover:text-foreground transition-colors p-0.5">
             <Plus className="w-4 h-4" />
           </button>
-          <button className="text-muted-foreground hover:text-foreground transition-colors p-0.5">
+          <button
+            onClick={() => { if (menuOpen) closeMenu(); else setMenuOpen(true); }}
+            className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+          >
             <MoreHorizontal className="w-4 h-4" />
           </button>
+
+          {/* Dropdown Menu */}
+          {menuOpen && !activeAction && (
+            <div className="absolute right-0 top-7 z-50 w-48 bg-popover border border-border rounded-lg shadow-lg py-1 text-sm">
+              <button
+                onClick={() => openAction("rename")}
+                className="flex items-center gap-2 w-full px-3 py-2 text-left text-popover-foreground hover:bg-accent transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Renomear
+              </button>
+              <button
+                onClick={() => openAction("color")}
+                className="flex items-center gap-2 w-full px-3 py-2 text-left text-popover-foreground hover:bg-accent transition-colors"
+              >
+                <Palette className="w-3.5 h-3.5" />
+                Cor
+              </button>
+              <button
+                onClick={() => openAction("wip")}
+                className="flex items-center gap-2 w-full px-3 py-2 text-left text-popover-foreground hover:bg-accent transition-colors"
+              >
+                <Gauge className="w-3.5 h-3.5" />
+                Limite WIP
+              </button>
+              <div className="border-t border-border my-1" />
+              {cards.length > 0 ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  Mova os cards antes de deletar
+                </div>
+              ) : !confirmDelete ? (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-left text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Deletar coluna
+                </button>
+              ) : (
+                <div className="px-3 py-2 space-y-2">
+                  <p className="text-xs text-destructive font-medium">Confirmar exclusao?</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleDelete}
+                      className="flex-1 bg-destructive text-destructive-foreground text-xs py-1 rounded hover:bg-destructive/90"
+                    >
+                      Sim
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(false)}
+                      className="flex-1 text-xs py-1 rounded border border-border text-muted-foreground hover:text-foreground"
+                    >
+                      Nao
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Color Picker Panel */}
+          {menuOpen && activeAction === "color" && (
+            <div className="absolute right-0 top-7 z-50 w-48 bg-popover border border-border rounded-lg shadow-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-popover-foreground">Escolha uma cor</span>
+                <button onClick={closeMenu} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {PRESET_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => handleColorChange(color)}
+                    className={cn(
+                      "w-8 h-8 rounded-full border-2 transition-transform hover:scale-110",
+                      column.color === color ? "border-foreground" : "border-transparent"
+                    )}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* WIP Limit Panel */}
+          {menuOpen && activeAction === "wip" && (
+            <div className="absolute right-0 top-7 z-50 w-48 bg-popover border border-border rounded-lg shadow-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-popover-foreground">Limite WIP</span>
+                <button onClick={closeMenu} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <input
+                type="number"
+                min={0}
+                value={wipValue}
+                onChange={(e) => setWipValue(e.target.value)}
+                placeholder="Sem limite"
+                className="w-full bg-background border border-input rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring mb-2"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleWipSave();
+                  if (e.key === "Escape") closeMenu();
+                }}
+              />
+              <button
+                onClick={handleWipSave}
+                className="w-full bg-primary text-primary-foreground py-1.5 rounded-md text-xs font-medium hover:bg-primary/90"
+              >
+                Salvar
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -105,7 +342,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, onCardClic
             <textarea
               value={newCardTitle}
               onChange={(e) => setNewCardTitle(e.target.value)}
-              placeholder="Título do card..."
+              placeholder="Titulo do card..."
               rows={2}
               className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none"
               autoFocus

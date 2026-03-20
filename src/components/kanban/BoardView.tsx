@@ -46,6 +46,16 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
 
   const boardColumns = columns[board.id] || [];
 
+  function handleColumnUpdated(updatedColumn: Column) {
+    const updated = boardColumns.map((c) => (c.id === updatedColumn.id ? updatedColumn : c));
+    setColumns(board.id, updated);
+  }
+
+  function handleColumnDeleted(columnId: string) {
+    const filtered = boardColumns.filter((c) => c.id !== columnId);
+    setColumns(board.id, filtered);
+  }
+
   async function handleDragEnd(result: DropResult) {
     const { destination, source, draggableId } = result;
     if (!destination) return;
@@ -97,6 +107,8 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
               currentUserId={currentUserId}
               boardId={board.id}
               onCardClick={(card) => setSelectedCard(card)}
+              onColumnUpdated={handleColumnUpdated}
+              onColumnDeleted={handleColumnDeleted}
             />
           ))}
 
