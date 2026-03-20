@@ -348,6 +348,27 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["integrations"]["Row"], "id" | "created_at" | "updated_at" | "trigger_count">;
         Update: Partial<Database["public"]["Tables"]["integrations"]["Insert"]>;
       };
+      ai_agents: {
+        Row: {
+          id: string;
+          org_id: string;
+          profile_id: string | null;
+          name: string;
+          description: string | null;
+          avatar_url: string | null;
+          is_active: boolean;
+          personality: string;
+          instructions: string | null;
+          auto_respond: boolean;
+          respond_in_channels: string[];
+          trigger_keywords: string[];
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["ai_agents"]["Row"], "id" | "created_at" | "updated_at">;
+        Update: Partial<Database["public"]["Tables"]["ai_agents"]["Insert"]>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -375,3 +396,4 @@ export type Subtask = Database["public"]["Tables"]["subtasks"]["Row"];
 export type Automation = Database["public"]["Tables"]["automations"]["Row"];
 export type AutomationLog = Database["public"]["Tables"]["automation_logs"]["Row"];
 export type Integration = Database["public"]["Tables"]["integrations"]["Row"];
+export type AIAgent = Database["public"]["Tables"]["ai_agents"]["Row"];
