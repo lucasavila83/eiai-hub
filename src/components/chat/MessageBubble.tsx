@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { formatDateTime, getInitials, generateColor } from "@/lib/utils/helpers";
-import { Bot, ListTodo, Mail, Forward } from "lucide-react";
+import { Bot, ListTodo, Mail, Forward, ChevronDown, ChevronUp } from "lucide-react";
 import type { Message } from "@/lib/types/database";
 
 interface Props {
@@ -62,6 +62,7 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
   const profile = message.profiles;
   const name = profile?.full_name || profile?.email || "Usuário";
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [taskExpanded, setTaskExpanded] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close context menu on click outside
@@ -135,8 +136,27 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
             </div>
           )}
           {isTaskMsg ? (
-            <div className="inline-flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-1.5 text-sm">
-              <span>{renderContent(message.content)}</span>
+            <div
+              className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-sm cursor-pointer hover:bg-primary/10 transition-colors max-w-md"
+              onClick={() => setTaskExpanded(!taskExpanded)}
+            >
+              <div className="flex items-center gap-2 justify-between">
+                <span className="font-medium truncate">
+                  {message.content.split("\n")[0]}
+                </span>
+                {message.content.includes("\n") && (
+                  taskExpanded
+                    ? <ChevronUp className="w-4 h-4 text-primary shrink-0" />
+                    : <ChevronDown className="w-4 h-4 text-primary shrink-0" />
+                )}
+              </div>
+              {taskExpanded && message.content.includes("\n") && (
+                <div className="mt-2 pt-2 border-t border-primary/10 text-muted-foreground whitespace-pre-wrap space-y-0.5">
+                  {message.content.split("\n").slice(1).filter(Boolean).map((line, i) => (
+                    <p key={i}>{renderContent(line)}</p>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">

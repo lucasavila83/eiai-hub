@@ -6,8 +6,8 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   MessageSquare, Kanban, Bell, Settings,
-  Hash, Lock, ChevronDown, Plus, LogOut,
-  X, Loader2, Users, MessageCircle, Check,
+  Hash, Lock, ChevronDown, ChevronRight, ChevronLeft,
+  Plus, LogOut, X, Loader2, Users, MessageCircle, Check,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
@@ -25,7 +25,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const router = useRouter();
   const supabase = createClient();
   const { channels, setChannels, unreadCounts, setUnreadCount } = useChatStore();
-  const { sidebarOpen, setActiveOrgId } = useUIStore();
+  const { sidebarOpen, toggleSidebar, setActiveOrgId } = useUIStore();
   const [activeOrg, setActiveOrg] = useState<Organization | null>(
     organizations[0] || null
   );
@@ -167,6 +167,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
             <Link
               key={href}
               href={href}
+              onClick={() => { if (!sidebarOpen) toggleSidebar(); }}
               className={cn(
                 "relative w-10 h-10 flex items-center justify-center rounded-lg transition-colors group",
                 pathname.startsWith(href)
@@ -184,8 +185,23 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
           ))}
         </nav>
 
-        {/* User Avatar at bottom */}
+        {/* Toggle + User Avatar at bottom */}
         <div className="mt-auto flex flex-col items-center gap-2">
+          {/* Expand/Collapse toggle */}
+          <button
+            onClick={toggleSidebar}
+            className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors group relative"
+            title={sidebarOpen ? "Recolher menu" : "Expandir menu"}
+          >
+            {sidebarOpen ? (
+              <ChevronLeft className="w-5 h-5" />
+            ) : (
+              <ChevronRight className="w-5 h-5" />
+            )}
+            <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+              {sidebarOpen ? "Recolher" : "Expandir"}
+            </span>
+          </button>
           <button
             onClick={handleLogout}
             className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors group relative"

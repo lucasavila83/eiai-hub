@@ -48,7 +48,7 @@ export function CreateTaskModal({
   }, [selectedBoardId]);
 
   async function loadData() {
-    const [boardsRes, membersRes] = await Promise.all([
+    const [boardsRes, memberBoardsRes, membersRes] = await Promise.all([
       supabase
         .from("boards")
         .select("id, name")
@@ -56,15 +56,27 @@ export function CreateTaskModal({
         .eq("is_archived", false)
         .order("created_at"),
       supabase
+        .from("board_members")
+        .select("board_id")
+        .eq("user_id", currentUserId),
+      supabase
         .from("org_members")
         .select("user_id, role, profiles:user_id(id, full_name, avatar_url, email)")
         .eq("org_id", orgId),
     ]);
 
     if (boardsRes.data) {
-      setBoards(boardsRes.data);
-      if (boardsRes.data.length > 0) {
-        setSelectedBoardId(boardsRes.data[0].id);
+      // Filter boards: only show boards where user is a member
+      // If no board_members exist yet, show all boards (backwards compat)
+      const memberBoardIds = new Set(
+        (memberBoardsRes.data || []).map((bm: any) => bm.board_id)
+      );
+      const filtered = memberBoardIds.size > 0
+        ? boardsRes.data.filter((b: any) => memberBoardIds.has(b.id))
+        : boardsRes.data;
+      setBoards(filtered);
+      if (filtered.length > 0) {
+        setSelectedBoardId(filtered[0].id);
       }
     }
     if (membersRes.data) {
