@@ -1,13 +1,9 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+"use client";
+
 import Link from "next/link";
 import { UserCircle, Users, UserCog, Bot, Shield, ChevronRight, ArrowLeft } from "lucide-react";
 
-export default async function SettingsPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
+export default function SettingsPage() {
   const settingsItems = [
     { href: "/settings/profile", icon: UserCircle, label: "Meu Perfil", description: "Foto, nome, cargo, telefone e informações pessoais" },
     { href: "/settings/members", icon: Users, label: "Membros", description: "Gerencie membros e convites" },

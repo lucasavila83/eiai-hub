@@ -1,12 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+"use client";
+
 import { MessageSquare } from "lucide-react";
 
-export default async function ChatPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
+export default function ChatPage() {
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="text-center">

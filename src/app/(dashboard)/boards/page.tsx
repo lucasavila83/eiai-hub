@@ -1,28 +1,53 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Kanban } from "lucide-react";
+import { Kanban, Loader2 } from "lucide-react";
 import { CreateBoardButton } from "@/components/kanban/CreateBoardButton";
+import { createClient } from "@/lib/supabase/client";
 
-export default async function BoardsPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+export default function BoardsPage() {
+  const [boards, setBoards] = useState<any[]>([]);
+  const [orgId, setOrgId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const supabase = createClient();
 
-  const { data: memberships } = await supabase
-    .from("org_members")
-    .select("org_id")
-    .eq("user_id", user.id);
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.replace("/login"); return; }
 
-  const orgIds = memberships?.map((m) => m.org_id) || [];
-  const orgId = orgIds[0] || "";
+      const { data: memberships } = await supabase
+        .from("org_members")
+        .select("org_id")
+        .eq("user_id", user.id);
 
-  const { data: boards } = await supabase
-    .from("boards")
-    .select("*")
-    .in("org_id", orgIds)
-    .eq("is_archived", false)
-    .order("created_at", { ascending: false });
+      const orgIds = memberships?.map((m) => m.org_id) || [];
+      setOrgId(orgIds[0] || "");
+
+      if (orgIds.length > 0) {
+        const { data } = await supabase
+          .from("boards")
+          .select("*")
+          .in("org_id", orgIds)
+          .eq("is_archived", false)
+          .order("created_at", { ascending: false });
+        setBoards(data || []);
+      }
+
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -31,7 +56,7 @@ export default async function BoardsPage() {
         <CreateBoardButton orgId={orgId} />
       </div>
 
-      {!boards?.length ? (
+      {!boards.length ? (
         <div className="flex flex-col items-center justify-center py-20">
           <Kanban className="w-12 h-12 text-muted-foreground mb-3" />
           <h2 className="text-lg font-semibold text-foreground mb-1">Nenhum board ainda</h2>
