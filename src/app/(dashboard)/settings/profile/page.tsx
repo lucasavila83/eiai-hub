@@ -13,12 +13,19 @@ import {
 import { getInitials, generateColor } from "@/lib/utils/helpers";
 import type { Profile } from "@/lib/types/database";
 
-const statusOptions = [
-  { value: "online", label: "Online", color: "bg-green-500" },
+// Only manual status options (online/offline are automatic)
+const manualStatusOptions = [
+  { value: "online", label: "Disponível (automático)", color: "bg-green-500" },
   { value: "away", label: "Ausente", color: "bg-yellow-500" },
-  { value: "dnd", label: "Nao perturbe", color: "bg-red-500" },
-  { value: "offline", label: "Offline", color: "bg-gray-500" },
+  { value: "dnd", label: "Não perturbe", color: "bg-red-500" },
 ] as const;
+
+const statusColors: Record<string, string> = {
+  online: "bg-green-500",
+  away: "bg-yellow-500",
+  dnd: "bg-red-500",
+  offline: "bg-gray-500",
+};
 
 export default function ProfileSettingsPage() {
   const supabase = createClient();
@@ -355,29 +362,25 @@ export default function ProfileSettingsPage() {
             >
               Status
             </label>
-            <div className="relative">
-              <select
-                id="status"
-                value={status}
-                onChange={(e) =>
-                  setStatus(e.target.value as Profile["status"])
-                }
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors appearance-none cursor-pointer"
-              >
-                {statusOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                <div
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    statusOptions.find((o) => o.value === status)?.color ??
-                    "bg-gray-500"
+            <p className="text-xs text-muted-foreground mb-2">
+              Online e Offline são detectados automaticamente. Você pode definir manualmente Ausente ou Não Perturbe.
+            </p>
+            <div className="flex gap-2">
+              {manualStatusOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setStatus(opt.value as Profile["status"])}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
+                    status === opt.value || (opt.value === "online" && status === "online")
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
                   }`}
-                />
-              </div>
+                >
+                  <div className={`w-2.5 h-2.5 rounded-full ${opt.color}`} />
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>

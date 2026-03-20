@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
+import { PresenceTracker } from "@/components/layout/PresenceTracker";
 
 export default async function DashboardLayout({
   children,
@@ -32,6 +33,8 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
+      {/* Automatic online/offline presence tracking */}
+      <PresenceTracker userId={user.id} currentStatus={profile?.status || "online"} />
       <Sidebar profile={profile} organizations={organizations as any} />
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar profile={profile} />
