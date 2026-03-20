@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  MessageSquare, LayoutKanban, Bell, Settings,
+  MessageSquare, Kanban, Bell, Settings,
   Hash, Lock, ChevronDown, Plus, LogOut,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -52,7 +52,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
   const navItems = [
     { href: "/chat", icon: MessageSquare, label: "Chat" },
-    { href: "/boards", icon: LayoutKanban, label: "Boards" },
+    { href: "/boards", icon: Kanban, label: "Boards" },
     { href: "/notifications", icon: Bell, label: "Notificações" },
     { href: "/settings", icon: Settings, label: "Configurações" },
   ];

@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LayoutKanban, Plus } from "lucide-react";
+import { Kanban, Plus } from "lucide-react";
 
 export default async function BoardsPage() {
   const supabase = await createClient();
@@ -34,7 +34,7 @@ export default async function BoardsPage() {
 
       {!boards?.length ? (
         <div className="flex flex-col items-center justify-center py-20">
-          <LayoutKanban className="w-12 h-12 text-muted-foreground mb-3" />
+          <Kanban className="w-12 h-12 text-muted-foreground mb-3" />
           <h2 className="text-lg font-semibold text-foreground mb-1">Nenhum board ainda</h2>
           <p className="text-muted-foreground text-sm mb-4">Crie seu primeiro board para organizar tarefas</p>
         </div>
@@ -48,7 +48,7 @@ export default async function BoardsPage() {
             >
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <LayoutKanban className="w-5 h-5 text-primary" />
+                  <Kanban className="w-5 h-5 text-primary" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">{board.name}</h3>
