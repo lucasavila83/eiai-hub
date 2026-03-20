@@ -255,6 +255,35 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["invitations"]["Row"], "id" | "created_at" | "token">;
         Update: Partial<Database["public"]["Tables"]["invitations"]["Insert"]>;
       };
+      events: {
+        Row: {
+          id: string;
+          org_id: string;
+          title: string;
+          description: string | null;
+          start_at: string;
+          end_at: string | null;
+          all_day: boolean;
+          color: string;
+          location: string | null;
+          created_by: string | null;
+          card_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["events"]["Row"], "id" | "created_at" | "updated_at">;
+        Update: Partial<Database["public"]["Tables"]["events"]["Insert"]>;
+      };
+      event_participants: {
+        Row: {
+          id: string;
+          event_id: string;
+          user_id: string;
+          status: "accepted" | "declined" | "pending";
+        };
+        Insert: Omit<Database["public"]["Tables"]["event_participants"]["Row"], "id">;
+        Update: Partial<Database["public"]["Tables"]["event_participants"]["Insert"]>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -276,3 +305,5 @@ export type CardComment = Database["public"]["Tables"]["card_comments"]["Row"];
 export type Label = Database["public"]["Tables"]["labels"]["Row"];
 export type Notification = Database["public"]["Tables"]["notifications"]["Row"];
 export type Invitation = Database["public"]["Tables"]["invitations"]["Row"];
+export type Event = Database["public"]["Tables"]["events"]["Row"];
+export type EventParticipant = Database["public"]["Tables"]["event_participants"]["Row"];

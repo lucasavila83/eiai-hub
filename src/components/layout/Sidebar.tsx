@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  MessageSquare, Kanban, Bell, Settings,
+  MessageSquare, Kanban, Bell, Settings, Calendar,
   Hash, Lock, ChevronDown, ChevronRight, ChevronLeft,
   Plus, LogOut, X, Loader2, Users, MessageCircle, Check,
   MoreHorizontal, Trash2, EyeOff, UserCog,
@@ -196,6 +196,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const navItems = [
     { href: "/chat", icon: MessageSquare, label: "Chat" },
     { href: "/boards", icon: Kanban, label: "Boards" },
+    { href: "/calendar", icon: Calendar, label: "Calendário" },
     { href: "/notifications", icon: Bell, label: "Notificações" },
     { href: "/settings", icon: Settings, label: "Configurações" },
   ];
