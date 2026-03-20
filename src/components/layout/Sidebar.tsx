@@ -34,7 +34,6 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [showCreateDM, setShowCreateDM] = useState(false);
   const [orgMembers, setOrgMembers] = useState<any[]>([]);
-  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   // Channel settings modal state
@@ -182,24 +181,6 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }
   }
 
-  // Hover handlers for expand/collapse
-  function handleMouseEnter() {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
-    setSidebarOpen(true);
-  }
-
-  function handleMouseLeave() {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
-    hoverTimeoutRef.current = setTimeout(() => {
-      setSidebarOpen(false);
-    }, 300);
-  }
-
   // Channel context menu
   function handleChannelContextMenu(e: React.MouseEvent, channel: Channel) {
     e.preventDefault();
@@ -219,118 +200,179 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     { href: "/settings", icon: Settings, label: "Configurações" },
   ];
 
+  // Icon bar hover expand (1st column overlay with labels)
+  const [iconBarExpanded, setIconBarExpanded] = useState(false);
+  const iconBarTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  function handleIconBarEnter() {
+    if (iconBarTimeoutRef.current) {
+      clearTimeout(iconBarTimeoutRef.current);
+      iconBarTimeoutRef.current = null;
+    }
+    setIconBarExpanded(true);
+  }
+
+  function handleIconBarLeave() {
+    if (iconBarTimeoutRef.current) clearTimeout(iconBarTimeoutRef.current);
+    iconBarTimeoutRef.current = setTimeout(() => {
+      setIconBarExpanded(false);
+    }, 200);
+  }
+
   return (
-    <div
-      ref={sidebarRef}
-      className="relative flex h-full shrink-0"
-      onMouseLeave={handleMouseLeave}
-    >
-      {/* Narrow icon strip - always visible */}
+    <div ref={sidebarRef} className="relative flex h-full shrink-0">
+      {/* ===== 1st COLUMN: Icon bar (always visible w-14) + hover overlay with labels ===== */}
       <div
-        className="w-14 bg-white border-r border-gray-200 flex flex-col items-center py-3 shrink-0 z-30"
-        onMouseEnter={handleMouseEnter}
+        className="relative z-30 shrink-0"
+        onMouseEnter={handleIconBarEnter}
+        onMouseLeave={handleIconBarLeave}
       >
-        {/* Lesco Icon */}
-        <div className="mb-4">
-          <Image
-            src="/lesco-icon.png"
-            alt="Lesco"
-            width={32}
-            height={32}
-            className="w-8 h-8 rounded"
-          />
+        {/* Narrow icon strip */}
+        <div className="w-14 h-full bg-white border-r border-gray-200 flex flex-col items-center py-3">
+          {/* Lesco Icon */}
+          <div className="mb-4">
+            <Image
+              src="/lesco-icon.png"
+              alt="Lesco"
+              width={32}
+              height={32}
+              className="w-8 h-8 rounded"
+            />
+          </div>
+
+          {/* Nav Icons */}
+          <nav className="flex flex-col items-center gap-1 flex-1">
+            {navItems.map(({ href, icon: Icon, label }) => {
+              const hasUnread = href === "/chat" && Object.values(unreadCounts).some(c => c > 0);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    "relative w-10 h-10 flex items-center justify-center rounded-lg transition-colors",
+                    pathname.startsWith(href)
+                      ? "bg-primary/10 text-primary"
+                      : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                  )}
+                  title={label}
+                >
+                  <Icon className="w-5 h-5" />
+                  {hasUnread && !pathname.startsWith(href) && (
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Bottom: logout + avatar */}
+          <div className="mt-auto flex flex-col items-center gap-2">
+            <button
+              onClick={handleLogout}
+              className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              title="Sair"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+            <div className="relative">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white cursor-default"
+                style={{ backgroundColor: generateColor(profile?.full_name || profile?.email || "U") }}
+                title={profile?.full_name || profile?.email || "Usuário"}
+              >
+                {getInitials(profile?.full_name || profile?.email || "U")}
+              </div>
+              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white" />
+            </div>
+          </div>
         </div>
 
-        {/* Nav Icons */}
-        <nav className="flex flex-col items-center gap-1 flex-1">
-          {navItems.map(({ href, icon: Icon, label }) => {
-            const hasUnread = href === "/chat" && Object.values(unreadCounts).some(c => c > 0);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "relative w-10 h-10 flex items-center justify-center rounded-lg transition-colors group",
-                  pathname.startsWith(href)
-                    ? "bg-primary/10 text-primary"
-                    : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                )}
-                title={label}
-              >
-                <Icon className="w-5 h-5" />
-                {hasUnread && !pathname.startsWith(href) && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
-                )}
-                {!sidebarOpen && (
-                  <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg">
-                    {label}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* Bottom: toggle + logout + avatar */}
-        <div className="mt-auto flex flex-col items-center gap-2">
-          <button
-            onClick={toggleSidebar}
-            className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors group relative"
-            title={sidebarOpen ? "Recolher menu" : "Expandir menu"}
-          >
-            {sidebarOpen ? (
-              <ChevronLeft className="w-5 h-5" />
-            ) : (
-              <ChevronRight className="w-5 h-5" />
-            )}
-          </button>
-          <button
-            onClick={handleLogout}
-            className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors group relative"
-            title="Sair"
-          >
-            <LogOut className="w-5 h-5" />
-            {!sidebarOpen && (
-              <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg">
-                Sair
-              </span>
-            )}
-          </button>
-          <div className="relative">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white cursor-default"
-              style={{ backgroundColor: generateColor(profile?.full_name || profile?.email || "U") }}
-              title={profile?.full_name || profile?.email || "Usuário"}
-            >
-              {getInitials(profile?.full_name || profile?.email || "U")}
+        {/* Hover overlay: expanded icon bar with labels (like ClickUp) */}
+        <div
+          className={cn(
+            "absolute top-0 left-0 h-full bg-white border-r border-gray-200 shadow-xl flex flex-col py-3 transition-all duration-200 ease-in-out overflow-hidden",
+            iconBarExpanded ? "w-48 opacity-100" : "w-0 opacity-0 pointer-events-none"
+          )}
+        >
+          <div className="w-48 h-full flex flex-col">
+            {/* Lesco Icon + name */}
+            <div className="flex items-center gap-2.5 px-3 mb-4">
+              <Image
+                src="/lesco-icon.png"
+                alt="Lesco"
+                width={32}
+                height={32}
+                className="w-8 h-8 rounded shrink-0"
+              />
+              <span className="text-sm font-bold text-gray-900">Lesco</span>
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white" />
+
+            {/* Nav items with labels */}
+            <nav className="flex flex-col gap-0.5 px-2 flex-1">
+              {navItems.map(({ href, icon: Icon, label }) => {
+                const hasUnread = href === "/chat" && Object.values(unreadCounts).some(c => c > 0);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setIconBarExpanded(false)}
+                    className={cn(
+                      "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                      pathname.startsWith(href)
+                        ? "bg-primary/10 text-primary"
+                        : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                    )}
+                  >
+                    <Icon className="w-5 h-5 shrink-0" />
+                    <span>{label}</span>
+                    {hasUnread && !pathname.startsWith(href) && (
+                      <span className="ml-auto w-2 h-2 rounded-full bg-red-500" />
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            {/* Bottom: logout */}
+            <div className="mt-auto px-2">
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+              >
+                <LogOut className="w-5 h-5 shrink-0" />
+                <span>Sair</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Content panel - ABSOLUTELY positioned overlay */}
-      <div
-        className={cn(
-          "absolute top-0 bottom-0 left-14 bg-gray-50 border-r border-gray-200 flex flex-col h-full transition-all duration-200 ease-in-out overflow-hidden z-20 shadow-lg",
-          sidebarOpen ? "w-52 opacity-100" : "w-0 opacity-0 pointer-events-none"
-        )}
-        onMouseEnter={handleMouseEnter}
-      >
-        <div className="w-52 h-full flex flex-col">
-          {/* Org Switcher */}
+      {/* ===== 2nd COLUMN: Content panel (ALWAYS FIXED when sidebarOpen) ===== */}
+      {sidebarOpen && (
+        <div className="w-56 bg-gray-50 border-r border-gray-200 flex flex-col h-full shrink-0 z-10">
+          {/* Header: Org Switcher + Collapse button */}
           <div className="p-3 border-b border-gray-200">
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 cursor-pointer">
-              <div
-                className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white shrink-0"
-                style={{ backgroundColor: generateColor(activeOrg?.name || "X") }}
-              >
-                {getInitials(activeOrg?.name || "?")}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-1 min-w-0 px-1 py-1 rounded-lg hover:bg-gray-100 cursor-pointer">
+                <div
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white shrink-0"
+                  style={{ backgroundColor: generateColor(activeOrg?.name || "X") }}
+                >
+                  {getInitials(activeOrg?.name || "?")}
+                </div>
+                <span className="flex-1 text-sm font-semibold text-gray-900 truncate">
+                  {activeOrg?.name || "Selecione org"}
+                </span>
+                <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
               </div>
-              <span className="flex-1 text-sm font-semibold text-gray-900 truncate">
-                {activeOrg?.name || "Selecione org"}
-              </span>
-              <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+              {/* Collapse button «  */}
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
+                title="Fechar barra lateral"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -490,7 +532,18 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Expand button when content panel is collapsed */}
+      {!sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="absolute top-3 left-[60px] z-20 w-6 h-6 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors"
+          title="Abrir barra lateral"
+        >
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (
