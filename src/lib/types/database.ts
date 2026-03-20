@@ -330,6 +330,24 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["automation_logs"]["Row"], "id" | "created_at">;
         Update: Partial<Database["public"]["Tables"]["automation_logs"]["Insert"]>;
       };
+      integrations: {
+        Row: {
+          id: string;
+          org_id: string;
+          type: "webhook" | "slack" | "google_calendar" | "github" | "email_notify";
+          name: string;
+          is_active: boolean;
+          config: Json;
+          events: string[];
+          created_by: string | null;
+          last_triggered_at: string | null;
+          trigger_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["integrations"]["Row"], "id" | "created_at" | "updated_at" | "trigger_count">;
+        Update: Partial<Database["public"]["Tables"]["integrations"]["Insert"]>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -356,3 +374,4 @@ export type EventParticipant = Database["public"]["Tables"]["event_participants"
 export type Subtask = Database["public"]["Tables"]["subtasks"]["Row"];
 export type Automation = Database["public"]["Tables"]["automations"]["Row"];
 export type AutomationLog = Database["public"]["Tables"]["automation_logs"]["Row"];
+export type Integration = Database["public"]["Tables"]["integrations"]["Row"];

@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  MessageSquare, Kanban, Bell, Settings, Calendar, BarChart3, Zap,
+  MessageSquare, Kanban, Bell, Settings, Calendar, BarChart3, Zap, Plug,
   Hash, Lock, ChevronDown, ChevronRight, ChevronLeft,
   Plus, LogOut, X, Loader2, Users, MessageCircle, Check,
   MoreHorizontal, Trash2, EyeOff, UserCog,
@@ -199,6 +199,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     { href: "/calendar", icon: Calendar, label: "Calendário" },
     { href: "/dashboard", icon: BarChart3, label: "Dashboard" },
     { href: "/automations", icon: Zap, label: "Automações" },
+    { href: "/integrations", icon: Plug, label: "Integrações" },
     { href: "/notifications", icon: Bell, label: "Notificações" },
     { href: "/settings", icon: Settings, label: "Configurações" },
   ];
