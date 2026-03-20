@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./MessageBubble";
 import { MessageInput } from "./MessageInput";
+import { CreateTaskModal } from "./CreateTaskModal";
 import { useChatStore } from "@/lib/stores/chat-store";
 import {
   Hash, Lock, MessageSquare, ListTodo,
@@ -57,6 +58,9 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
   const [activeTab, setActiveTab] = useState<"chat" | "tasks">("chat");
   const [tasks, setTasks] = useState<any[]>([]);
   const [lastReadAt, setLastReadAt] = useState<string | null>(null);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [taskDefaultTitle, setTaskDefaultTitle] = useState("");
+  const [taskDefaultAssigneeId, setTaskDefaultAssigneeId] = useState<string | undefined>();
 
   const channelMessages = messages[channel.id] || [];
 
@@ -265,6 +269,52 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
     }
   }
 
+  // Get other user ID for DMs (for task assignment default)
+  const otherUserId = useMemo(() => {
+    if (channel.type !== "dm") return undefined;
+    const otherMsg = channelMessages.find((m: any) => m.user_id !== currentUserId);
+    return otherMsg?.profiles?.id;
+  }, [channel, channelMessages, currentUserId]);
+
+  // Context menu: Create Task
+  function handleContextCreateTask(messageContent: string) {
+    // Use first line or first 100 chars as default title
+    const firstLine = messageContent.split("\n")[0].slice(0, 100);
+    setTaskDefaultTitle(firstLine);
+    setTaskDefaultAssigneeId(channel.type === "dm" ? otherUserId : undefined);
+    setShowTaskModal(true);
+  }
+
+  // Context menu: Email
+  function handleContextEmail(messageContent: string, senderName: string) {
+    const subject = encodeURIComponent(`Mensagem de ${senderName}`);
+    const body = encodeURIComponent(messageContent);
+    window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
+  }
+
+  // Context menu: Forward
+  async function handleContextForward(messageContent: string, senderName: string) {
+    const text = `📨 **Encaminhada de ${senderName}:**\n${messageContent}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      // TODO: could open a channel picker modal in the future
+      alert("Mensagem copiada! Cole em outro chat para encaminhar.");
+    } catch {
+      alert("Não foi possível copiar a mensagem.");
+    }
+  }
+
+  // Task modal callback
+  async function handleTaskCreated(card: any, assigneeName?: string) {
+    setShowTaskModal(false);
+    // Send confirmation in chat
+    let msg = `📋 Tarefa criada: **${card.title}**`;
+    if (assigneeName) msg += ` → atribuída a ${assigneeName}`;
+    await sendMessage(msg);
+    // Refresh tasks if on tasks tab
+    if (activeTab === "tasks") loadTasks();
+  }
+
   const headerName = channel.type === "dm"
     ? (otherUserName || channel.name)
     : channel.name;
@@ -385,6 +435,9 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
                     message={msg}
                     showHeader={showHeader}
                     isOwn={msg.user_id === currentUserId}
+                    onCreateTask={handleContextCreateTask}
+                    onEmail={handleContextEmail}
+                    onForward={handleContextForward}
                   />
                 </div>
               );
@@ -481,6 +534,18 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
             </div>
           )}
         </div>
+      )}
+
+      {/* Task Creation Modal (from context menu) */}
+      {showTaskModal && (
+        <CreateTaskModal
+          orgId={channel.org_id}
+          currentUserId={currentUserId}
+          defaultTitle={taskDefaultTitle}
+          defaultAssigneeId={taskDefaultAssigneeId}
+          onClose={() => setShowTaskModal(false)}
+          onCreated={handleTaskCreated}
+        />
       )}
     </div>
   );

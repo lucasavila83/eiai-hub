@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "EIAI Hub — Next.js Dev",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-Command", "cd C:\\eiai-hub; npm run dev"],
+      "port": 3000
+    },
+    {
+      "name": "EIAI Hub — Next.js Production Preview",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-Command", "cd C:\\eiai-hub; npm run build; npm run start"],
+      "port": 3000
+    }
+  ]
+}
