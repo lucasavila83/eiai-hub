@@ -12,9 +12,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [magicLoading, setMagicLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [magicSent, setMagicSent] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -26,7 +24,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      setError(error.message);
+      setError(error.message || "Email ou senha incorretos");
       setLoading(false);
     } else {
       router.push("/");
@@ -34,25 +32,6 @@ export default function LoginPage() {
     }
   }
 
-  async function handleMagicLink() {
-    if (!email) {
-      setError("Digite seu email primeiro");
-      return;
-    }
-    setMagicLoading(true);
-    setError(null);
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/` },
-    });
-
-    if (error) {
-      setError(error.message);
-    } else {
-      setMagicSent(true);
-    }
-    setMagicLoading(false);
-  }
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center p-4">
@@ -71,22 +50,7 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
-          {magicSent ? (
-            <div className="text-center py-4">
-              <Mail className="w-12 h-12 text-primary mx-auto mb-3" />
-              <h2 className="text-lg font-semibold text-foreground mb-2">Verifique seu email</h2>
-              <p className="text-muted-foreground text-sm">
-                Enviamos um link de acesso para <strong>{email}</strong>
-              </p>
-              <button
-                onClick={() => setMagicSent(false)}
-                className="mt-4 text-primary text-sm hover:underline"
-              >
-                Tentar novamente
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-5">
               {error && (
                 <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-destructive text-sm">
                   {error}
@@ -132,27 +96,7 @@ export default function LoginPage() {
                 Entrar
               </button>
 
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-2 text-gray-400">ou</span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleMagicLink}
-                disabled={magicLoading}
-                className="w-full border border-gray-200 text-gray-700 py-2.5 rounded-lg font-medium text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {magicLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                <Mail className="w-4 h-4" />
-                Entrar com Magic Link
-              </button>
             </form>
-          )}
         </div>
 
         <p className="text-center text-sm text-gray-500 mt-6">
