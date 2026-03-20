@@ -117,7 +117,24 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
     }
   }, [channelMessages.length, activeTab]);
 
-  // Realtime subscription
+  // Profile cache for realtime messages
+  const profileCacheRef = useRef<Record<string, any>>({});
+
+  // Enrich a raw message payload with profile data
+  async function enrichMessage(raw: any) {
+    const userId = raw.user_id;
+    if (!profileCacheRef.current[userId]) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url, email, is_ai_agent")
+        .eq("id", userId)
+        .single();
+      if (profile) profileCacheRef.current[userId] = profile;
+    }
+    return { ...raw, profiles: profileCacheRef.current[userId] || null };
+  }
+
+  // Realtime subscription + polling fallback
   useEffect(() => {
     const sub = supabase
       .channel(`messages:${channel.id}`)
@@ -130,17 +147,54 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
           filter: `channel_id=eq.${channel.id}`,
         },
         async (payload) => {
-          const { data: msg } = await supabase
-            .from("messages")
-            .select("*, profiles:user_id(id, full_name, avatar_url, email, is_ai_agent)")
-            .eq("id", payload.new.id)
-            .single();
-          if (msg) addMessage(channel.id, msg as any);
+          const raw = payload.new;
+          // Skip own messages (already added via optimistic update)
+          if (raw.user_id === currentUserId) return;
+          // Avoid duplicates
+          const existing = useChatStore.getState().messages[channel.id] || [];
+          if (existing.some((m: any) => m.id === raw.id)) return;
+          const enriched = await enrichMessage(raw);
+          addMessage(channel.id, enriched as any);
         }
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(sub); };
+    // Polling fallback every 3s for messages that realtime might miss
+    const pollInterval = setInterval(async () => {
+      const currentMsgs = useChatStore.getState().messages[channel.id] || [];
+      const lastMsg = currentMsgs.filter((m: any) => !m._optimistic).pop();
+      const since = lastMsg?.created_at || new Date(0).toISOString();
+
+      const { data: newMsgs } = await supabase
+        .from("messages")
+        .select("*, profiles:user_id(id, full_name, avatar_url, email, is_ai_agent)")
+        .eq("channel_id", channel.id)
+        .gt("created_at", since)
+        .order("created_at");
+
+      if (newMsgs && newMsgs.length > 0) {
+        const existingIds = new Set(currentMsgs.map((m: any) => m.id));
+        for (const msg of newMsgs) {
+          if (!existingIds.has(msg.id)) {
+            addMessage(channel.id, msg as any);
+          }
+          // Replace optimistic message with real one
+          const optimistic = currentMsgs.find(
+            (m: any) => m._optimistic && m.user_id === msg.user_id && m.content === msg.content
+          );
+          if (optimistic) {
+            const updated = useChatStore.getState().messages[channel.id]
+              .map((m: any) => m.id === optimistic.id ? msg : m);
+            setMessages(channel.id, updated);
+          }
+        }
+      }
+    }, 3000);
+
+    return () => {
+      supabase.removeChannel(sub);
+      clearInterval(pollInterval);
+    };
   }, [channel.id]);
 
   // Load tasks when tasks tab is active (for DMs: tasks assigned to that person)
@@ -196,6 +250,30 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
   }
 
   async function sendMessage(content: string) {
+    // Optimistic update — show message instantly
+    const optimisticMsg = {
+      id: `opt_${Date.now()}`,
+      channel_id: channel.id,
+      user_id: currentUserId,
+      content,
+      mentions: [],
+      created_at: new Date().toISOString(),
+      _optimistic: true,
+      profiles: profileCacheRef.current[currentUserId] || null,
+    };
+    addMessage(channel.id, optimisticMsg as any);
+
+    // Cache own profile if not cached yet
+    if (!profileCacheRef.current[currentUserId]) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url, email, is_ai_agent")
+        .eq("id", currentUserId)
+        .single();
+      if (profile) profileCacheRef.current[currentUserId] = profile;
+    }
+
+    // Insert into database
     await supabase.from("messages").insert({
       channel_id: channel.id,
       user_id: currentUserId,
