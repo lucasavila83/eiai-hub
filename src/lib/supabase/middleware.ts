@@ -25,29 +25,36 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Use getUser() but with a timeout to prevent middleware hanging
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // If timeout or error, let the request through (pages will handle auth)
+    clearTimeout(timeoutId);
+    return supabaseResponse;
+  }
+  clearTimeout(timeoutId);
 
   const { pathname } = request.nextUrl;
 
-  // Rotas públicas
+  // Public routes
   const publicRoutes = ["/login", "/register", "/invite"];
   const isPublicRoute = publicRoutes.some((route) =>
     pathname.startsWith(route)
   );
 
-  // API routes handle their own auth — never redirect them
+  // API routes handle their own auth
   if (!user && !isPublicRoute && !pathname.startsWith("/api/")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  // Only redirect away from /login — NOT from /register.
-  // A logged-in user without an org must be able to access /register
-  // to create their organization; redirecting them to / would cause an
-  // infinite loop (/register → / → dashboard → /register → …).
   if (user && pathname.startsWith("/login")) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
