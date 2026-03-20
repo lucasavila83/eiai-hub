@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./MessageBubble";
 import { MessageInput } from "./MessageInput";
 import { useChatStore } from "@/lib/stores/chat-store";
-import { Hash, Lock } from "lucide-react";
+import { Hash, Lock, MessageSquare } from "lucide-react";
 import type { Channel, Message } from "@/lib/types/database";
 
 interface Props {
@@ -24,6 +24,23 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
   useEffect(() => {
     setMessages(channel.id, initialMessages as any);
     markAsRead(channel.id);
+    // Update last_read_at in DB
+    supabase
+      .from("channel_members")
+      .update({ last_read_at: new Date().toISOString() })
+      .eq("channel_id", channel.id)
+      .eq("user_id", currentUserId)
+      .then();
+    // Ensure user is a channel member
+    supabase
+      .from("channel_members")
+      .upsert({
+        channel_id: channel.id,
+        user_id: currentUserId,
+        last_read_at: new Date().toISOString(),
+        notifications: "all",
+      }, { onConflict: "channel_id,user_id" })
+      .then();
   }, [channel.id]);
 
   useEffect(() => {
@@ -68,13 +85,17 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border flex items-center gap-2 shrink-0">
-        {channel.type === "private" ? (
+        {channel.type === "dm" ? (
+          <MessageSquare className="w-4 h-4 text-muted-foreground" />
+        ) : channel.type === "private" ? (
           <Lock className="w-4 h-4 text-muted-foreground" />
         ) : (
           <Hash className="w-4 h-4 text-muted-foreground" />
         )}
-        <h2 className="font-semibold text-foreground">{channel.name}</h2>
-        {channel.description && (
+        <h2 className="font-semibold text-foreground">
+          {channel.type === "dm" ? channel.name : channel.name}
+        </h2>
+        {channel.description && channel.type !== "dm" && (
           <>
             <span className="text-border">|</span>
             <p className="text-sm text-muted-foreground truncate">{channel.description}</p>
