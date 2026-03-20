@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUIStore } from "@/lib/stores/ui-store";
 import {
-  Users, Mail, Copy, Check, Loader2,
+  Users, Mail, Copy, Check, Loader2, Trash2,
   Crown, Shield, User, UserX, Link2, ArrowLeft,
 } from "lucide-react";
 import { cn, getInitials, generateColor, formatDate } from "@/lib/utils/helpers";
@@ -36,6 +36,7 @@ export default function MembersPage() {
   const [copied, setCopied] = useState(false);
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -137,6 +138,34 @@ export default function MembersPage() {
       setError(json.error || "Erro ao reenviar convite");
     }
     setResendingId(null);
+  }
+
+  async function deleteInvite(invId: string) {
+    if (!confirm("Tem certeza que deseja remover este convite?")) return;
+    setDeletingId(invId);
+    setError(null);
+    setSuccess(null);
+
+    const session = await supabase.auth.getSession();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (session.data.session?.access_token) {
+      headers["Authorization"] = `Bearer ${session.data.session.access_token}`;
+    }
+
+    const res = await fetch("/api/invite/delete", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ invitationId: invId }),
+    });
+
+    const json = await res.json();
+    if (res.ok) {
+      setSuccess(json.message);
+      loadInvitations();
+    } else {
+      setError(json.error || "Erro ao remover convite");
+    }
+    setDeletingId(null);
   }
 
   return (
@@ -261,6 +290,18 @@ export default function MembersPage() {
                         <Copy className="w-3.5 h-3.5" />
                         Copiar link
                       </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => deleteInvite(inv.id)}
+                    disabled={deletingId === inv.id}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive px-2 py-1 rounded-md hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                    title="Remover convite"
+                  >
+                    {deletingId === inv.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
                     )}
                   </button>
                   <span className="text-xs bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded-full font-medium">
