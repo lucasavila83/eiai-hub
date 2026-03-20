@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./MessageBubble";
 import { MessageInput } from "./MessageInput";
@@ -54,6 +55,7 @@ const priorityConfig: Record<string, { color: string; icon: any; label: string }
 };
 
 export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
+  const router = useRouter();
   const supabase = createClient();
   const { messages, setMessages, addMessage, markAsRead } = useChatStore();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -491,8 +493,11 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
                 return (
                   <div
                     key={task.id}
+                    onClick={() => {
+                      if (task.board_id) router.push(`/boards/${task.board_id}`);
+                    }}
                     className={cn(
-                      "bg-card border border-border rounded-xl p-3 hover:border-primary/50 transition-all",
+                      "bg-card border border-border rounded-xl p-3 hover:border-primary/50 transition-all cursor-pointer",
                       isCompleted && "opacity-60"
                     )}
                   >
@@ -539,6 +544,11 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
                             </span>
                           )}
                         </div>
+                        {task.board_id && (
+                          <span className="text-xs text-primary hover:underline mt-1 inline-block">
+                            Abrir no board &rarr;
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

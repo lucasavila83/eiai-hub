@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { KanbanColumn } from "./KanbanColumn";
+import { CardDetailModal } from "./CardDetailModal";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
 import { Plus, Settings } from "lucide-react";
@@ -18,10 +19,12 @@ interface Props {
 
 export function BoardView({ board, initialColumns, initialCards, currentUserId }: Props) {
   const supabase = createClient();
-  const { columns, cards, setColumns, setCards, moveCard } = useKanbanStore();
+  const { columns, cards, setColumns, setCards, moveCard, updateCard, removeCard } = useKanbanStore();
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<(Card & { card_assignees: any[] }) | null>(null);
+  const [orgMembers, setOrgMembers] = useState<any[]>([]);
 
   useEffect(() => {
     setColumns(board.id, initialColumns);
@@ -30,6 +33,16 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
       setCards(col.id, colCards);
     }
   }, [board.id]);
+
+  useEffect(() => {
+    supabase
+      .from("org_members")
+      .select("user_id, role, profiles:user_id(id, full_name, avatar_url, email)")
+      .eq("org_id", board.org_id)
+      .then(({ data }) => {
+        if (data) setOrgMembers(data);
+      });
+  }, [board.org_id]);
 
   const boardColumns = columns[board.id] || [];
 
@@ -83,6 +96,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
               cards={cards[column.id] || []}
               currentUserId={currentUserId}
               boardId={board.id}
+              onCardClick={(card) => setSelectedCard(card)}
             />
           ))}
 
@@ -135,6 +149,25 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
           board={board}
           currentUserId={currentUserId}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {selectedCard && (
+        <CardDetailModal
+          card={selectedCard}
+          boardId={board.id}
+          columns={boardColumns.map((c) => ({ id: c.id, name: c.name, color: c.color }))}
+          orgMembers={orgMembers}
+          currentUserId={currentUserId}
+          onClose={() => setSelectedCard(null)}
+          onUpdated={(updatedCard) => {
+            updateCard(updatedCard.id, updatedCard);
+            setSelectedCard(updatedCard);
+          }}
+          onDeleted={(cardId) => {
+            removeCard(cardId, selectedCard.column_id);
+            setSelectedCard(null);
+          }}
         />
       )}
     </div>

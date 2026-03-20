@@ -14,9 +14,10 @@ interface Props {
   cards: (Card & { card_assignees: any[] })[];
   currentUserId: string;
   boardId: string;
+  onCardClick?: (card: Card & { card_assignees: any[] }) => void;
 }
 
-export function KanbanColumn({ column, cards, currentUserId, boardId }: Props) {
+export function KanbanColumn({ column, cards, currentUserId, boardId, onCardClick }: Props) {
   const supabase = createClient();
   const { addCard } = useKanbanStore();
   const [addingCard, setAddingCard] = useState(false);
@@ -83,6 +84,9 @@ export function KanbanColumn({ column, cards, currentUserId, boardId }: Props) {
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     {...provided.dragHandleProps}
+                    onClick={() => {
+                      if (!snapshot.isDragging) onCardClick?.(card);
+                    }}
                   >
                     <KanbanCard card={card} isDragging={snapshot.isDragging} />
                   </div>
