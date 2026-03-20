@@ -14,7 +14,7 @@ interface Props {
   defaultTitle?: string;
   defaultAssigneeId?: string; // for DMs — pre-select the other user
   onClose: () => void;
-  onCreated: (card: any, assigneeName?: string) => void;
+  onCreated: (card: any, assigneeName?: string, extra?: { boardName?: string; columnName?: string }) => void;
 }
 
 export function CreateTaskModal({
@@ -155,8 +155,14 @@ export function CreateTaskModal({
       await sendTaskNotification(card, assigneeName || "");
     }
 
+    const board = boards.find((b) => b.id === selectedBoardId);
+    const column = columns.find((c) => c.id === selectedColumnId);
+
     setLoading(false);
-    onCreated(card, assigneeName);
+    onCreated(card, assigneeName, {
+      boardName: board?.name,
+      columnName: column?.name,
+    });
   }
 
   async function sendTaskNotification(card: any, assigneeName: string) {

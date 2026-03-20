@@ -308,11 +308,14 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
   }
 
   // Task modal callback
-  async function handleTaskCreated(card: any, assigneeName?: string) {
+  async function handleTaskCreated(card: any, assigneeName?: string, extra?: { boardName?: string; columnName?: string }) {
     setShowTaskModal(false);
-    // Send confirmation in chat
-    let msg = `📋 Tarefa criada: **${card.title}**`;
-    if (assigneeName) msg += ` → atribuída a ${assigneeName}`;
+    // Send confirmation in chat (multi-line so it's expandable)
+    let msg = `📋 **Tarefa criada: ${card.title}**`;
+    if (assigneeName) msg += `\n👤 Atribuída a: ${assigneeName}`;
+    if (extra?.boardName) msg += `\n📌 Board: ${extra.boardName}`;
+    if (extra?.columnName) msg += `\n📊 Coluna: ${extra.columnName}`;
+    if (card.due_date) msg += `\n📅 Prazo: ${new Date(card.due_date).toLocaleDateString("pt-BR")}`;
     await sendMessage(msg);
     // Refresh tasks if on tasks tab
     if (activeTab === "tasks") loadTasks();
