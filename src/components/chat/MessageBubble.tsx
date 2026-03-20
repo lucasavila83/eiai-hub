@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, getInitials, generateColor } from "@/lib/utils/helpers";
-import { Bot, ListTodo, Mail, Forward, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Bot, ListTodo, Mail, Forward, ChevronDown, ChevronUp,
+  Pencil, Check, X, FileText, Image as ImageIcon, Download,
+  File, FileSpreadsheet, FileArchive,
+} from "lucide-react";
 import type { Message } from "@/lib/types/database";
 
 interface Props {
@@ -12,6 +17,34 @@ interface Props {
   onCreateTask?: (messageContent: string) => void;
   onForward?: (messageContent: string, senderName: string) => void;
   onEmail?: (messageContent: string, senderName: string) => void;
+  onMessageEdited?: (messageId: string, newContent: string) => void;
+}
+
+// File attachment detection
+const FILE_URL_REGEX = /^📎\s*(?:Arquivo:\s*)?\*\*(.+?)\*\*\n(https?:\/\/.+)$/s;
+const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
+const DOC_EXTENSIONS = [".pdf", ".doc", ".docx"];
+const SHEET_EXTENSIONS = [".xls", ".xlsx", ".csv"];
+
+function getFileIcon(fileName: string) {
+  const lower = fileName.toLowerCase();
+  if (IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext))) return ImageIcon;
+  if (DOC_EXTENSIONS.some((ext) => lower.endsWith(ext))) return FileText;
+  if (SHEET_EXTENSIONS.some((ext) => lower.endsWith(ext))) return FileSpreadsheet;
+  if (lower.endsWith(".zip") || lower.endsWith(".rar") || lower.endsWith(".7z")) return FileArchive;
+  return File;
+}
+
+function getFileColor(fileName: string) {
+  const lower = fileName.toLowerCase();
+  if (IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext))) return "text-blue-500 bg-blue-500/10";
+  if (DOC_EXTENSIONS.some((ext) => lower.endsWith(ext))) return "text-red-500 bg-red-500/10";
+  if (SHEET_EXTENSIONS.some((ext) => lower.endsWith(ext))) return "text-green-600 bg-green-600/10";
+  return "text-orange-500 bg-orange-500/10";
+}
+
+function isImageFile(fileName: string) {
+  return IMAGE_EXTENSIONS.some((ext) => fileName.toLowerCase().endsWith(ext));
 }
 
 // Simple markdown renderer
@@ -58,12 +91,64 @@ function renderContent(text: string) {
   });
 }
 
-export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForward, onEmail }: Props) {
+// File attachment component
+function FileAttachment({ fileName, fileUrl }: { fileName: string; fileUrl: string }) {
+  const Icon = getFileIcon(fileName);
+  const colorClass = getFileColor(fileName);
+  const isImage = isImageFile(fileName);
+
+  return (
+    <div className="max-w-xs">
+      {isImage && (
+        <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="block mb-2">
+          <img
+            src={fileUrl}
+            alt={fileName}
+            className="rounded-lg border border-border max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+          />
+        </a>
+      )}
+      <div className="flex items-center gap-3 bg-muted/50 border border-border rounded-lg px-3 py-2">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${colorClass}`}>
+          <Icon className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-foreground truncate">{fileName}</p>
+        </div>
+        <a
+          href={fileUrl}
+          download={fileName}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          title="Baixar arquivo"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Download className="w-4 h-4" />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForward, onEmail, onMessageEdited }: Props) {
   const profile = message.profiles;
   const name = profile?.full_name || profile?.email || "Usuário";
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [taskExpanded, setTaskExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content);
+  const [saving, setSaving] = useState(false);
+  const editRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Focus edit textarea
+  useEffect(() => {
+    if (editing && editRef.current) {
+      editRef.current.focus();
+      editRef.current.selectionStart = editRef.current.value.length;
+    }
+  }, [editing]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -80,11 +165,44 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-
-    // Calculate position (keep menu in viewport)
     const x = Math.min(e.clientX, window.innerWidth - 220);
-    const y = Math.min(e.clientY, window.innerHeight - 180);
+    const y = Math.min(e.clientY, window.innerHeight - 220);
     setContextMenu({ x, y });
+  }
+
+  async function handleSaveEdit() {
+    const trimmed = editContent.trim();
+    if (!trimmed || trimmed === message.content) {
+      setEditing(false);
+      setEditContent(message.content);
+      return;
+    }
+
+    setSaving(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("messages")
+      .update({ content: trimmed, edited_at: new Date().toISOString() })
+      .eq("id", message.id);
+
+    if (!error) {
+      onMessageEdited?.(message.id, trimmed);
+      message.content = trimmed;
+      message.edited_at = new Date().toISOString();
+    }
+    setSaving(false);
+    setEditing(false);
+  }
+
+  function handleEditKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSaveEdit();
+    }
+    if (e.key === "Escape") {
+      setEditing(false);
+      setEditContent(message.content);
+    }
   }
 
   if (message.deleted_at) {
@@ -96,6 +214,10 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
   }
 
   const isTaskMsg = message.content.startsWith("📋");
+
+  // Check if message is a file attachment
+  const fileMatch = message.content.match(FILE_URL_REGEX);
+  const isFileMsg = !!fileMatch;
 
   return (
     <>
@@ -135,7 +257,39 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
               <span className="text-xs text-muted-foreground">{formatDateTime(message.created_at)}</span>
             </div>
           )}
-          {isTaskMsg ? (
+
+          {editing ? (
+            <div className="space-y-1">
+              <textarea
+                ref={editRef}
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                onKeyDown={handleEditKeyDown}
+                className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                rows={Math.min(editContent.split("\n").length, 5)}
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={saving}
+                  className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Salvar
+                </button>
+                <button
+                  onClick={() => { setEditing(false); setEditContent(message.content); }}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Cancelar
+                </button>
+                <span className="text-xs text-muted-foreground">Enter salvar · Esc cancelar</span>
+              </div>
+            </div>
+          ) : isFileMsg ? (
+            <FileAttachment fileName={fileMatch![1]} fileUrl={fileMatch![2]} />
+          ) : isTaskMsg ? (
             <div
               className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-sm cursor-pointer hover:bg-primary/10 transition-colors max-w-md"
               onClick={() => setTaskExpanded(!taskExpanded)}
@@ -163,8 +317,19 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
               {renderContent(message.content)}
             </p>
           )}
-          {message.edited_at && (
+          {message.edited_at && !editing && (
             <span className="text-xs text-muted-foreground">(editado)</span>
+          )}
+
+          {/* Edit button on hover for own messages */}
+          {isOwn && !editing && !isFileMsg && (
+            <button
+              onClick={() => { setEditContent(message.content); setEditing(true); }}
+              className="hidden group-hover:inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mt-0.5"
+            >
+              <Pencil className="w-3 h-3" />
+              Editar
+            </button>
           )}
         </div>
       </div>
@@ -176,6 +341,19 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
           className="fixed z-[100] bg-card border border-border rounded-xl shadow-2xl py-1 w-52 animate-in fade-in zoom-in-95 duration-100"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          {isOwn && !isFileMsg && (
+            <button
+              onClick={() => {
+                setContextMenu(null);
+                setEditContent(message.content);
+                setEditing(true);
+              }}
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+            >
+              <Pencil className="w-4 h-4 text-primary" />
+              Editar mensagem
+            </button>
+          )}
           <button
             onClick={() => {
               setContextMenu(null);
