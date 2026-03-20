@@ -34,6 +34,8 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(false);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -101,6 +103,40 @@ export default function MembersPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+  }
+
+  async function copyInviteLink(token: string, invId: string) {
+    const appUrl = window.location.origin;
+    const url = `${appUrl}/invite/${token}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedInviteId(invId);
+    setTimeout(() => setCopiedInviteId(null), 2000);
+  }
+
+  async function resendInvite(invId: string) {
+    setResendingId(invId);
+    setError(null);
+    setSuccess(null);
+
+    const session = await supabase.auth.getSession();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (session.data.session?.access_token) {
+      headers["Authorization"] = `Bearer ${session.data.session.access_token}`;
+    }
+
+    const res = await fetch("/api/invite/resend", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ invitationId: invId }),
+    });
+
+    const json = await res.json();
+    if (res.ok) {
+      setSuccess(json.message);
+    } else {
+      setError(json.error || "Erro ao reenviar convite");
+    }
+    setResendingId(null);
   }
 
   return (
@@ -188,7 +224,7 @@ export default function MembersPage() {
             {invitations.map((inv) => (
               <div
                 key={inv.id}
-                className="flex items-center justify-between bg-card border border-border rounded-lg px-4 py-2"
+                className="flex items-center justify-between bg-card border border-border rounded-lg px-4 py-3"
               >
                 <div>
                   <p className="text-sm text-foreground">{inv.email}</p>
@@ -196,9 +232,41 @@ export default function MembersPage() {
                     {roleLabels[inv.role]} &middot; Expira em {formatDate(inv.expires_at)}
                   </p>
                 </div>
-                <span className="text-xs bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded-full font-medium">
-                  Pendente
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => resendInvite(inv.id)}
+                    disabled={resendingId === inv.id}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+                    title="Reenviar email"
+                  >
+                    {resendingId === inv.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Mail className="w-3.5 h-3.5" />
+                    )}
+                    Reenviar
+                  </button>
+                  <button
+                    onClick={() => copyInviteLink(inv.token, inv.id)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-accent transition-colors"
+                    title="Copiar link do convite"
+                  >
+                    {copiedInviteId === inv.id ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-green-500" />
+                        <span className="text-green-500">Copiado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        Copiar link
+                      </>
+                    )}
+                  </button>
+                  <span className="text-xs bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded-full font-medium">
+                    Pendente
+                  </span>
+                </div>
               </div>
             ))}
           </div>
