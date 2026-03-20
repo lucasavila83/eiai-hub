@@ -44,7 +44,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isPublicRoute && !pathname.startsWith("/invite")) {
+  // Only redirect away from /login — NOT from /register.
+  // A logged-in user without an org must be able to access /register
+  // to create their organization; redirecting them to / would cause an
+  // infinite loop (/register → / → dashboard → /register → …).
+  if (user && pathname.startsWith("/login")) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
