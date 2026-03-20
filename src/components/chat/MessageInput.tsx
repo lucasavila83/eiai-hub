@@ -1,28 +1,53 @@
 "use client";
 
-import { useState, useRef, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import {
   Send, Paperclip, Smile, Bold, Italic,
   Code, ListTodo, AtSign, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
+import { EmojiPicker } from "./EmojiPicker";
+import { MentionAutocomplete } from "./MentionAutocomplete";
+import { FileUpload } from "./FileUpload";
+import { createClient } from "@/lib/supabase/client";
 
 interface Props {
   onSend: (content: string) => Promise<void>;
   channelName: string;
   onCreateTask?: (title: string) => Promise<void>;
   isDM?: boolean;
+  channelId?: string;
+  orgId?: string;
+  currentUserId?: string;
 }
 
-export function MessageInput({ onSend, channelName, onCreateTask, isDM }: Props) {
+export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelId, orgId, currentUserId }: Props) {
   const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
   const [showTaskInput, setShowTaskInput] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [creatingTask, setCreatingTask] = useState(false);
   const [showCommands, setShowCommands] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [showMention, setShowMention] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState("");
+  const [showFileUpload, setShowFileUpload] = useState(false);
+  const [orgMembers, setOrgMembers] = useState<any[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
+
+  // Load org members for @mentions
+  useEffect(() => {
+    if (!orgId) return;
+    const supabase = createClient();
+    supabase
+      .from("org_members")
+      .select("user_id, role, profiles:user_id(id, full_name, avatar_url, email)")
+      .eq("org_id", orgId)
+      .then(({ data }) => {
+        if (data) setOrgMembers(data);
+      });
+  }, [orgId]);
 
   async function handleSend() {
     const trimmed = content.trim();
@@ -50,7 +75,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM }: Props)
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !showMention) {
       e.preventDefault();
       handleSend();
     }
@@ -58,6 +83,31 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM }: Props)
     // Show commands popup when typing /
     if (e.key === "/" && content === "") {
       setShowCommands(true);
+    }
+
+    // Close mention on escape
+    if (e.key === "Escape") {
+      setShowMention(false);
+      setShowEmoji(false);
+    }
+  }
+
+  function handleContentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value;
+    setContent(val);
+
+    // Detect @mention
+    const ta = textareaRef.current;
+    if (ta) {
+      const cursor = ta.selectionStart;
+      const textBefore = val.slice(0, cursor);
+      const atMatch = textBefore.match(/@(\w*)$/);
+      if (atMatch) {
+        setShowMention(true);
+        setMentionSearch(atMatch[1]);
+      } else {
+        setShowMention(false);
+      }
     }
   }
 
@@ -87,6 +137,51 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM }: Props)
       ta.focus();
       ta.setSelectionRange(start + prefix.length, start + prefix.length + (selected || "texto").length);
     }, 0);
+  }
+
+  function handleEmojiSelect(emoji: string) {
+    const ta = textareaRef.current;
+    if (ta) {
+      const start = ta.selectionStart;
+      const before = content.slice(0, start);
+      const after = content.slice(start);
+      setContent(before + emoji + after);
+      setTimeout(() => {
+        ta.focus();
+        ta.setSelectionRange(start + emoji.length, start + emoji.length);
+      }, 0);
+    } else {
+      setContent(content + emoji);
+    }
+    setShowEmoji(false);
+  }
+
+  function handleMentionSelect(member: any) {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const cursor = ta.selectionStart;
+    const textBefore = content.slice(0, cursor);
+    const textAfter = content.slice(cursor);
+    const atIndex = textBefore.lastIndexOf("@");
+    const name = member.profiles?.full_name || member.profiles?.email || "user";
+    const newContent = textBefore.slice(0, atIndex) + `@${name} ` + textAfter;
+    setContent(newContent);
+    setShowMention(false);
+    setTimeout(() => {
+      ta.focus();
+      const newCursor = atIndex + name.length + 2;
+      ta.setSelectionRange(newCursor, newCursor);
+    }, 0);
+  }
+
+  function handleFileUploaded(fileUrl: string, fileName: string, fileType: string) {
+    setShowFileUpload(false);
+    // Send as a message with file link
+    if (fileType.startsWith("image/")) {
+      onSend(`📎 **${fileName}**\n${fileUrl}`);
+    } else {
+      onSend(`📎 Arquivo: **${fileName}**\n${fileUrl}`);
+    }
   }
 
   async function handleCreateTask(e: React.FormEvent) {
@@ -148,6 +243,17 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM }: Props)
         </div>
       )}
 
+      {/* File upload inline */}
+      {showFileUpload && channelId && (
+        <div className="mb-2">
+          <FileUpload
+            channelId={channelId}
+            onFileUploaded={handleFileUploaded}
+            onClose={() => setShowFileUpload(false)}
+          />
+        </div>
+      )}
+
       {/* Commands popup */}
       {showCommands && (
         <div className="mb-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
@@ -169,91 +275,138 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM }: Props)
         </div>
       )}
 
-      <div className="bg-muted border border-border rounded-xl">
-        {/* Formatting toolbar */}
-        <div className="flex items-center gap-0.5 px-2 py-1 border-b border-border/50">
-          <button
-            onClick={() => insertFormatting("**", "**")}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
-            title="Negrito"
-          >
-            <Bold className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => insertFormatting("_", "_")}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
-            title="Itálico"
-          >
-            <Italic className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => insertFormatting("`", "`")}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
-            title="Código"
-          >
-            <Code className="w-3.5 h-3.5" />
-          </button>
-          <div className="w-px h-4 bg-border mx-1" />
-          <button
-            onClick={() => {
-              setShowTaskInput(true);
-              setTimeout(() => taskInputRef.current?.focus(), 100);
-            }}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
-            title="Criar tarefa"
-          >
-            <ListTodo className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => insertFormatting("@", "")}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
-            title="Mencionar"
-          >
-            <AtSign className="w-3.5 h-3.5" />
-          </button>
-          <button
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
-            title="Anexar arquivo"
-          >
-            <Paperclip className="w-3.5 h-3.5" />
-          </button>
-          <button
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
-            title="Emoji"
-          >
-            <Smile className="w-3.5 h-3.5" />
-          </button>
-        </div>
+      <div className="relative">
+        {/* Emoji Picker */}
+        {showEmoji && (
+          <div className="absolute bottom-full mb-2 right-0 z-50">
+            <EmojiPicker
+              onSelect={handleEmojiSelect}
+              onClose={() => setShowEmoji(false)}
+            />
+          </div>
+        )}
 
-        {/* Text area */}
-        <div className="flex items-end gap-2 p-2">
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            placeholder={isDM ? `Escreva para ${channelName}...` : `Mensagem em #${channelName}`}
-            rows={1}
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none max-h-48 py-1"
-          />
+        {/* Mention Autocomplete */}
+        {showMention && orgMembers.length > 0 && (
+          <div className="absolute bottom-full mb-2 left-0 z-50">
+            <MentionAutocomplete
+              members={orgMembers}
+              search={mentionSearch}
+              onSelect={handleMentionSelect}
+              onClose={() => setShowMention(false)}
+            />
+          </div>
+        )}
 
-          <button
-            onClick={handleSend}
-            disabled={!content.trim() || sending}
-            className={cn(
-              "p-1.5 rounded-lg transition-colors shrink-0",
-              content.trim()
-                ? "text-primary hover:bg-primary/10"
-                : "text-muted-foreground cursor-not-allowed"
-            )}
-          >
-            <Send className="w-4 h-4" />
-          </button>
+        <div className="bg-muted border border-border rounded-xl">
+          {/* Formatting toolbar */}
+          <div className="flex items-center gap-0.5 px-2 py-1 border-b border-border/50">
+            <button
+              onClick={() => insertFormatting("**", "**")}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+              title="Negrito"
+            >
+              <Bold className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => insertFormatting("_", "_")}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+              title="Itálico"
+            >
+              <Italic className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => insertFormatting("`", "`")}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+              title="Código"
+            >
+              <Code className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-px h-4 bg-border mx-1" />
+            <button
+              onClick={() => {
+                setShowTaskInput(true);
+                setTimeout(() => taskInputRef.current?.focus(), 100);
+              }}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+              title="Criar tarefa"
+            >
+              <ListTodo className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => {
+                // Insert @ and trigger mention
+                const ta = textareaRef.current;
+                if (ta) {
+                  const start = ta.selectionStart;
+                  const before = content.slice(0, start);
+                  const after = content.slice(start);
+                  setContent(before + "@" + after);
+                  setShowMention(true);
+                  setMentionSearch("");
+                  setTimeout(() => {
+                    ta.focus();
+                    ta.setSelectionRange(start + 1, start + 1);
+                  }, 0);
+                }
+              }}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+              title="Mencionar"
+            >
+              <AtSign className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setShowFileUpload(!showFileUpload)}
+              className={cn(
+                "text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent",
+                showFileUpload && "text-primary bg-primary/10"
+              )}
+              title="Anexar arquivo"
+            >
+              <Paperclip className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setShowEmoji(!showEmoji)}
+              className={cn(
+                "text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent",
+                showEmoji && "text-primary bg-primary/10"
+              )}
+              title="Emoji"
+            >
+              <Smile className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Text area */}
+          <div className="flex items-end gap-2 p-2">
+            <textarea
+              ref={textareaRef}
+              value={content}
+              onChange={handleContentChange}
+              onKeyDown={handleKeyDown}
+              onInput={handleInput}
+              placeholder={isDM ? `Escreva para ${channelName}...` : `Mensagem em #${channelName}`}
+              rows={1}
+              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none max-h-48 py-1"
+            />
+
+            <button
+              onClick={handleSend}
+              disabled={!content.trim() || sending}
+              className={cn(
+                "p-1.5 rounded-lg transition-colors shrink-0",
+                content.trim()
+                  ? "text-primary hover:bg-primary/10"
+                  : "text-muted-foreground cursor-not-allowed"
+              )}
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
       <p className="text-xs text-muted-foreground mt-1 ml-2">
-        Enter enviar &middot; Shift+Enter nova linha &middot; <code className="bg-muted px-1 rounded">/tarefa</code> criar tarefa
+        Enter enviar &middot; Shift+Enter nova linha &middot; <code className="bg-muted px-1 rounded">/tarefa</code> criar tarefa &middot; <code className="bg-muted px-1 rounded">@</code> mencionar
       </p>
     </div>
   );

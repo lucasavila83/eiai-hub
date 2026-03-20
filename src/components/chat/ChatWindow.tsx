@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./MessageBubble";
 import { MessageInput } from "./MessageInput";
 import { CreateTaskModal } from "./CreateTaskModal";
+import { ForwardMessageModal } from "./ForwardMessageModal";
+import { EmailComposeModal } from "./EmailComposeModal";
 import { useChatStore } from "@/lib/stores/chat-store";
 import {
   Hash, Lock, MessageSquare, ListTodo,
@@ -61,6 +63,12 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskDefaultTitle, setTaskDefaultTitle] = useState("");
   const [taskDefaultAssigneeId, setTaskDefaultAssigneeId] = useState<string | undefined>();
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardContent, setForwardContent] = useState("");
+  const [forwardSender, setForwardSender] = useState("");
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailContent, setEmailContent] = useState("");
+  const [emailSender, setEmailSender] = useState("");
 
   const channelMessages = messages[channel.id] || [];
 
@@ -287,21 +295,16 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
 
   // Context menu: Email
   function handleContextEmail(messageContent: string, senderName: string) {
-    const subject = encodeURIComponent(`Mensagem de ${senderName}`);
-    const body = encodeURIComponent(messageContent);
-    window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
+    setEmailContent(messageContent);
+    setEmailSender(senderName);
+    setShowEmailModal(true);
   }
 
   // Context menu: Forward
-  async function handleContextForward(messageContent: string, senderName: string) {
-    const text = `📨 **Encaminhada de ${senderName}:**\n${messageContent}`;
-    try {
-      await navigator.clipboard.writeText(text);
-      // TODO: could open a channel picker modal in the future
-      alert("Mensagem copiada! Cole em outro chat para encaminhar.");
-    } catch {
-      alert("Não foi possível copiar a mensagem.");
-    }
+  function handleContextForward(messageContent: string, senderName: string) {
+    setForwardContent(messageContent);
+    setForwardSender(senderName);
+    setShowForwardModal(true);
   }
 
   // Task modal callback
@@ -451,6 +454,9 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
             channelName={channel.type === "dm" ? headerName : channel.name}
             onCreateTask={createTaskFromChat}
             isDM={channel.type === "dm"}
+            channelId={channel.id}
+            orgId={channel.org_id}
+            currentUserId={currentUserId}
           />
         </>
       ) : (
@@ -545,6 +551,27 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
           defaultAssigneeId={taskDefaultAssigneeId}
           onClose={() => setShowTaskModal(false)}
           onCreated={handleTaskCreated}
+        />
+      )}
+
+      {/* Forward Message Modal */}
+      {showForwardModal && (
+        <ForwardMessageModal
+          orgId={channel.org_id}
+          currentUserId={currentUserId}
+          messageContent={forwardContent}
+          senderName={forwardSender}
+          onClose={() => setShowForwardModal(false)}
+          onForwarded={() => setShowForwardModal(false)}
+        />
+      )}
+
+      {/* Email Compose Modal */}
+      {showEmailModal && (
+        <EmailComposeModal
+          defaultBody={emailContent}
+          senderName={emailSender}
+          onClose={() => setShowEmailModal(false)}
         />
       )}
     </div>
