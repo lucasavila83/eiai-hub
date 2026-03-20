@@ -8,6 +8,54 @@ interface Props {
   isOwn: boolean;
 }
 
+// Simple markdown renderer for chat messages
+function renderContent(text: string) {
+  // Split by code blocks first
+  const parts = text.split(/(`[^`]+`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code key={i} className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-primary">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    // Bold
+    let result: any = part;
+    const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
+    if (boldParts.length > 1) {
+      result = boldParts.map((bp, j) => {
+        if (bp.startsWith("**") && bp.endsWith("**")) {
+          return <strong key={j}>{bp.slice(2, -2)}</strong>;
+        }
+        // Italic
+        const italicParts = bp.split(/(_[^_]+_)/g);
+        if (italicParts.length > 1) {
+          return italicParts.map((ip, k) => {
+            if (ip.startsWith("_") && ip.endsWith("_")) {
+              return <em key={k}>{ip.slice(1, -1)}</em>;
+            }
+            return ip;
+          });
+        }
+        return bp;
+      });
+    } else {
+      // Italic only
+      const italicParts = part.split(/(_[^_]+_)/g);
+      if (italicParts.length > 1) {
+        result = italicParts.map((ip, j) => {
+          if (ip.startsWith("_") && ip.endsWith("_")) {
+            return <em key={j}>{ip.slice(1, -1)}</em>;
+          }
+          return ip;
+        });
+      }
+    }
+    return <span key={i}>{result}</span>;
+  });
+}
+
 export function MessageBubble({ message, showHeader, isOwn }: Props) {
   const profile = message.profiles;
   const name = profile?.full_name || profile?.email || "Usuário";
@@ -19,6 +67,9 @@ export function MessageBubble({ message, showHeader, isOwn }: Props) {
       </div>
     );
   }
+
+  // Task creation message
+  const isTaskMsg = message.content.startsWith("📋 Tarefa criada:");
 
   return (
     <div className="flex gap-3 px-2 py-0.5 hover:bg-accent/30 rounded-lg group">
@@ -54,9 +105,15 @@ export function MessageBubble({ message, showHeader, isOwn }: Props) {
             <span className="text-xs text-muted-foreground">{formatDateTime(message.created_at)}</span>
           </div>
         )}
-        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">
-          {message.content}
-        </p>
+        {isTaskMsg ? (
+          <div className="inline-flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-1.5 text-sm">
+            <span>{renderContent(message.content)}</span>
+          </div>
+        ) : (
+          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">
+            {renderContent(message.content)}
+          </p>
+        )}
         {message.edited_at && (
           <span className="text-xs text-muted-foreground">(editado)</span>
         )}
