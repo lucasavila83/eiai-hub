@@ -5,9 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { useUIStore } from "@/lib/stores/ui-store";
 import {
   Users, Mail, Copy, Check, Loader2,
-  Crown, Shield, User, UserX, Link2,
+  Crown, Shield, User, UserX, Link2, ArrowLeft,
 } from "lucide-react";
 import { cn, getInitials, generateColor, formatDate } from "@/lib/utils/helpers";
+import Link from "next/link";
 
 const roleIcons: Record<string, any> = {
   owner: Crown,
@@ -104,7 +105,18 @@ export default function MembersPage() {
 
   return (
     <div className="p-6 max-w-3xl">
-      <h1 className="text-2xl font-bold text-foreground mb-6">Membros</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <Link
+          href="/settings"
+          className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center hover:bg-accent transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Membros</h1>
+          <p className="text-sm text-muted-foreground">Gerencie membros e convites</p>
+        </div>
+      </div>
 
       {/* Invite Form */}
       <div className="bg-card border border-border rounded-xl p-4 mb-6">

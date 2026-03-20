@@ -369,6 +369,29 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["ai_agents"]["Row"], "id" | "created_at" | "updated_at">;
         Update: Partial<Database["public"]["Tables"]["ai_agents"]["Insert"]>;
       };
+      org_permissions: {
+        Row: {
+          id: string;
+          org_id: string;
+          member_board_visibility: "own" | "team" | "all";
+          guest_board_visibility: "own" | "team" | "all";
+          member_can_create_boards: boolean;
+          member_can_create_channels: boolean;
+          member_can_invite_members: boolean;
+          member_can_manage_automations: boolean;
+          member_can_manage_integrations: boolean;
+          member_can_view_dashboard: boolean;
+          member_can_delete_cards: boolean;
+          member_can_manage_labels: boolean;
+          guest_can_create_cards: boolean;
+          guest_can_comment: boolean;
+          guest_can_view_calendar: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["org_permissions"]["Row"], "id" | "created_at" | "updated_at">;
+        Update: Partial<Database["public"]["Tables"]["org_permissions"]["Insert"]>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -397,3 +420,4 @@ export type Automation = Database["public"]["Tables"]["automations"]["Row"];
 export type AutomationLog = Database["public"]["Tables"]["automation_logs"]["Row"];
 export type Integration = Database["public"]["Tables"]["integrations"]["Row"];
 export type AIAgent = Database["public"]["Tables"]["ai_agents"]["Row"];
+export type OrgPermissions = Database["public"]["Tables"]["org_permissions"]["Row"];

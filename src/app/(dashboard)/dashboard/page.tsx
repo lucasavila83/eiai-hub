@@ -15,6 +15,7 @@ import {
   Loader2,
   CalendarDays,
   Filter,
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import {
@@ -295,6 +296,12 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => window.history.back()}
+            className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center hover:bg-accent transition-colors shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+          </button>
           <BarChart3 className="w-6 h-6 text-primary" />
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>

@@ -14,6 +14,7 @@ import {
   Trash2,
   Pencil,
   CalendarDays,
+  ArrowLeft,
 } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 
@@ -306,6 +307,12 @@ export default function CalendarPage() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-6 py-4 border-b border-border bg-card flex items-center gap-4 shrink-0">
+        <button
+          onClick={() => window.history.back()}
+          className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center hover:bg-accent transition-colors shrink-0"
+        >
+          <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+        </button>
         <CalendarDays className="w-5 h-5 text-primary" />
         <h1 className="text-xl font-bold text-foreground">Calendário</h1>
 

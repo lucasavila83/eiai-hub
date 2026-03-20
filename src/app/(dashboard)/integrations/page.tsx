@@ -21,6 +21,7 @@ import {
   Copy,
   Check,
   ExternalLink,
+  ArrowLeft,
 } from "lucide-react";
 import { cn, formatDateTime } from "@/lib/utils/helpers";
 
@@ -258,6 +259,12 @@ export default function IntegrationsPage() {
     <div className="p-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={() => window.history.back()}
+          className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center hover:bg-accent transition-colors shrink-0"
+        >
+          <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+        </button>
         <Plug className="w-6 h-6 text-primary" />
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">Integrações</h1>

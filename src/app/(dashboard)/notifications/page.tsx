@@ -8,6 +8,7 @@ import {
   AtSign,
   MessageSquare,
   ExternalLink,
+  ArrowLeft,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/utils/helpers";
 import Link from "next/link";
@@ -253,10 +254,16 @@ export default async function NotificationsPage({
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
+          <Link
+            href="/chat"
+            className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center hover:bg-accent transition-colors shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+          </Link>
           <div className="p-2 bg-primary/10 rounded-lg">
             <Bell className="w-5 h-5 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Notificacoes</h1>
+          <h1 className="text-2xl font-bold text-foreground">Notificações</h1>
         </div>
         <form action={markAllRead}>
           <button

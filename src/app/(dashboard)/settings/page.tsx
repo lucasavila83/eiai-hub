@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { UserCircle, Users, UserCog, Bot, ChevronRight } from "lucide-react";
+import { UserCircle, Users, UserCog, Bot, Shield, ChevronRight, ArrowLeft } from "lucide-react";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -12,12 +12,21 @@ export default async function SettingsPage() {
     { href: "/settings/profile", icon: UserCircle, label: "Meu Perfil", description: "Foto, nome, cargo, telefone e informações pessoais" },
     { href: "/settings/members", icon: Users, label: "Membros", description: "Gerencie membros e convites" },
     { href: "/settings/teams", icon: UserCog, label: "Times", description: "Organize em times e equipes" },
+    { href: "/settings/permissions", icon: Shield, label: "Permissões", description: "Configure o que cada papel pode fazer" },
     { href: "/settings/agents", icon: Bot, label: "Agentes IA", description: "Configure agentes de inteligência artificial" },
   ];
 
   return (
     <div className="p-6 max-w-2xl">
-      <h1 className="text-2xl font-bold text-foreground mb-6">Configurações</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <Link
+          href="/chat"
+          className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center hover:bg-accent transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+        </Link>
+        <h1 className="text-2xl font-bold text-foreground">Configurações</h1>
+      </div>
       <div className="space-y-2">
         {settingsItems.map(({ href, icon: Icon, label, description }) => (
           <Link
