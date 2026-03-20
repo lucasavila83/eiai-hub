@@ -60,10 +60,10 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-6">
             <Image
-              src="/lesco-logo.svg"
+              src="/lesco-logo.png"
               alt="Lesco"
               width={180}
-              height={48}
+              height={68}
               priority
             />
           </div>

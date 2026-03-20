@@ -153,7 +153,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         {/* Lesco Logo */}
         <div className="mb-4">
           <Image
-            src="/lesco-logo.svg"
+            src="/lesco-logo.png"
             alt="Lesco"
             width={32}
             height={32}

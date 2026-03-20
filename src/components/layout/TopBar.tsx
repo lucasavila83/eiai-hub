@@ -34,7 +34,7 @@ export function TopBar({ profile }: TopBarProps) {
 
       <div className="flex items-center gap-3 ml-auto">
         {/* Logo Lesco */}
-        <img src="/lesco-logo.svg" alt="Lesco" className="h-7" />
+        <img src="/lesco-logo.png" alt="Lesco" className="h-7" />
 
         <button className="relative text-gray-500 hover:text-gray-900 transition-colors p-1.5">
           <Bell className="w-5 h-5" />
