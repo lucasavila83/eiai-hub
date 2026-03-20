@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -13,11 +13,22 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [orgName, setOrgName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
+
+  // Se o usuário já está logado, pular para step 2 (criar org)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user && session.access_token) {
+        setAccessToken(session.access_token);
+        setStep("org");
+      }
+      setChecking(false);
+    });
+  }, []);
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
@@ -53,7 +64,6 @@ export default function RegisterPage() {
       if (signInData.session?.access_token) {
         setAccessToken(signInData.session.access_token);
       }
-      setUserId(data.user.id);
       setStep("org");
     }
     setLoading(false);
@@ -83,6 +93,20 @@ export default function RegisterPage() {
 
     router.push("/");
     router.refresh();
+  }
+
+  async function handleGoToLogin() {
+    // Fazer logout primeiro para não ficar em loop
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
+
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (
@@ -197,9 +221,12 @@ export default function RegisterPage() {
 
         <p className="text-center text-sm text-muted-foreground mt-6">
           Já tem conta?{" "}
-          <Link href="/login" className="text-primary hover:underline font-medium">
+          <button
+            onClick={handleGoToLogin}
+            className="text-primary hover:underline font-medium"
+          >
             Fazer login
-          </Link>
+          </button>
         </p>
       </div>
     </div>
