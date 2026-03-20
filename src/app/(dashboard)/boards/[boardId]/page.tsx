@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { BoardView } from "@/components/kanban/BoardView";
 import { Loader2 } from "lucide-react";
 
@@ -11,17 +11,12 @@ export default function BoardPage() {
   const [board, setBoard] = useState<any>(null);
   const [columns, setColumns] = useState<any[]>([]);
   const [cards, setCards] = useState<any[]>([]);
-  const [currentUserId, setCurrentUserId] = useState("");
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const supabase = createClient();
+  const { user, supabase } = useAuth();
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/login"); return; }
-      setCurrentUserId(user.id);
-
       const [boardRes, columnsRes, cardsRes] = await Promise.all([
         supabase.from("boards").select("*").eq("id", boardId).single(),
         supabase.from("columns").select("*").eq("board_id", boardId).order("position"),
@@ -55,7 +50,7 @@ export default function BoardPage() {
       board={board}
       initialColumns={columns}
       initialCards={cards}
-      currentUserId={currentUserId}
+      currentUserId={user.id}
     />
   );
 }

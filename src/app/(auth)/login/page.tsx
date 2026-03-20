@@ -27,8 +27,8 @@ export default function LoginPage() {
       setError(error.message || "Email ou senha incorretos");
       setLoading(false);
     } else {
-      router.push("/");
-      router.refresh();
+      // Use window.location for a full page navigation — avoids stale cache
+      window.location.href = "/";
     }
   }
 

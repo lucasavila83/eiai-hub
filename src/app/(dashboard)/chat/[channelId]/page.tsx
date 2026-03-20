@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { ChatWindow } from "@/components/chat/ChatWindow";
 import { Loader2 } from "lucide-react";
 
@@ -10,17 +10,12 @@ export default function ChannelPage() {
   const { channelId } = useParams<{ channelId: string }>();
   const [channel, setChannel] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
-  const [currentUserId, setCurrentUserId] = useState("");
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const supabase = createClient();
+  const { user, supabase } = useAuth();
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/login"); return; }
-      setCurrentUserId(user.id);
-
       const [channelRes, messagesRes] = await Promise.all([
         supabase.from("channels").select("*").eq("id", channelId).single(),
         supabase
@@ -48,5 +43,5 @@ export default function ChannelPage() {
     );
   }
 
-  return <ChatWindow channel={channel} initialMessages={messages} currentUserId={currentUserId} />;
+  return <ChatWindow channel={channel} initialMessages={messages} currentUserId={user.id} />;
 }

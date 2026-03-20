@@ -1,45 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Kanban, Loader2 } from "lucide-react";
 import { CreateBoardButton } from "@/components/kanban/CreateBoardButton";
-import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 export default function BoardsPage() {
   const [boards, setBoards] = useState<any[]>([]);
-  const [orgId, setOrgId] = useState("");
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
-  const supabase = createClient();
+  const { orgId, supabase } = useAuth();
 
   useEffect(() => {
+    if (!orgId) return;
+
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/login"); return; }
-
-      const { data: memberships } = await supabase
-        .from("org_members")
-        .select("org_id")
-        .eq("user_id", user.id);
-
-      const orgIds = memberships?.map((m) => m.org_id) || [];
-      setOrgId(orgIds[0] || "");
-
-      if (orgIds.length > 0) {
-        const { data } = await supabase
-          .from("boards")
-          .select("*")
-          .in("org_id", orgIds)
-          .eq("is_archived", false)
-          .order("created_at", { ascending: false });
-        setBoards(data || []);
-      }
-
+      const { data } = await supabase
+        .from("boards")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("is_archived", false)
+        .order("created_at", { ascending: false });
+      setBoards(data || []);
       setLoading(false);
     })();
-  }, []);
+  }, [orgId]);
 
   if (loading) {
     return (

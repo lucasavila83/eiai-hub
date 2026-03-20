@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Bell,
@@ -13,7 +12,7 @@ import {
   ArrowLeft,
   Loader2,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { formatDateTime } from "@/lib/utils/helpers";
 
 type TabKey = "all" | "tasks" | "mentions";
@@ -45,20 +44,15 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
-  const supabase = createClient();
+  const { user, supabase } = useAuth();
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/login"); return; }
-
       const items: NotificationItem[] = [];
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      // Fetch all in parallel
-      const [assignmentsRes, mentionsRes, membershipsRes, dbNotifRes] = await Promise.all([
+      const [assignmentsRes, mentionsRes, dbNotifRes] = await Promise.all([
         supabase
           .from("card_assignees")
           .select(`id, assigned_at, card_id, cards!inner (id, title, board_id, column_id, columns!inner ( name ), boards!inner ( name ))`)
@@ -74,10 +68,6 @@ export default function NotificationsPage() {
           .order("created_at", { ascending: false })
           .limit(30),
         supabase
-          .from("channel_members")
-          .select(`channel_id, last_read_at, channels!inner ( id, name, type )`)
-          .eq("user_id", user.id),
-        supabase
           .from("notifications")
           .select("*")
           .eq("user_id", user.id)
@@ -85,7 +75,6 @@ export default function NotificationsPage() {
           .limit(50),
       ]);
 
-      // Task assignments
       if (assignmentsRes.data) {
         for (const a of assignmentsRes.data) {
           const card = a.cards as any;
@@ -101,7 +90,6 @@ export default function NotificationsPage() {
         }
       }
 
-      // Mentions
       if (mentionsRes.data) {
         for (const m of mentionsRes.data) {
           const channel = m.channels as any;
@@ -118,38 +106,6 @@ export default function NotificationsPage() {
         }
       }
 
-      // Unread messages — count per channel
-      if (membershipsRes.data) {
-        const unreadPromises = membershipsRes.data.map(async (mem) => {
-          const channel = mem.channels as any;
-          if (!channel) return null;
-          const { count } = await supabase
-            .from("messages")
-            .select("id", { count: "exact", head: true })
-            .eq("channel_id", mem.channel_id)
-            .gt("created_at", mem.last_read_at || "1970-01-01T00:00:00Z")
-            .neq("user_id", user.id)
-            .is("deleted_at", null);
-          if (count && count > 0) {
-            return {
-              id: `unread-${mem.channel_id}`,
-              type: "unread" as const,
-              title: `${count} mensagen${count > 1 ? "s" : ""} nao lida${count > 1 ? "s" : ""} em #${channel.name}`,
-              description: null,
-              link: `/chat/${mem.channel_id}`,
-              is_read: false,
-              created_at: new Date().toISOString(),
-            };
-          }
-          return null;
-        });
-        const unreadResults = await Promise.all(unreadPromises);
-        for (const r of unreadResults) {
-          if (r) items.push(r);
-        }
-      }
-
-      // DB notifications
       if (dbNotifRes.data) {
         for (const n of dbNotifRes.data) {
           items.push({
@@ -171,14 +127,11 @@ export default function NotificationsPage() {
   }, []);
 
   async function markAllRead() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("user_id", user.id);
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    }
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("user_id", user.id);
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   }
 
   const filtered =
@@ -283,10 +236,7 @@ export default function NotificationsPage() {
                   <div className="flex items-center gap-3 mt-2">
                     <span className="text-xs text-muted-foreground">{formatDateTime(n.created_at)}</span>
                     {n.link && (
-                      <Link
-                        href={n.link}
-                        className="flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
+                      <Link href={n.link} className="flex items-center gap-1 text-xs text-primary hover:underline">
                         <ExternalLink className="w-3 h-3" />
                         Ver
                       </Link>
