@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" width="120" height="40">
+  <defs>
+    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1a56db"/>
+      <stop offset="100%" stop-color="#1e6fd9"/>
+    </linearGradient>
+  </defs>
+  <text x="2" y="29" font-family="Inter, system-ui, sans-serif" font-size="26" font-weight="700" fill="url(#logoGrad)" letter-spacing="-0.5">Lesc</text>
+  <text x="78" y="29" font-family="Inter, system-ui, sans-serif" font-size="26" font-weight="700" fill="#10b981" letter-spacing="-0.5">o</text>
+  <rect x="2" y="33" width="18" height="3" rx="1.5" fill="#10b981"/>
+</svg>

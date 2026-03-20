@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   MessageSquare, Kanban, Bell, Settings,
   Hash, Lock, ChevronDown, Plus, LogOut,
-  X, Loader2, Users, MessageCircle,
+  X, Loader2, Users, MessageCircle, Check,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
@@ -141,205 +142,242 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const navItems = [
     { href: "/chat", icon: MessageSquare, label: "Chat" },
     { href: "/boards", icon: Kanban, label: "Boards" },
-    { href: "/notifications", icon: Bell, label: "Notif." },
-    { href: "/settings", icon: Settings, label: "Config." },
+    { href: "/notifications", icon: Bell, label: "Notificações" },
+    { href: "/settings", icon: Settings, label: "Configurações" },
   ];
 
-  if (!sidebarOpen) return null;
-
   return (
-    <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col h-full shrink-0">
-      {/* Org Switcher */}
-      <div className="p-3 border-b border-sidebar-border">
-        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-sidebar-accent cursor-pointer">
-          <div
-            className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white"
-            style={{ backgroundColor: generateColor(activeOrg?.name || "X") }}
-          >
-            {getInitials(activeOrg?.name || "?")}
-          </div>
-          <span className="flex-1 text-sm font-semibold text-sidebar-foreground truncate">
-            {activeOrg?.name || "Selecione org"}
-          </span>
-          <ChevronDown className="w-4 h-4 text-sidebar-foreground/50" />
+    <div className="flex h-full shrink-0">
+      {/* Narrow icon strip - always visible */}
+      <div className="w-14 bg-white border-r border-gray-200 flex flex-col items-center py-3 shrink-0">
+        {/* Lesco Logo */}
+        <div className="mb-4">
+          <Image
+            src="/lesco-logo.svg"
+            alt="Lesco"
+            width={32}
+            height={32}
+            className="w-8 h-8"
+          />
         </div>
-      </div>
 
-      {/* Nav Icons */}
-      <nav className="p-2 border-b border-sidebar-border">
-        <div className="flex gap-1">
+        {/* Nav Icons */}
+        <nav className="flex flex-col items-center gap-1 flex-1">
           {navItems.map(({ href, icon: Icon, label }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex-1 flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg text-xs transition-colors",
+                "relative w-10 h-10 flex items-center justify-center rounded-lg transition-colors group",
                 pathname.startsWith(href)
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                  ? "bg-blue-100 text-blue-600"
+                  : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
               )}
               title={label}
             >
-              <Icon className="w-4 h-4" />
-              <span className="truncate">{label}</span>
+              <Icon className="w-5 h-5" />
+              {/* Tooltip */}
+              <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+                {label}
+              </span>
             </Link>
           ))}
-        </div>
-      </nav>
+        </nav>
 
-      {/* Channels + DMs */}
-      <div className="flex-1 overflow-y-auto p-2">
-        {/* Canais section */}
-        <div className="mb-4">
-          <div className="flex items-center justify-between px-2 py-1.5">
-            <span className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
-              Canais
+        {/* User Avatar at bottom */}
+        <div className="mt-auto flex flex-col items-center gap-2">
+          <button
+            onClick={handleLogout}
+            className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors group relative"
+            title="Sair"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+              Sair
             </span>
-            <button
-              onClick={() => setShowCreateChannel(true)}
-              className="hover:text-sidebar-foreground text-sidebar-foreground/50 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="space-y-0.5">
-            {channels.map((channel) => {
-              const isActive = pathname === `/chat/${channel.id}`;
-              const unread = unreadCounts[channel.id] || 0;
-              return (
-                <Link
-                  key={channel.id}
-                  href={`/chat/${channel.id}`}
-                  className={cn(
-                    "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : unread > 0
-                      ? "text-sidebar-foreground font-semibold hover:bg-sidebar-accent"
-                      : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                  )}
-                >
-                  {channel.type === "private" ? (
-                    <Lock className="w-3.5 h-3.5 shrink-0" />
-                  ) : (
-                    <Hash className="w-3.5 h-3.5 shrink-0" />
-                  )}
-                  <span className="flex-1 truncate">{channel.name}</span>
-                  {unread > 0 && !isActive && (
-                    <span className="bg-destructive text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
-                      {unread > 99 ? "99+" : unread}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Mensagens Diretas section */}
-        <div>
-          <div className="flex items-center justify-between px-2 py-1.5">
-            <span className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
-              Mensagens diretas
-            </span>
-            <button
-              onClick={() => setShowCreateDM(true)}
-              className="hover:text-sidebar-foreground text-sidebar-foreground/50 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="space-y-0.5">
-            {dmChannels.map((dm) => {
-              const isActive = pathname === `/chat/${dm.id}`;
-              const unread = unreadCounts[dm.id] || 0;
-              const user = dm.otherUser;
-              const name = user?.full_name || user?.email || "Usuário";
-              const isOnline = user?.status === "online";
-              return (
-                <Link
-                  key={dm.id}
-                  href={`/chat/${dm.id}`}
-                  className={cn(
-                    "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : unread > 0
-                      ? "text-sidebar-foreground font-semibold hover:bg-sidebar-accent"
-                      : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                  )}
-                >
-                  <div className="relative shrink-0">
-                    {user?.avatar_url ? (
-                      <img src={user.avatar_url} alt={name} className="w-5 h-5 rounded-full object-cover" />
-                    ) : (
-                      <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-                        style={{ backgroundColor: generateColor(name) }}
-                      >
-                        {getInitials(name)}
-                      </div>
-                    )}
-                    <div
-                      className={cn(
-                        "absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-sidebar",
-                        isOnline ? "bg-green-500" : "bg-gray-500"
-                      )}
-                    />
-                  </div>
-                  <span className="flex-1 truncate">{name}</span>
-                  {unread > 0 && !isActive && (
-                    <div className="flex items-center gap-1">
-                      <MessageCircle className="w-3 h-3 text-destructive" />
-                      <span className="bg-destructive text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
-                        {unread > 99 ? "99+" : unread}
-                      </span>
-                    </div>
-                  )}
-                </Link>
-              );
-            })}
-            {dmChannels.length === 0 && (
-              <p className="text-xs text-sidebar-foreground/40 px-2 py-1">
-                Nenhuma conversa ainda
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* User Footer */}
-      <div className="p-3 border-t border-sidebar-border">
-        <div className="flex items-center gap-2">
+          </button>
           <div className="relative">
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white cursor-default"
               style={{ backgroundColor: generateColor(profile?.full_name || profile?.email || "U") }}
+              title={profile?.full_name || profile?.email || "Usuário"}
             >
               {getInitials(profile?.full_name || profile?.email || "U")}
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-sidebar" />
+            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white" />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-sidebar-foreground truncate">
-              {profile?.full_name || profile?.email}
-            </p>
-            <p className="text-xs text-sidebar-foreground/50">Online</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
-            title="Sair"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
         </div>
       </div>
+
+      {/* Content panel - only visible when sidebarOpen */}
+      {sidebarOpen && (
+        <div className="w-52 bg-gray-50 border-r border-gray-200 flex flex-col h-full">
+          {/* Org Switcher */}
+          <div className="p-3 border-b border-gray-200">
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 cursor-pointer">
+              <div
+                className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white"
+                style={{ backgroundColor: generateColor(activeOrg?.name || "X") }}
+              >
+                {getInitials(activeOrg?.name || "?")}
+              </div>
+              <span className="flex-1 text-sm font-semibold text-gray-900 truncate">
+                {activeOrg?.name || "Selecione org"}
+              </span>
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            </div>
+          </div>
+
+          {/* Channels + DMs */}
+          <div className="flex-1 overflow-y-auto p-2">
+            {/* Canais section */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between px-2 py-1.5">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  Canais
+                </span>
+                <button
+                  onClick={() => setShowCreateChannel(true)}
+                  className="hover:text-gray-700 text-gray-400 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-0.5">
+                {channels.map((channel) => {
+                  const isActive = pathname === `/chat/${channel.id}`;
+                  const unread = unreadCounts[channel.id] || 0;
+                  return (
+                    <Link
+                      key={channel.id}
+                      href={`/chat/${channel.id}`}
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
+                        isActive
+                          ? "bg-blue-100 text-blue-700 font-medium"
+                          : unread > 0
+                          ? "text-gray-900 font-semibold hover:bg-gray-100"
+                          : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                      )}
+                    >
+                      {channel.type === "private" ? (
+                        <Lock className="w-3.5 h-3.5 shrink-0" />
+                      ) : (
+                        <Hash className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                      <span className="flex-1 truncate">{channel.name}</span>
+                      {unread > 0 && !isActive && (
+                        <span className="bg-red-500 text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
+                          {unread > 99 ? "99+" : unread}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Mensagens Diretas section */}
+            <div>
+              <div className="flex items-center justify-between px-2 py-1.5">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  Mensagens diretas
+                </span>
+                <button
+                  onClick={() => setShowCreateDM(true)}
+                  className="hover:text-gray-700 text-gray-400 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-0.5">
+                {dmChannels.map((dm) => {
+                  const isActive = pathname === `/chat/${dm.id}`;
+                  const unread = unreadCounts[dm.id] || 0;
+                  const user = dm.otherUser;
+                  const name = user?.full_name || user?.email || "Usuário";
+                  const isOnline = user?.status === "online";
+                  return (
+                    <Link
+                      key={dm.id}
+                      href={`/chat/${dm.id}`}
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
+                        isActive
+                          ? "bg-blue-100 text-blue-700 font-medium"
+                          : unread > 0
+                          ? "text-gray-900 font-semibold hover:bg-gray-100"
+                          : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                      )}
+                    >
+                      <div className="relative shrink-0">
+                        {user?.avatar_url ? (
+                          <img src={user.avatar_url} alt={name} className="w-5 h-5 rounded-full object-cover" />
+                        ) : (
+                          <div
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                            style={{ backgroundColor: generateColor(name) }}
+                          >
+                            {getInitials(name)}
+                          </div>
+                        )}
+                        <div
+                          className={cn(
+                            "absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-gray-50",
+                            isOnline ? "bg-green-500" : "bg-gray-400"
+                          )}
+                        />
+                      </div>
+                      <span className="flex-1 truncate">{name}</span>
+                      {unread > 0 && !isActive && (
+                        <div className="flex items-center gap-1">
+                          <MessageCircle className="w-3 h-3 text-red-500" />
+                          <span className="bg-red-500 text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
+                            {unread > 99 ? "99+" : unread}
+                          </span>
+                        </div>
+                      )}
+                    </Link>
+                  );
+                })}
+                {dmChannels.length === 0 && (
+                  <p className="text-xs text-gray-400 px-2 py-1">
+                    Nenhuma conversa ainda
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* User Footer */}
+          <div className="p-3 border-t border-gray-200">
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                  style={{ backgroundColor: generateColor(profile?.full_name || profile?.email || "U") }}
+                >
+                  {getInitials(profile?.full_name || profile?.email || "U")}
+                </div>
+                <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-gray-50" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-gray-900 truncate">
+                  {profile?.full_name || profile?.email}
+                </p>
+                <p className="text-xs text-gray-400">Online</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Channel Modal */}
       {showCreateChannel && (
         <CreateChannelModal
           orgId={activeOrg?.id || ""}
+          orgMembers={orgMembers}
+          currentUserId={profile?.id || ""}
           onClose={() => setShowCreateChannel(false)}
           onCreated={(ch) => {
             setChannels([...channels, ch]);
@@ -364,7 +402,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
           }}
         />
       )}
-    </aside>
+    </div>
   );
 }
 
@@ -373,10 +411,14 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 // ============================================================
 function CreateChannelModal({
   orgId,
+  orgMembers,
+  currentUserId,
   onClose,
   onCreated,
 }: {
   orgId: string;
+  orgMembers: any[];
+  currentUserId: string;
   onClose: () => void;
   onCreated: (channel: Channel) => void;
 }) {
@@ -384,7 +426,34 @@ function CreateChannelModal({
   const [description, setDescription] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [selectedMembers, setSelectedMembers] = useState<Set<string>>(
+    new Set([currentUserId])
+  );
   const supabase = createClient();
+
+  function toggleMember(userId: string) {
+    if (userId === currentUserId) return; // Creator is always selected
+    setSelectedMembers((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  }
+
+  function selectAll() {
+    const allIds = orgMembers.map((m: any) => m.user_id);
+    setSelectedMembers(new Set(allIds));
+  }
+
+  function deselectAll() {
+    setSelectedMembers(new Set([currentUserId]));
+  }
+
+  const allSelected = orgMembers.length > 0 && orgMembers.every((m: any) => selectedMembers.has(m.user_id));
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -406,13 +475,19 @@ function CreateChannelModal({
       .single();
 
     if (data && !error) {
-      // Add creator as channel member
-      await supabase.from("channel_members").insert({
+      // Add all selected members as channel members
+      const now = new Date().toISOString();
+      const memberInserts = Array.from(selectedMembers).map((userId) => ({
         channel_id: data.id,
-        user_id: user?.id ?? "",
-        last_read_at: new Date().toISOString(),
+        user_id: userId,
+        last_read_at: now,
         notifications: "all",
-      });
+      }));
+
+      if (memberInserts.length > 0) {
+        await supabase.from("channel_members").insert(memberInserts);
+      }
+
       onCreated(data);
     }
     setLoading(false);
@@ -421,7 +496,7 @@ function CreateChannelModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl">
+      <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-foreground">Criar canal</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -464,6 +539,80 @@ function CreateChannelModal({
             <Lock className="w-4 h-4 text-muted-foreground" />
             <span className="text-sm text-foreground">Canal privado</span>
           </label>
+
+          {/* Member selection */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                Membros
+              </label>
+              <button
+                type="button"
+                onClick={allSelected ? deselectAll : selectAll}
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                {allSelected ? "Desmarcar todos" : "Selecionar todos"}
+              </button>
+            </div>
+            <div className="border border-input rounded-lg max-h-48 overflow-y-auto">
+              {orgMembers.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-3">
+                  Nenhum membro encontrado
+                </p>
+              )}
+              {orgMembers.map((m: any) => {
+                const p = m.profiles;
+                const memberName = p?.full_name || p?.email || "?";
+                const isCreator = m.user_id === currentUserId;
+                const isChecked = selectedMembers.has(m.user_id);
+                return (
+                  <label
+                    key={m.user_id}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 hover:bg-accent/50 transition-colors cursor-pointer border-b border-input last:border-b-0",
+                      isCreator && "opacity-70 cursor-default"
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleMember(m.user_id)}
+                      disabled={isCreator}
+                      className="rounded border-input shrink-0"
+                    />
+                    <div className="relative shrink-0">
+                      {p?.avatar_url ? (
+                        <img src={p.avatar_url} alt={memberName} className="w-7 h-7 rounded-full object-cover" />
+                      ) : (
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                          style={{ backgroundColor: generateColor(memberName) }}
+                        >
+                          {getInitials(memberName)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground truncate">
+                        {memberName}
+                        {isCreator && (
+                          <span className="text-xs text-muted-foreground ml-1">(você)</span>
+                        )}
+                      </p>
+                      {p?.email && (
+                        <p className="text-xs text-muted-foreground truncate">{p.email}</p>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {selectedMembers.size} membro{selectedMembers.size !== 1 ? "s" : ""} selecionado{selectedMembers.size !== 1 ? "s" : ""}
+            </p>
+          </div>
+
           <button
             type="submit"
             disabled={loading}

@@ -6,6 +6,7 @@ import { KanbanColumn } from "./KanbanColumn";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
 import { Plus, Settings } from "lucide-react";
+import { BoardSettingsModal } from "./BoardSettingsModal";
 import type { Board, Column, Card } from "@/lib/types/database";
 
 interface Props {
@@ -20,6 +21,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   const { columns, cards, setColumns, setCards, moveCard } = useKanbanStore();
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     setColumns(board.id, initialColumns);
@@ -64,7 +66,10 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
     <div className="flex flex-col h-full">
       <div className="px-6 py-3 border-b border-border flex items-center justify-between shrink-0">
         <h2 className="font-bold text-foreground text-lg">{board.name}</h2>
-        <button className="text-muted-foreground hover:text-foreground transition-colors">
+        <button
+          onClick={() => setShowSettings(true)}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
           <Settings className="w-5 h-5" />
         </button>
       </div>
@@ -124,6 +129,14 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
           </div>
         </div>
       </DragDropContext>
+
+      {showSettings && (
+        <BoardSettingsModal
+          board={board}
+          currentUserId={currentUserId}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   );
 }
