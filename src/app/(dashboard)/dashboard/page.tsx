@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Loader2,
   CalendarDays,
+  Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import {
@@ -64,17 +65,88 @@ interface Stats {
   boardProgress: { name: string; total: number; done: number; pct: number }[];
 }
 
+interface MemberOption {
+  id: string;
+  full_name: string | null;
+  email: string;
+  avatar_url: string | null;
+}
+
 export default function DashboardPage() {
   const supabase = createClient();
   const { activeOrgId } = useUIStore();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [members, setMembers] = useState<MemberOption[]>([]);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+
+  // Load org members for filter
+  useEffect(() => {
+    if (!activeOrgId) return;
+    (async () => {
+      const { data } = await supabase
+        .from("org_members")
+        .select("user_id, profiles!inner(id, full_name, email, avatar_url)")
+        .eq("org_id", activeOrgId);
+      if (data) {
+        const mapped = data.map((m: any) => ({
+          id: m.user_id,
+          full_name: m.profiles.full_name,
+          email: m.profiles.email,
+          avatar_url: m.profiles.avatar_url,
+        }));
+        mapped.sort((a: MemberOption, b: MemberOption) =>
+          (a.full_name || a.email).localeCompare(b.full_name || b.email)
+        );
+        setMembers(mapped);
+      }
+    })();
+  }, [activeOrgId, supabase]);
 
   const loadStats = useCallback(async () => {
     if (!activeOrgId) return;
     setLoading(true);
 
+    const userId = selectedMemberId;
+
     try {
+      // If filtering by user, get their assigned card IDs first
+      let userCardIds: Set<string> | null = null;
+      if (userId) {
+        const { data: assignments } = await supabase
+          .from("card_assignees")
+          .select("card_id")
+          .eq("user_id", userId);
+        userCardIds = new Set((assignments || []).map((a) => a.card_id));
+      }
+
+      // Build messages count query
+      let messagesCountQuery = supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true });
+      if (userId) messagesCountQuery = messagesCountQuery.eq("user_id", userId);
+
+      // Build messages recent query
+      let messagesRecentQuery = supabase
+        .from("messages")
+        .select("id, created_at")
+        .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString());
+      if (userId) messagesRecentQuery = messagesRecentQuery.eq("user_id", userId);
+
+      // Build cards recent query
+      let cardsRecentQuery = supabase
+        .from("cards")
+        .select("id, created_at")
+        .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString());
+      if (userId) cardsRecentQuery = cardsRecentQuery.eq("created_by", userId);
+
+      // Build events query
+      let eventsQuery = supabase
+        .from("events")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", activeOrgId);
+      if (userId) eventsQuery = eventsQuery.eq("created_by", userId);
+
       // Parallel queries
       const [
         cardsRes,
@@ -89,12 +161,10 @@ export default function DashboardPage() {
         // All cards in org boards
         supabase
           .from("cards")
-          .select("id, priority, due_date, completed_at, is_archived, column_id, board_id, created_at")
+          .select("id, priority, due_date, completed_at, is_archived, column_id, board_id, created_at, created_by")
           .eq("is_archived", false),
         // Message count
-        supabase
-          .from("messages")
-          .select("id", { count: "exact", head: true }),
+        messagesCountQuery,
         // Org members
         supabase
           .from("org_members")
@@ -106,32 +176,28 @@ export default function DashboardPage() {
           .select("id, name")
           .eq("org_id", activeOrgId)
           .eq("is_archived", false),
-        // Events this month
-        supabase
-          .from("events")
-          .select("id", { count: "exact", head: true })
-          .eq("org_id", activeOrgId),
+        // Events
+        eventsQuery,
         // Columns for all boards
         supabase
           .from("columns")
           .select("id, name, board_id, is_done_column"),
         // Messages last 7 days
-        supabase
-          .from("messages")
-          .select("id, created_at")
-          .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString()),
+        messagesRecentQuery,
         // Cards created last 7 days
-        supabase
-          .from("cards")
-          .select("id, created_at")
-          .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString()),
+        cardsRecentQuery,
       ]);
 
       const allCards = cardsRes.data || [];
       const boards = boardsRes.data || [];
       const boardIds = new Set(boards.map((b) => b.id));
-      const orgCards = allCards.filter((c) => boardIds.has(c.board_id));
+      let orgCards = allCards.filter((c) => boardIds.has(c.board_id));
       const columns = columnsRes.data || [];
+
+      // If filtering by user, only keep cards assigned to them
+      if (userId && userCardIds) {
+        orgCards = orgCards.filter((c) => userCardIds!.has(c.id));
+      }
 
       const now = new Date();
       const completedCards = orgCards.filter((c) => c.completed_at).length;
@@ -207,7 +273,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeOrgId, supabase]);
+  }, [activeOrgId, supabase, selectedMemberId]);
 
   useEffect(() => {
     loadStats();
@@ -227,11 +293,34 @@ export default function DashboardPage() {
   return (
     <div className="p-6 space-y-6 overflow-auto">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <BarChart3 className="w-6 h-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Visão geral da organização</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <BarChart3 className="w-6 h-6 text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-sm text-muted-foreground">
+              {selectedMemberId
+                ? `Resultados de ${members.find((m) => m.id === selectedMemberId)?.full_name || "membro"}`
+                : "Visão geral da organização"}
+            </p>
+          </div>
+        </div>
+
+        {/* Member filter */}
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <select
+            value={selectedMemberId || ""}
+            onChange={(e) => setSelectedMemberId(e.target.value || null)}
+            className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 min-w-[180px]"
+          >
+            <option value="">Todos os membros</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.full_name || m.email}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
