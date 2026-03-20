@@ -1,105 +1,176 @@
 import { cn, formatDate, getInitials, generateColor } from "@/lib/utils/helpers";
-import { Calendar, AlertCircle, ArrowUp, Minus, ListChecks } from "lucide-react";
+import { Calendar, Flag, ListChecks, AlignLeft, Paperclip } from "lucide-react";
 import type { Card } from "@/lib/types/database";
+
+export interface VisibleFields {
+  assignees: boolean;
+  dates: boolean;
+  priority: boolean;
+  labels: boolean;
+  subtasks: boolean;
+  description: boolean;
+}
+
+export const defaultVisibleFields: VisibleFields = {
+  assignees: true,
+  dates: true,
+  priority: true,
+  labels: true,
+  subtasks: true,
+  description: true,
+};
 
 interface Props {
   card: Card & { card_assignees: any[] };
   labels?: { id: string; name: string; color: string }[];
   subtaskCount?: number;
   subtaskCompleted?: number;
+  attachmentCount?: number;
   isDragging?: boolean;
+  visibleFields?: VisibleFields;
 }
 
 const priorityConfig = {
-  urgent: { color: "text-red-500", bg: "bg-red-500/10", icon: AlertCircle, label: "Urgente" },
-  high: { color: "text-orange-500", bg: "bg-orange-500/10", icon: ArrowUp, label: "Alta" },
-  medium: { color: "text-yellow-500", bg: "bg-yellow-500/10", icon: Minus, label: "Média" },
-  low: { color: "text-primary", bg: "bg-primary/50/10", icon: Minus, label: "Baixa" },
-  none: { color: "text-muted-foreground", bg: "bg-muted", icon: Minus, label: "Sem prioridade" },
+  urgent: { color: "text-red-600", bg: "bg-red-50 dark:bg-red-500/10", flagColor: "text-red-500", label: "Urgente" },
+  high: { color: "text-orange-600", bg: "bg-orange-50 dark:bg-orange-500/10", flagColor: "text-orange-500", label: "Alta" },
+  medium: { color: "text-yellow-600", bg: "bg-yellow-50 dark:bg-yellow-500/10", flagColor: "text-yellow-500", label: "Media" },
+  low: { color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-500/10", flagColor: "text-blue-500", label: "Baixa" },
+  none: { color: "text-muted-foreground", bg: "bg-muted", flagColor: "text-muted-foreground", label: "" },
 };
 
-export function KanbanCard({ card, labels, subtaskCount, subtaskCompleted, isDragging }: Props) {
+export function KanbanCard({
+  card,
+  labels,
+  subtaskCount,
+  subtaskCompleted,
+  attachmentCount,
+  isDragging,
+  visibleFields = defaultVisibleFields,
+}: Props) {
   const priority = priorityConfig[card.priority];
-  const PriorityIcon = priority.icon;
   const isOverdue = card.due_date && new Date(card.due_date) < new Date() && !card.completed_at;
+  const showLabels = visibleFields.labels && labels && labels.length > 0;
+  const showPriority = visibleFields.priority && card.priority !== "none";
+  const showDueDate = visibleFields.dates && card.due_date;
+  const showSubtasks = visibleFields.subtasks && subtaskCount != null && subtaskCount > 0;
+  const showDescription = visibleFields.description && card.description;
+  const showAttachments = attachmentCount != null && attachmentCount > 0;
+  const showAssignees = visibleFields.assignees && card.card_assignees?.length > 0;
+
+  const hasBottomRow = showPriority || showDueDate || showSubtasks || showDescription || showAttachments || showAssignees;
 
   return (
     <div
       className={cn(
-        "bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-primary/50 transition-all",
-        isDragging && "shadow-lg rotate-1 scale-105",
-        card.cover_color && "border-t-4"
+        "bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all group",
+        isDragging && "shadow-lg rotate-1 scale-105 border-primary/50",
+        card.cover_color && "border-t-[3px]"
       )}
       style={card.cover_color ? { borderTopColor: card.cover_color } : undefined}
     >
-      {labels && labels.length > 0 && (
+      {/* Labels row - small colored pills at top */}
+      {showLabels && (
         <div className="flex flex-wrap gap-1 mb-2">
-          {labels.slice(0, 3).map((label) => (
+          {labels!.slice(0, 4).map((label) => (
             <span
               key={label.id}
-              className="rounded-full text-[10px] px-1.5 py-0.5 font-medium text-white leading-tight"
+              className="rounded-full h-1.5 w-8 inline-block"
               style={{ backgroundColor: label.color }}
-            >
-              {label.name}
-            </span>
+              title={label.name}
+            />
           ))}
-          {labels.length > 3 && (
-            <span className="rounded-full text-[10px] px-1.5 py-0.5 font-medium text-muted-foreground bg-muted leading-tight">
-              +{labels.length - 3}
+          {labels!.length > 4 && (
+            <span className="text-[10px] text-muted-foreground leading-none self-center">
+              +{labels!.length - 4}
             </span>
           )}
         </div>
       )}
 
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <p className="text-sm font-medium text-foreground leading-tight">{card.title}</p>
-        <div className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs shrink-0", priority.bg, priority.color)}>
-          <PriorityIcon className="w-3 h-3" />
-        </div>
-      </div>
+      {/* Title - main prominent element */}
+      <p className="text-sm font-medium text-foreground leading-snug mb-1.5">{card.title}</p>
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {card.due_date && (
-            <div className={cn("flex items-center gap-1 text-xs", isOverdue ? "text-destructive" : "text-muted-foreground")}>
-              <Calendar className="w-3 h-3" />
-              {formatDate(card.due_date)}
-            </div>
-          )}
-          {subtaskCount != null && subtaskCount > 0 && (
-            <div className={cn(
-              "flex items-center gap-1 text-xs",
-              subtaskCompleted === subtaskCount ? "text-green-500" : "text-muted-foreground"
-            )}>
-              <ListChecks className="w-3 h-3" />
-              {subtaskCompleted}/{subtaskCount}
-            </div>
-          )}
-        </div>
+      {/* Bottom row: icons/badges */}
+      {hasBottomRow && (
+        <div className="flex items-center justify-between gap-2 mt-1">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            {/* Due date */}
+            {showDueDate && (
+              <div
+                className={cn(
+                  "flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5",
+                  isOverdue
+                    ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 font-medium"
+                    : "text-muted-foreground"
+                )}
+              >
+                <Calendar className="w-3 h-3 shrink-0" />
+                <span>{formatDate(card.due_date!)}</span>
+              </div>
+            )}
 
-        {card.card_assignees?.length > 0 && (
-          <div className="flex -space-x-1.5">
-            {card.card_assignees.slice(0, 3).map((a: any) => {
-              const name = a.profiles?.full_name || a.profiles?.email || "?";
-              return (
-                <div
-                  key={a.user_id}
-                  title={name}
-                  className="w-5 h-5 rounded-full border border-card flex items-center justify-center text-[9px] font-bold text-white"
-                  style={{ backgroundColor: generateColor(name) }}
-                >
-                  {getInitials(name)}
-                </div>
-              );
-            })}
-            {card.card_assignees.length > 3 && (
-              <div className="w-5 h-5 rounded-full border border-card bg-muted flex items-center justify-center text-[9px] font-medium text-muted-foreground">
-                +{card.card_assignees.length - 3}
+            {/* Priority flag with label */}
+            {showPriority && (
+              <div className={cn("flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5", priority.bg, priority.color)}>
+                <Flag className={cn("w-3 h-3 shrink-0", priority.flagColor)} />
+                <span className="font-medium">{priority.label}</span>
+              </div>
+            )}
+
+            {/* Subtask count */}
+            {showSubtasks && (
+              <div
+                className={cn(
+                  "flex items-center gap-1 text-[11px]",
+                  subtaskCompleted === subtaskCount ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
+                )}
+              >
+                <ListChecks className="w-3 h-3 shrink-0" />
+                <span>{subtaskCompleted}/{subtaskCount}</span>
+              </div>
+            )}
+
+            {/* Description indicator */}
+            {showDescription && (
+              <div className="text-muted-foreground" title="Tem descricao">
+                <AlignLeft className="w-3 h-3" />
+              </div>
+            )}
+
+            {/* Attachment count */}
+            {showAttachments && (
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Paperclip className="w-3 h-3 shrink-0" />
+                <span>{attachmentCount}</span>
               </div>
             )}
           </div>
-        )}
-      </div>
+
+          {/* Assignee avatars - right aligned */}
+          {showAssignees && (
+            <div className="flex -space-x-1.5 shrink-0">
+              {card.card_assignees.slice(0, 3).map((a: any) => {
+                const name = a.profiles?.full_name || a.profiles?.email || "?";
+                return (
+                  <div
+                    key={a.user_id}
+                    title={name}
+                    className="w-6 h-6 rounded-full border-2 border-card flex items-center justify-center text-[9px] font-bold text-white"
+                    style={{ backgroundColor: generateColor(name) }}
+                  >
+                    {getInitials(name)}
+                  </div>
+                );
+              })}
+              {card.card_assignees.length > 3 && (
+                <div className="w-6 h-6 rounded-full border-2 border-card bg-muted flex items-center justify-center text-[9px] font-medium text-muted-foreground">
+                  +{card.card_assignees.length - 3}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

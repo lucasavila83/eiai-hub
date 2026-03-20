@@ -392,6 +392,58 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["org_permissions"]["Row"], "id" | "created_at" | "updated_at">;
         Update: Partial<Database["public"]["Tables"]["org_permissions"]["Insert"]>;
       };
+      checklists: {
+        Row: {
+          id: string;
+          card_id: string;
+          name: string;
+          position: number;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["checklists"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["checklists"]["Insert"]>;
+      };
+      checklist_items: {
+        Row: {
+          id: string;
+          checklist_id: string;
+          title: string;
+          is_completed: boolean;
+          due_date: string | null;
+          assigned_to: string | null;
+          position: number;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["checklist_items"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["checklist_items"]["Insert"]>;
+      };
+      card_attachments: {
+        Row: {
+          id: string;
+          card_id: string;
+          file_url: string;
+          file_name: string;
+          file_size: number;
+          file_type: string;
+          uploaded_by: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["card_attachments"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["card_attachments"]["Insert"]>;
+      };
+      activity_logs: {
+        Row: {
+          id: string;
+          card_id: string;
+          user_id: string;
+          action: string;
+          details: Record<string, any>;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["activity_logs"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["activity_logs"]["Insert"]>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -421,3 +473,7 @@ export type AutomationLog = Database["public"]["Tables"]["automation_logs"]["Row
 export type Integration = Database["public"]["Tables"]["integrations"]["Row"];
 export type AIAgent = Database["public"]["Tables"]["ai_agents"]["Row"];
 export type OrgPermissions = Database["public"]["Tables"]["org_permissions"]["Row"];
+export type Checklist = Database["public"]["Tables"]["checklists"]["Row"];
+export type ChecklistItem = Database["public"]["Tables"]["checklist_items"]["Row"];
+export type CardAttachment = Database["public"]["Tables"]["card_attachments"]["Row"];
+export type ActivityLog = Database["public"]["Tables"]["activity_logs"]["Row"];

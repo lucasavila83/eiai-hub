@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Droppable, Draggable } from "@hello-pangea/dnd";
-import { KanbanCard } from "./KanbanCard";
+import { KanbanCard, type VisibleFields } from "./KanbanCard";
 import { Plus, MoreHorizontal, Pencil, Palette, Gauge, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
@@ -32,12 +32,13 @@ interface Props {
   cards: CardWithRelations[];
   currentUserId: string;
   boardId: string;
+  visibleFields?: VisibleFields;
   onCardClick?: (card: CardWithRelations) => void;
   onColumnUpdated?: (column: Column) => void;
   onColumnDeleted?: (columnId: string) => void;
 }
 
-export function KanbanColumn({ column, cards, currentUserId, boardId, onCardClick, onColumnUpdated, onColumnDeleted }: Props) {
+export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFields, onCardClick, onColumnUpdated, onColumnDeleted }: Props) {
   const supabase = createClient();
   const { addCard } = useKanbanStore();
   const [addingCard, setAddingCard] = useState(false);
@@ -332,7 +333,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, onCardClic
                       if (!snapshot.isDragging) onCardClick?.(card);
                     }}
                   >
-                    <KanbanCard card={card} labels={card.labels} subtaskCount={card.subtaskCount} subtaskCompleted={card.subtaskCompleted} isDragging={snapshot.isDragging} />
+                    <KanbanCard card={card} labels={card.labels} subtaskCount={card.subtaskCount} subtaskCompleted={card.subtaskCompleted} isDragging={snapshot.isDragging} visibleFields={visibleFields} />
                   </div>
                 )}
               </Draggable>

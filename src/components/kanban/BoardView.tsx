@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { KanbanColumn } from "./KanbanColumn";
 import { CardDetailModal } from "./CardDetailModal";
 import { LabelManagerModal } from "./LabelManagerModal";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
-import { Plus, Settings, Tags } from "lucide-react";
+import { Plus, Settings, Tags, SlidersHorizontal } from "lucide-react";
 import { BoardSettingsModal } from "./BoardSettingsModal";
+import { defaultVisibleFields, type VisibleFields } from "./KanbanCard";
 import type { Board, Column, Card } from "@/lib/types/database";
 
 interface Props {
@@ -30,6 +31,28 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   const [boardLabels, setBoardLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [cardLabelsMap, setCardLabelsMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({});
   const [subtaskCounts, setSubtaskCounts] = useState<Record<string, { total: number; completed: number }>>({});
+
+  // Field visibility state
+  const [visibleFields, setVisibleFields] = useState<VisibleFields>({ ...defaultVisibleFields });
+  const [showFieldsPopover, setShowFieldsPopover] = useState(false);
+  const fieldsPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Close fields popover on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (fieldsPopoverRef.current && !fieldsPopoverRef.current.contains(e.target as Node)) {
+        setShowFieldsPopover(false);
+      }
+    }
+    if (showFieldsPopover) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showFieldsPopover]);
+
+  function toggleField(field: keyof VisibleFields) {
+    setVisibleFields((prev) => ({ ...prev, [field]: !prev[field] }));
+  }
 
   useEffect(() => {
     setColumns(board.id, initialColumns);
@@ -149,11 +172,73 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
     setAddingColumn(false);
   }
 
+  const fieldToggleItems: { key: keyof VisibleFields; label: string; disabled?: boolean }[] = [
+    { key: "labels", label: "Labels" },
+    { key: "assignees", label: "Responsavel" },
+    { key: "dates", label: "Datas" },
+    { key: "priority", label: "Prioridade" },
+    { key: "subtasks", label: "Subtarefas" },
+    { key: "description", label: "Descricao" },
+  ];
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-6 py-3 border-b border-border flex items-center justify-between shrink-0">
         <h2 className="font-bold text-foreground text-lg">{board.name}</h2>
         <div className="flex items-center gap-2">
+          {/* Field visibility button */}
+          <div className="relative" ref={fieldsPopoverRef}>
+            <button
+              onClick={() => setShowFieldsPopover((v) => !v)}
+              className={`flex items-center gap-1.5 text-sm transition-colors ${
+                showFieldsPopover
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              Campos
+            </button>
+
+            {showFieldsPopover && (
+              <div className="absolute right-0 top-9 z-50 w-56 bg-popover border border-border rounded-lg shadow-lg py-2">
+                <div className="px-3 pb-2 mb-1 border-b border-border">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Campos visiveis</span>
+                </div>
+
+                {/* Task name - always on */}
+                <div className="flex items-center justify-between px-3 py-1.5">
+                  <span className="text-sm text-muted-foreground">Nome da tarefa</span>
+                  <button
+                    disabled
+                    className="relative inline-flex h-5 w-9 items-center rounded-full bg-primary cursor-not-allowed opacity-60"
+                  >
+                    <span className="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform translate-x-[18px]" />
+                  </button>
+                </div>
+
+                {/* Toggleable fields */}
+                {fieldToggleItems.map((item) => (
+                  <div key={item.key} className="flex items-center justify-between px-3 py-1.5">
+                    <span className="text-sm text-popover-foreground">{item.label}</span>
+                    <button
+                      onClick={() => toggleField(item.key)}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                        visibleFields[item.key] ? "bg-primary" : "bg-muted-foreground/30"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                          visibleFields[item.key] ? "translate-x-[18px]" : "translate-x-[3px]"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <button
             onClick={() => setShowLabelManager(true)}
             className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm"
@@ -184,6 +269,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
               }))}
               currentUserId={currentUserId}
               boardId={board.id}
+              visibleFields={visibleFields}
               onCardClick={(card) => setSelectedCard(card)}
               onColumnUpdated={handleColumnUpdated}
               onColumnDeleted={handleColumnDeleted}
