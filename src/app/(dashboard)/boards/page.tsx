@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Kanban, Plus } from "lucide-react";
+import { Kanban } from "lucide-react";
+import { CreateBoardButton } from "@/components/kanban/CreateBoardButton";
 
 export default async function BoardsPage() {
   const supabase = await createClient();
@@ -14,6 +15,7 @@ export default async function BoardsPage() {
     .eq("user_id", user.id);
 
   const orgIds = memberships?.map((m) => m.org_id) || [];
+  const orgId = orgIds[0] || "";
 
   const { data: boards } = await supabase
     .from("boards")
@@ -26,10 +28,7 @@ export default async function BoardsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-foreground">Boards</h1>
-        <button className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
-          <Plus className="w-4 h-4" />
-          Novo Board
-        </button>
+        <CreateBoardButton orgId={orgId} />
       </div>
 
       {!boards?.length ? (
