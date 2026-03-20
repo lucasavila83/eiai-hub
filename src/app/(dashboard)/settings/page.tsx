@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Users, UserCog, Bot, ChevronRight } from "lucide-react";
+import { UserCircle, Users, UserCog, Bot, ChevronRight } from "lucide-react";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -9,6 +9,7 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
 
   const settingsItems = [
+    { href: "/settings/profile", icon: UserCircle, label: "Meu Perfil", description: "Foto, nome, cargo, telefone e informações pessoais" },
     { href: "/settings/members", icon: Users, label: "Membros", description: "Gerencie membros e convites" },
     { href: "/settings/teams", icon: UserCog, label: "Times", description: "Organize em times e equipes" },
     { href: "/settings/agents", icon: Bot, label: "Agentes IA", description: "Configure agentes de inteligência artificial" },

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Bell, Menu, Search } from "lucide-react";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { getInitials, generateColor } from "@/lib/utils/helpers";
@@ -39,12 +40,18 @@ export function TopBar({ profile }: TopBarProps) {
         <button className="relative text-gray-500 hover:text-gray-900 transition-colors p-1.5">
           <Bell className="w-5 h-5" />
         </button>
-        <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white cursor-pointer"
+        <Link
+          href="/settings/profile"
+          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
           style={{ backgroundColor: generateColor(profile?.full_name || profile?.email || "U") }}
+          title="Meu Perfil"
         >
-          {getInitials(profile?.full_name || profile?.email || "U")}
-        </div>
+          {profile?.avatar_url ? (
+            <img src={profile.avatar_url} alt="Avatar" className="w-7 h-7 rounded-full object-cover" />
+          ) : (
+            getInitials(profile?.full_name || profile?.email || "U")
+          )}
+        </Link>
       </div>
     </header>
   );

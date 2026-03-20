@@ -40,6 +40,9 @@ export interface Database {
           avatar_url: string | null;
           is_ai_agent: boolean;
           agent_config: Json | null;
+          phone: string | null;
+          job_title: string | null;
+          bio: string | null;
           status: "online" | "away" | "offline" | "dnd";
           last_seen_at: string;
           created_at: string;
