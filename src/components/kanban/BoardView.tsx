@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { KanbanColumn } from "./KanbanColumn";
 import { CardDetailModal } from "./CardDetailModal";
+import { LabelManagerModal } from "./LabelManagerModal";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
-import { Plus, Settings } from "lucide-react";
+import { Plus, Settings, Tags } from "lucide-react";
 import { BoardSettingsModal } from "./BoardSettingsModal";
 import type { Board, Column, Card } from "@/lib/types/database";
 
@@ -23,8 +24,11 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [showLabelManager, setShowLabelManager] = useState(false);
   const [selectedCard, setSelectedCard] = useState<(Card & { card_assignees: any[] }) | null>(null);
   const [orgMembers, setOrgMembers] = useState<any[]>([]);
+  const [boardLabels, setBoardLabels] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [cardLabelsMap, setCardLabelsMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({});
 
   useEffect(() => {
     setColumns(board.id, initialColumns);
@@ -32,7 +36,33 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
       const colCards = initialCards.filter((c) => c.column_id === col.id);
       setCards(col.id, colCards);
     }
+    loadLabels();
   }, [board.id]);
+
+  async function loadLabels() {
+    // Load board labels
+    const { data: labels } = await supabase
+      .from("labels")
+      .select("*")
+      .eq("board_id", board.id);
+    if (labels) setBoardLabels(labels);
+
+    // Load card labels
+    const cardIds = initialCards.map((c) => c.id);
+    if (cardIds.length === 0) return;
+    const { data: cardLabelsData } = await supabase
+      .from("card_labels")
+      .select("card_id, labels(id, name, color)")
+      .in("card_id", cardIds);
+    if (cardLabelsData) {
+      const map: Record<string, { id: string; name: string; color: string }[]> = {};
+      for (const row of cardLabelsData as any[]) {
+        if (!map[row.card_id]) map[row.card_id] = [];
+        if (row.labels) map[row.card_id].push(row.labels);
+      }
+      setCardLabelsMap(map);
+    }
+  }
 
   useEffect(() => {
     supabase
@@ -89,12 +119,21 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
     <div className="flex flex-col h-full">
       <div className="px-6 py-3 border-b border-border flex items-center justify-between shrink-0">
         <h2 className="font-bold text-foreground text-lg">{board.name}</h2>
-        <button
-          onClick={() => setShowSettings(true)}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowLabelManager(true)}
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm"
+          >
+            <Tags className="w-4 h-4" />
+            Labels
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       <DragDropContext onDragEnd={handleDragEnd}>
@@ -103,7 +142,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
             <KanbanColumn
               key={column.id}
               column={column}
-              cards={cards[column.id] || []}
+              cards={(cards[column.id] || []).map((c) => ({ ...c, labels: cardLabelsMap[c.id] || [] }))}
               currentUserId={currentUserId}
               boardId={board.id}
               onCardClick={(card) => setSelectedCard(card)}
@@ -164,12 +203,22 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         />
       )}
 
+      {showLabelManager && (
+        <LabelManagerModal
+          boardId={board.id}
+          labels={boardLabels}
+          onClose={() => setShowLabelManager(false)}
+          onLabelsChanged={loadLabels}
+        />
+      )}
+
       {selectedCard && (
         <CardDetailModal
           card={selectedCard}
           boardId={board.id}
           columns={boardColumns.map((c) => ({ id: c.id, name: c.name, color: c.color }))}
           orgMembers={orgMembers}
+          boardLabels={boardLabels}
           currentUserId={currentUserId}
           onClose={() => setSelectedCard(null)}
           onUpdated={(updatedCard) => {
@@ -180,6 +229,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
             removeCard(cardId, selectedCard.column_id);
             setSelectedCard(null);
           }}
+          onLabelsChanged={loadLabels}
         />
       )}
     </div>

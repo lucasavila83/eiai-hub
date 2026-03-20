@@ -22,6 +22,8 @@ import {
   Clock,
   Loader2,
   Send,
+  Tags,
+  Plus,
 } from "lucide-react";
 
 interface Props {
@@ -37,10 +39,12 @@ interface Props {
       avatar_url: string | null;
     };
   }[];
+  boardLabels?: { id: string; name: string; color: string }[];
   currentUserId: string;
   onClose: () => void;
   onUpdated: (updatedCard: any) => void;
   onDeleted: (cardId: string) => void;
+  onLabelsChanged?: () => void;
 }
 
 interface Comment {
@@ -67,15 +71,22 @@ const priorityConfig = {
 
 const PRIORITIES = ["urgent", "high", "medium", "low", "none"] as const;
 
+const LABEL_COLORS = [
+  "#ef4444", "#f97316", "#eab308", "#22c55e",
+  "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899",
+];
+
 export function CardDetailModal({
   card,
   boardId,
   columns,
   orgMembers,
+  boardLabels = [],
   currentUserId,
   onClose,
   onUpdated,
   onDeleted,
+  onLabelsChanged,
 }: Props) {
   const supabase = createClient();
 
@@ -91,6 +102,13 @@ export function CardDetailModal({
   const [assignees, setAssignees] = useState<any[]>(card.card_assignees || []);
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
   const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
+
+  // Labels
+  const [cardLabels, setCardLabels] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [showLabelDropdown, setShowLabelDropdown] = useState(false);
+  const [creatingLabel, setCreatingLabel] = useState(false);
+  const [newLabelName, setNewLabelName] = useState("");
+  const [newLabelColor, setNewLabelColor] = useState(LABEL_COLORS[0]);
 
   // Comments
   const [comments, setComments] = useState<Comment[]>([]);
@@ -108,7 +126,58 @@ export function CardDetailModal({
 
   useEffect(() => {
     loadComments();
+    loadCardLabels();
   }, []);
+
+  async function loadCardLabels() {
+    const { data } = await supabase
+      .from("card_labels")
+      .select("label_id, labels(id, name, color)")
+      .eq("card_id", card.id);
+    if (data) {
+      setCardLabels((data as any[]).map((r) => r.labels).filter(Boolean));
+    }
+  }
+
+  async function addLabelToCard(label: { id: string; name: string; color: string }) {
+    const { error } = await supabase
+      .from("card_labels")
+      .insert({ card_id: card.id, label_id: label.id });
+    if (!error) {
+      setCardLabels((prev) => [...prev, label]);
+      onLabelsChanged?.();
+    }
+  }
+
+  async function removeLabelFromCard(labelId: string) {
+    const { error } = await supabase
+      .from("card_labels")
+      .delete()
+      .eq("card_id", card.id)
+      .eq("label_id", labelId);
+    if (!error) {
+      setCardLabels((prev) => prev.filter((l) => l.id !== labelId));
+      onLabelsChanged?.();
+    }
+  }
+
+  async function handleCreateLabel() {
+    const trimmed = newLabelName.trim();
+    if (!trimmed) return;
+    const { data, error } = await supabase
+      .from("labels")
+      .insert({ board_id: boardId, name: trimmed, color: newLabelColor })
+      .select()
+      .single();
+    if (!error && data) {
+      setNewLabelName("");
+      setNewLabelColor(LABEL_COLORS[0]);
+      setCreatingLabel(false);
+      onLabelsChanged?.();
+      // Auto-add to card
+      await addLabelToCard(data);
+    }
+  }
 
   useEffect(() => {
     if (editingTitle && titleInputRef.current) {
@@ -272,6 +341,7 @@ export function CardDetailModal({
   // Delete
   async function handleDelete() {
     setDeleting(true);
+    await supabase.from("card_labels").delete().eq("card_id", card.id);
     await supabase.from("card_assignees").delete().eq("card_id", card.id);
     await supabase.from("card_comments").delete().eq("card_id", card.id);
     const { error } = await supabase.from("cards").delete().eq("id", card.id);
@@ -475,6 +545,128 @@ export function CardDetailModal({
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Labels */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                <Tags className="w-4 h-4 text-muted-foreground" />
+                Labels
+              </label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowLabelDropdown(!showLabelDropdown)}
+                  className="text-xs text-primary hover:text-primary/80 font-medium"
+                >
+                  + Adicionar label
+                </button>
+                {showLabelDropdown && (
+                  <div className="absolute right-0 top-full mt-1 w-64 bg-card border border-border rounded-lg shadow-xl z-20 max-h-72 overflow-y-auto">
+                    <div className="p-2 space-y-1">
+                      {boardLabels.map((label) => {
+                        const isActive = cardLabels.some((cl) => cl.id === label.id);
+                        return (
+                          <button
+                            key={label.id}
+                            onClick={() => isActive ? removeLabelFromCard(label.id) : addLabelToCard(label)}
+                            className={cn(
+                              "w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors",
+                              isActive ? "bg-accent text-foreground" : "text-foreground hover:bg-accent"
+                            )}
+                          >
+                            <span
+                              className="w-3 h-3 rounded-full shrink-0"
+                              style={{ backgroundColor: label.color }}
+                            />
+                            <span className="truncate flex-1 text-left">{label.name}</span>
+                            {isActive && <span className="text-xs text-primary">&#10003;</span>}
+                          </button>
+                        );
+                      })}
+                      {boardLabels.length === 0 && !creatingLabel && (
+                        <p className="text-xs text-muted-foreground px-3 py-2">Nenhuma label criada</p>
+                      )}
+                    </div>
+                    <div className="border-t border-border p-2">
+                      {creatingLabel ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={newLabelName}
+                            onChange={(e) => setNewLabelName(e.target.value)}
+                            placeholder="Nome da label"
+                            className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleCreateLabel();
+                              if (e.key === "Escape") setCreatingLabel(false);
+                            }}
+                          />
+                          <div className="flex gap-1.5">
+                            {LABEL_COLORS.map((color) => (
+                              <button
+                                key={color}
+                                onClick={() => setNewLabelColor(color)}
+                                className={cn(
+                                  "w-6 h-6 rounded-full border-2 transition-transform hover:scale-110",
+                                  newLabelColor === color ? "border-foreground" : "border-transparent"
+                                )}
+                                style={{ backgroundColor: color }}
+                              />
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleCreateLabel}
+                              className="flex-1 bg-primary text-primary-foreground py-1.5 rounded-md text-xs font-medium hover:bg-primary/90"
+                            >
+                              Criar
+                            </button>
+                            <button
+                              onClick={() => setCreatingLabel(false)}
+                              className="px-2 py-1.5 text-muted-foreground hover:text-foreground text-xs"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setCreatingLabel(true)}
+                          className="w-full flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-3 py-2 rounded-md hover:bg-accent transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Criar nova label
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {cardLabels.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">Nenhuma label</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {cardLabels.map((label) => (
+                  <span
+                    key={label.id}
+                    className="inline-flex items-center gap-1 rounded-full text-xs px-2.5 py-1 font-medium text-white group"
+                    style={{ backgroundColor: label.color }}
+                  >
+                    {label.name}
+                    <button
+                      onClick={() => removeLabelFromCard(label.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-white/70"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Assignees */}

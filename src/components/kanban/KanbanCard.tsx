@@ -4,6 +4,7 @@ import type { Card } from "@/lib/types/database";
 
 interface Props {
   card: Card & { card_assignees: any[] };
+  labels?: { id: string; name: string; color: string }[];
   isDragging?: boolean;
 }
 
@@ -15,7 +16,7 @@ const priorityConfig = {
   none: { color: "text-muted-foreground", bg: "bg-muted", icon: Minus, label: "Sem prioridade" },
 };
 
-export function KanbanCard({ card, isDragging }: Props) {
+export function KanbanCard({ card, labels, isDragging }: Props) {
   const priority = priorityConfig[card.priority];
   const PriorityIcon = priority.icon;
   const isOverdue = card.due_date && new Date(card.due_date) < new Date() && !card.completed_at;
@@ -29,6 +30,25 @@ export function KanbanCard({ card, isDragging }: Props) {
       )}
       style={card.cover_color ? { borderTopColor: card.cover_color } : undefined}
     >
+      {labels && labels.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {labels.slice(0, 3).map((label) => (
+            <span
+              key={label.id}
+              className="rounded-full text-[10px] px-1.5 py-0.5 font-medium text-white leading-tight"
+              style={{ backgroundColor: label.color }}
+            >
+              {label.name}
+            </span>
+          ))}
+          {labels.length > 3 && (
+            <span className="rounded-full text-[10px] px-1.5 py-0.5 font-medium text-muted-foreground bg-muted leading-tight">
+              +{labels.length - 3}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="flex items-start justify-between gap-2 mb-2">
         <p className="text-sm font-medium text-foreground leading-tight">{card.title}</p>
         <div className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs shrink-0", priority.bg, priority.color)}>
