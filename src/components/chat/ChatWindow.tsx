@@ -49,7 +49,7 @@ const priorityConfig: Record<string, { color: string; icon: any; label: string }
   urgent: { color: "text-red-500", icon: AlertCircle, label: "Urgente" },
   high: { color: "text-orange-500", icon: AlertCircle, label: "Alta" },
   medium: { color: "text-yellow-500", icon: Clock, label: "Média" },
-  low: { color: "text-blue-500", icon: Clock, label: "Baixa" },
+  low: { color: "text-primary", icon: Clock, label: "Baixa" },
   none: { color: "text-muted-foreground", icon: Clock, label: "Sem prioridade" },
 };
 

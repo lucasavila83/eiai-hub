@@ -183,7 +183,7 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
             }}
             className="w-full flex items-center gap-3 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
           >
-            <Forward className="w-4 h-4 text-blue-500" />
+            <Forward className="w-4 h-4 text-primary" />
             Encaminhar
           </button>
         </div>

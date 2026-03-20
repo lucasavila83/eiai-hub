@@ -184,7 +184,7 @@ async function getNotifications(userId: string): Promise<NotificationItem[]> {
 function getIcon(type: string) {
   switch (type) {
     case "task":
-      return <CheckSquare className="w-5 h-5 text-blue-500" />;
+      return <CheckSquare className="w-5 h-5 text-primary" />;
     case "mention":
       return <AtSign className="w-5 h-5 text-purple-500" />;
     case "unread":

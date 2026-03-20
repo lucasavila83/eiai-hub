@@ -11,7 +11,7 @@ const priorityConfig = {
   urgent: { color: "text-red-500", bg: "bg-red-500/10", icon: AlertCircle, label: "Urgente" },
   high: { color: "text-orange-500", bg: "bg-orange-500/10", icon: ArrowUp, label: "Alta" },
   medium: { color: "text-yellow-500", bg: "bg-yellow-500/10", icon: Minus, label: "Média" },
-  low: { color: "text-blue-500", bg: "bg-blue-500/10", icon: Minus, label: "Baixa" },
+  low: { color: "text-primary", bg: "bg-primary/50/10", icon: Minus, label: "Baixa" },
   none: { color: "text-muted-foreground", bg: "bg-muted", icon: Minus, label: "Sem prioridade" },
 };
 

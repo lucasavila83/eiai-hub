@@ -168,8 +168,8 @@ export function FileUpload({ channelId, onFileUploaded, onClose }: Props) {
                 className="w-12 h-12 object-cover rounded-md border border-border"
               />
             ) : isImageType(file.type) ? (
-              <div className="w-12 h-12 flex items-center justify-center bg-blue-50 rounded-md border border-border">
-                <ImageIcon className="w-6 h-6 text-blue-500" />
+              <div className="w-12 h-12 flex items-center justify-center bg-primary/5 rounded-md border border-border">
+                <ImageIcon className="w-6 h-6 text-primary" />
               </div>
             ) : (
               <div className="w-12 h-12 flex items-center justify-center bg-orange-50 rounded-md border border-border">

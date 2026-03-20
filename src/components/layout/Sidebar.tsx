@@ -170,7 +170,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
               className={cn(
                 "relative w-10 h-10 flex items-center justify-center rounded-lg transition-colors group",
                 pathname.startsWith(href)
-                  ? "bg-blue-100 text-blue-600"
+                  ? "bg-primary/10 text-primary"
                   : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
               )}
               title={label}
@@ -254,7 +254,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                       className={cn(
                         "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
                         isActive
-                          ? "bg-blue-100 text-blue-700 font-medium"
+                          ? "bg-primary/10 text-primary font-medium"
                           : unread > 0
                           ? "text-gray-900 font-semibold hover:bg-gray-100"
                           : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
@@ -304,7 +304,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                       className={cn(
                         "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
                         isActive
-                          ? "bg-blue-100 text-blue-700 font-medium"
+                          ? "bg-primary/10 text-primary font-medium"
                           : unread > 0
                           ? "text-gray-900 font-semibold hover:bg-gray-100"
                           : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
@@ -550,7 +550,7 @@ function CreateChannelModal({
               <button
                 type="button"
                 onClick={allSelected ? deselectAll : selectAll}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                className="text-xs text-primary hover:text-primary/80 font-medium"
               >
                 {allSelected ? "Desmarcar todos" : "Selecionar todos"}
               </button>
