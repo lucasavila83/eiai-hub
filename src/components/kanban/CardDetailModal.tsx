@@ -24,6 +24,10 @@ import {
   Send,
   Tags,
   Plus,
+  ListChecks,
+  Square,
+  CheckSquare,
+  GripVertical,
 } from "lucide-react";
 
 interface Props {
@@ -59,6 +63,17 @@ interface Comment {
     avatar_url: string | null;
     email: string;
   };
+}
+
+interface Subtask {
+  id: string;
+  card_id: string;
+  title: string;
+  is_completed: boolean;
+  position: number;
+  assigned_to: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 const priorityConfig = {
@@ -110,6 +125,14 @@ export function CardDetailModal({
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState(LABEL_COLORS[0]);
 
+  // Subtasks
+  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
+  const [loadingSubtasks, setLoadingSubtasks] = useState(true);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [addingSubtask, setAddingSubtask] = useState(false);
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+  const [editingSubtaskTitle, setEditingSubtaskTitle] = useState("");
+
   // Comments
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(true);
@@ -127,6 +150,7 @@ export function CardDetailModal({
   useEffect(() => {
     loadComments();
     loadCardLabels();
+    loadSubtasks();
   }, []);
 
   async function loadCardLabels() {
@@ -202,6 +226,68 @@ export function CardDetailModal({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [editingTitle, editingDescription, onClose]);
+
+  async function loadSubtasks() {
+    setLoadingSubtasks(true);
+    const { data } = await supabase
+      .from("subtasks")
+      .select("*")
+      .eq("card_id", card.id)
+      .order("position", { ascending: true });
+    if (data) setSubtasks(data as Subtask[]);
+    setLoadingSubtasks(false);
+  }
+
+  async function handleAddSubtask() {
+    const trimmed = newSubtaskTitle.trim();
+    if (!trimmed) return;
+    setAddingSubtask(true);
+    const nextPos = subtasks.length > 0 ? Math.max(...subtasks.map((s) => s.position)) + 1 : 0;
+    const { error } = await supabase.from("subtasks").insert({
+      card_id: card.id,
+      title: trimmed,
+      is_completed: false,
+      position: nextPos,
+      assigned_to: null,
+      created_by: currentUserId,
+    });
+    if (!error) {
+      setNewSubtaskTitle("");
+      await loadSubtasks();
+    }
+    setAddingSubtask(false);
+  }
+
+  async function handleToggleSubtask(subtaskId: string, currentState: boolean) {
+    setSubtasks((prev) =>
+      prev.map((s) => (s.id === subtaskId ? { ...s, is_completed: !currentState } : s))
+    );
+    await supabase
+      .from("subtasks")
+      .update({ is_completed: !currentState })
+      .eq("id", subtaskId);
+  }
+
+  async function handleDeleteSubtask(subtaskId: string) {
+    setSubtasks((prev) => prev.filter((s) => s.id !== subtaskId));
+    await supabase.from("subtasks").delete().eq("id", subtaskId);
+  }
+
+  async function handleEditSubtaskSave(subtaskId: string) {
+    const trimmed = editingSubtaskTitle.trim();
+    if (!trimmed) {
+      setEditingSubtaskId(null);
+      return;
+    }
+    setSubtasks((prev) =>
+      prev.map((s) => (s.id === subtaskId ? { ...s, title: trimmed } : s))
+    );
+    setEditingSubtaskId(null);
+    await supabase.from("subtasks").update({ title: trimmed }).eq("id", subtaskId);
+  }
+
+  const completedSubtasks = subtasks.filter((s) => s.is_completed).length;
+  const subtaskProgress = subtasks.length > 0 ? Math.round((completedSubtasks / subtasks.length) * 100) : 0;
 
   async function loadComments() {
     setLoadingComments(true);
@@ -341,6 +427,7 @@ export function CardDetailModal({
   // Delete
   async function handleDelete() {
     setDeleting(true);
+    await supabase.from("subtasks").delete().eq("card_id", card.id);
     await supabase.from("card_labels").delete().eq("card_id", card.id);
     await supabase.from("card_assignees").delete().eq("card_id", card.id);
     await supabase.from("card_comments").delete().eq("card_id", card.id);
@@ -667,6 +754,128 @@ export function CardDetailModal({
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Subtasks */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                <ListChecks className="w-4 h-4 text-muted-foreground" />
+                Subtarefas
+                {subtasks.length > 0 && (
+                  <span className="text-xs text-muted-foreground font-normal">
+                    ({completedSubtasks}/{subtasks.length})
+                  </span>
+                )}
+              </label>
+            </div>
+
+            {/* Progress bar */}
+            {subtasks.length > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-300",
+                      subtaskProgress === 100 ? "bg-green-500" : "bg-primary"
+                    )}
+                    style={{ width: `${subtaskProgress}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0">
+                  {subtaskProgress}%
+                </span>
+              </div>
+            )}
+
+            {/* Subtask list */}
+            {loadingSubtasks ? (
+              <div className="flex items-center justify-center py-3">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {subtasks.map((st) => (
+                  <div
+                    key={st.id}
+                    className="flex items-center gap-2 group py-1 px-1 rounded-lg hover:bg-accent/30 transition-colors"
+                  >
+                    <button
+                      onClick={() => handleToggleSubtask(st.id, st.is_completed)}
+                      className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      {st.is_completed ? (
+                        <CheckSquare className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <Square className="w-4 h-4" />
+                      )}
+                    </button>
+
+                    {editingSubtaskId === st.id ? (
+                      <input
+                        type="text"
+                        value={editingSubtaskTitle}
+                        onChange={(e) => setEditingSubtaskTitle(e.target.value)}
+                        onBlur={() => handleEditSubtaskSave(st.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleEditSubtaskSave(st.id);
+                          if (e.key === "Escape") setEditingSubtaskId(null);
+                        }}
+                        className="flex-1 bg-background border border-input rounded px-2 py-0.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                        autoFocus
+                      />
+                    ) : (
+                      <span
+                        onClick={() => {
+                          setEditingSubtaskId(st.id);
+                          setEditingSubtaskTitle(st.title);
+                        }}
+                        className={cn(
+                          "flex-1 text-sm cursor-pointer",
+                          st.is_completed
+                            ? "line-through text-muted-foreground"
+                            : "text-foreground"
+                        )}
+                      >
+                        {st.title}
+                      </span>
+                    )}
+
+                    <button
+                      onClick={() => handleDeleteSubtask(st.id)}
+                      className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add subtask input */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newSubtaskTitle}
+                onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAddSubtask();
+                }}
+                placeholder="Adicionar subtarefa..."
+                className="flex-1 px-3 py-1.5 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                onClick={handleAddSubtask}
+                disabled={!newSubtaskTitle.trim() || addingSubtask}
+                className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors shrink-0"
+              >
+                {addingSubtask ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Assignees */}

@@ -284,6 +284,20 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["event_participants"]["Row"], "id">;
         Update: Partial<Database["public"]["Tables"]["event_participants"]["Insert"]>;
       };
+      subtasks: {
+        Row: {
+          id: string;
+          card_id: string;
+          title: string;
+          is_completed: boolean;
+          position: number;
+          assigned_to: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["subtasks"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["subtasks"]["Insert"]>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -307,3 +321,4 @@ export type Notification = Database["public"]["Tables"]["notifications"]["Row"];
 export type Invitation = Database["public"]["Tables"]["invitations"]["Row"];
 export type Event = Database["public"]["Tables"]["events"]["Row"];
 export type EventParticipant = Database["public"]["Tables"]["event_participants"]["Row"];
+export type Subtask = Database["public"]["Tables"]["subtasks"]["Row"];

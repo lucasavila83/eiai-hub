@@ -29,6 +29,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   const [orgMembers, setOrgMembers] = useState<any[]>([]);
   const [boardLabels, setBoardLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [cardLabelsMap, setCardLabelsMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({});
+  const [subtaskCounts, setSubtaskCounts] = useState<Record<string, { total: number; completed: number }>>({});
 
   useEffect(() => {
     setColumns(board.id, initialColumns);
@@ -37,6 +38,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
       setCards(col.id, colCards);
     }
     loadLabels();
+    loadSubtaskCounts();
   }, [board.id]);
 
   async function loadLabels() {
@@ -61,6 +63,24 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         if (row.labels) map[row.card_id].push(row.labels);
       }
       setCardLabelsMap(map);
+    }
+  }
+
+  async function loadSubtaskCounts() {
+    const cardIds = initialCards.map((c) => c.id);
+    if (cardIds.length === 0) return;
+    const { data } = await supabase
+      .from("subtasks")
+      .select("card_id, is_completed")
+      .in("card_id", cardIds);
+    if (data) {
+      const counts: Record<string, { total: number; completed: number }> = {};
+      for (const row of data) {
+        if (!counts[row.card_id]) counts[row.card_id] = { total: 0, completed: 0 };
+        counts[row.card_id].total++;
+        if (row.is_completed) counts[row.card_id].completed++;
+      }
+      setSubtaskCounts(counts);
     }
   }
 
@@ -142,7 +162,12 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
             <KanbanColumn
               key={column.id}
               column={column}
-              cards={(cards[column.id] || []).map((c) => ({ ...c, labels: cardLabelsMap[c.id] || [] }))}
+              cards={(cards[column.id] || []).map((c) => ({
+                ...c,
+                labels: cardLabelsMap[c.id] || [],
+                subtaskCount: subtaskCounts[c.id]?.total,
+                subtaskCompleted: subtaskCounts[c.id]?.completed,
+              }))}
               currentUserId={currentUserId}
               boardId={board.id}
               onCardClick={(card) => setSelectedCard(card)}

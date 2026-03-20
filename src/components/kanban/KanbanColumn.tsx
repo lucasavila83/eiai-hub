@@ -20,7 +20,12 @@ const PRESET_COLORS = [
   "#06b6d4", // cyan
 ];
 
-type CardWithRelations = Card & { card_assignees: any[]; labels?: { id: string; name: string; color: string }[] };
+type CardWithRelations = Card & {
+  card_assignees: any[];
+  labels?: { id: string; name: string; color: string }[];
+  subtaskCount?: number;
+  subtaskCompleted?: number;
+};
 
 interface Props {
   column: Column;
@@ -327,7 +332,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, onCardClic
                       if (!snapshot.isDragging) onCardClick?.(card);
                     }}
                   >
-                    <KanbanCard card={card} labels={card.labels} isDragging={snapshot.isDragging} />
+                    <KanbanCard card={card} labels={card.labels} subtaskCount={card.subtaskCount} subtaskCompleted={card.subtaskCompleted} isDragging={snapshot.isDragging} />
                   </div>
                 )}
               </Draggable>

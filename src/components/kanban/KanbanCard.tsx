@@ -1,10 +1,12 @@
 import { cn, formatDate, getInitials, generateColor } from "@/lib/utils/helpers";
-import { Calendar, AlertCircle, ArrowUp, Minus } from "lucide-react";
+import { Calendar, AlertCircle, ArrowUp, Minus, ListChecks } from "lucide-react";
 import type { Card } from "@/lib/types/database";
 
 interface Props {
   card: Card & { card_assignees: any[] };
   labels?: { id: string; name: string; color: string }[];
+  subtaskCount?: number;
+  subtaskCompleted?: number;
   isDragging?: boolean;
 }
 
@@ -16,7 +18,7 @@ const priorityConfig = {
   none: { color: "text-muted-foreground", bg: "bg-muted", icon: Minus, label: "Sem prioridade" },
 };
 
-export function KanbanCard({ card, labels, isDragging }: Props) {
+export function KanbanCard({ card, labels, subtaskCount, subtaskCompleted, isDragging }: Props) {
   const priority = priorityConfig[card.priority];
   const PriorityIcon = priority.icon;
   const isOverdue = card.due_date && new Date(card.due_date) < new Date() && !card.completed_at;
@@ -62,6 +64,15 @@ export function KanbanCard({ card, labels, isDragging }: Props) {
             <div className={cn("flex items-center gap-1 text-xs", isOverdue ? "text-destructive" : "text-muted-foreground")}>
               <Calendar className="w-3 h-3" />
               {formatDate(card.due_date)}
+            </div>
+          )}
+          {subtaskCount != null && subtaskCount > 0 && (
+            <div className={cn(
+              "flex items-center gap-1 text-xs",
+              subtaskCompleted === subtaskCount ? "text-green-500" : "text-muted-foreground"
+            )}>
+              <ListChecks className="w-3 h-3" />
+              {subtaskCompleted}/{subtaskCount}
             </div>
           )}
         </div>
