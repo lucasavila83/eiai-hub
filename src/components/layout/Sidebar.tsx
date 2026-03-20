@@ -515,26 +515,6 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
             </div>
           </div>
 
-          {/* User Footer */}
-          <div className="p-3 border-t border-gray-200">
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                  style={{ backgroundColor: generateColor(profile?.full_name || profile?.email || "U") }}
-                >
-                  {getInitials(profile?.full_name || profile?.email || "U")}
-                </div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-gray-50" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-gray-900 truncate">
-                  {profile?.full_name || profile?.email}
-                </p>
-                <p className="text-xs text-gray-400">Online</p>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 

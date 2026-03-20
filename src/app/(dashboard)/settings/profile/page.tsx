@@ -8,24 +8,9 @@ import {
   Camera,
   Loader2,
   CheckCircle,
-  User,
 } from "lucide-react";
 import { getInitials, generateColor } from "@/lib/utils/helpers";
-import type { Profile } from "@/lib/types/database";
 
-// Only manual status options (online/offline are automatic)
-const manualStatusOptions = [
-  { value: "online", label: "Disponível (automático)", color: "bg-green-500" },
-  { value: "away", label: "Ausente", color: "bg-yellow-500" },
-  { value: "dnd", label: "Não perturbe", color: "bg-red-500" },
-] as const;
-
-const statusColors: Record<string, string> = {
-  online: "bg-green-500",
-  away: "bg-yellow-500",
-  dnd: "bg-red-500",
-  offline: "bg-gray-500",
-};
 
 export default function ProfileSettingsPage() {
   const supabase = createClient();
@@ -43,7 +28,6 @@ export default function ProfileSettingsPage() {
   const [phone, setPhone] = useState("");
   const [jobTitle, setJobTitle] = useState("");
   const [bio, setBio] = useState("");
-  const [status, setStatus] = useState<Profile["status"]>("online");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
@@ -79,7 +63,6 @@ export default function ProfileSettingsPage() {
         setPhone(profile.phone ?? "");
         setJobTitle(profile.job_title ?? "");
         setBio(profile.bio ?? "");
-        setStatus(profile.status);
         setAvatarUrl(profile.avatar_url);
         setAvatarPreview(profile.avatar_url);
       }
@@ -157,7 +140,6 @@ export default function ProfileSettingsPage() {
           phone: phone || null,
           job_title: jobTitle || null,
           bio: bio || null,
-          status,
           avatar_url: avatarUrl,
         })
         .eq("id", userId);
@@ -354,35 +336,6 @@ export default function ProfileSettingsPage() {
             />
           </div>
 
-          {/* Status */}
-          <div>
-            <label
-              htmlFor="status"
-              className="block text-sm font-medium text-foreground mb-1.5"
-            >
-              Status
-            </label>
-            <p className="text-xs text-muted-foreground mb-2">
-              Online e Offline são detectados automaticamente. Você pode definir manualmente Ausente ou Não Perturbe.
-            </p>
-            <div className="flex gap-2">
-              {manualStatusOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setStatus(opt.value as Profile["status"])}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
-                    status === opt.value || (opt.value === "online" && status === "online")
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
-                  }`}
-                >
-                  <div className={`w-2.5 h-2.5 rounded-full ${opt.color}`} />
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Actions */}
