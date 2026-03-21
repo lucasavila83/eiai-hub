@@ -85,6 +85,18 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
   useEffect(() => {
     setMessages(channel.id, initialMessages as any);
 
+    // Pre-cache own profile for optimistic updates
+    if (!profileCacheRef.current[currentUserId]) {
+      supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url, email, is_ai_agent")
+        .eq("id", currentUserId)
+        .single()
+        .then(({ data }) => {
+          if (data) profileCacheRef.current[currentUserId] = data;
+        });
+    }
+
     // Get last_read_at before updating it (for "Novo" marker)
     supabase
       .from("channel_members")
