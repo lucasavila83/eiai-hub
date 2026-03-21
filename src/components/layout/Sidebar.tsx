@@ -1160,15 +1160,15 @@ function CreateDMModal({
 
       if (sharedDMs && sharedDMs.length > 0) {
         // Check if any of these shared channels is a DM type
-        const { data: dmChannel } = await supabase
+        const { data: dmChannels } = await supabase
           .from("channels")
           .select("*")
           .eq("type", "dm")
           .in("id", sharedDMs.map((s: any) => s.channel_id))
-          .single();
+          .limit(1);
 
-        if (dmChannel) {
-          onCreated(dmChannel);
+        if (dmChannels && dmChannels.length > 0) {
+          onCreated(dmChannels[0]);
           setLoading(false);
           return;
         }
