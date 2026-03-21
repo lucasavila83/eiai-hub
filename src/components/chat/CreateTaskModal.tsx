@@ -144,7 +144,7 @@ export function CreateTaskModal({
         board_id: selectedBoardId,
         title: title.trim(),
         due_date: dueDate || null,
-        priority: "medium",
+        priority: "none",
         created_by: currentUserId,
         position,
         is_archived: false,

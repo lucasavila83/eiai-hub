@@ -150,7 +150,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
         title: newCardTitle.trim(),
         due_date: newCardDueDate,
         position,
-        priority: "medium",
+        priority: "none",
         created_by: currentUserId,
       })
       .select()

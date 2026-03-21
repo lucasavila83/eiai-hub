@@ -345,7 +345,7 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
         column_id: columnId,
         board_id: targetBoardId,
         title,
-        priority: "medium",
+        priority: "none",
         created_by: currentUserId,
         position: 0,
         is_archived: false,

@@ -228,6 +228,9 @@ export function CardDetailModal({
   const [cardLabels, setCardLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [showLabelDropdown, setShowLabelDropdown] = useState(false);
   const labelDropdownRef = useRef<HTMLDivElement>(null);
+  const assigneeDropdownRef = useRef<HTMLDivElement>(null);
+  const priorityDropdownRef = useRef<HTMLDivElement>(null);
+  const columnDropdownRef = useRef<HTMLDivElement>(null);
   const [creatingLabel, setCreatingLabel] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState(LABEL_COLORS[0]);
@@ -282,17 +285,28 @@ export function CardDetailModal({
     loadActivityFeed();
   }, []);
 
-  // Close label dropdown on click outside
+  // Close ALL dropdowns on click outside
   useEffect(() => {
-    if (!showLabelDropdown) return;
+    const anyOpen = showLabelDropdown || showAssigneeDropdown || showPriorityDropdown || showColumnDropdown;
+    if (!anyOpen) return;
     function handleClick(e: MouseEvent) {
-      if (labelDropdownRef.current && !labelDropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (showLabelDropdown && labelDropdownRef.current && !labelDropdownRef.current.contains(target)) {
         setShowLabelDropdown(false);
+      }
+      if (showAssigneeDropdown && assigneeDropdownRef.current && !assigneeDropdownRef.current.contains(target)) {
+        setShowAssigneeDropdown(false);
+      }
+      if (showPriorityDropdown && priorityDropdownRef.current && !priorityDropdownRef.current.contains(target)) {
+        setShowPriorityDropdown(false);
+      }
+      if (showColumnDropdown && columnDropdownRef.current && !columnDropdownRef.current.contains(target)) {
+        setShowColumnDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [showLabelDropdown]);
+  }, [showLabelDropdown, showAssigneeDropdown, showPriorityDropdown, showColumnDropdown]);
 
   async function loadCardLabels() {
     const { data } = await supabase
@@ -988,7 +1002,7 @@ export function CardDetailModal({
                   <Columns3 className="w-3.5 h-3.5" />
                   Status
                 </label>
-                <div className="relative">
+                <div className="relative" ref={columnDropdownRef}>
                   <button
                     onClick={() => setShowColumnDropdown(!showColumnDropdown)}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-accent/50 hover:bg-accent transition-colors w-full text-left"
@@ -1025,7 +1039,7 @@ export function CardDetailModal({
                   <Users className="w-3.5 h-3.5" />
                   Responsaveis
                 </label>
-                <div className="relative">
+                <div className="relative" ref={assigneeDropdownRef}>
                   <div className="flex items-center gap-1 flex-wrap">
                     {assignees.length === 0 ? (
                       <button
@@ -1126,7 +1140,7 @@ export function CardDetailModal({
                   <Flag className="w-3.5 h-3.5" />
                   Prioridade
                 </label>
-                <div className="relative">
+                <div className="relative" ref={priorityDropdownRef}>
                   <button
                     onClick={() => setShowPriorityDropdown(!showPriorityDropdown)}
                     className={cn(
