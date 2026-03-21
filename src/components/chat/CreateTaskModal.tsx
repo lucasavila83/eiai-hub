@@ -8,6 +8,20 @@ import {
 } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 
+// Detect file attachment in message content
+const FILE_URL_REGEX = /^📎\s*(?:Arquivo:\s*)?\*\*(.+?)\*\*\n(https?:\/\/.+)$/s;
+
+function guessFileType(fileName: string): string {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  const types: Record<string, string> = {
+    pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp",
+    csv: "text/csv", txt: "text/plain", zip: "application/zip",
+  };
+  return types[ext] || "application/octet-stream";
+}
+
 interface Props {
   orgId: string;
   currentUserId: string;
@@ -26,7 +40,13 @@ export function CreateTaskModal({
   onCreated,
 }: Props) {
   const supabase = createClient();
-  const [title, setTitle] = useState(defaultTitle);
+
+  // Extract file info if the message is a file attachment
+  const fileMatch = defaultTitle.match(FILE_URL_REGEX);
+  const attachmentFile = fileMatch ? { name: fileMatch[1], url: fileMatch[2] } : null;
+  const cleanTitle = attachmentFile ? attachmentFile.name : defaultTitle;
+
+  const [title, setTitle] = useState(cleanTitle);
   const [dueDate, setDueDate] = useState("");
   const [selectedBoardId, setSelectedBoardId] = useState("");
   const [selectedColumnId, setSelectedColumnId] = useState("");
@@ -136,6 +156,18 @@ export function CreateTaskModal({
     if (error || !card) {
       setLoading(false);
       return;
+    }
+
+    // Auto-attach file if task was created from a file message
+    if (attachmentFile) {
+      await supabase.from("card_attachments").insert({
+        card_id: card.id,
+        file_url: attachmentFile.url,
+        file_name: attachmentFile.name,
+        file_size: 0,
+        file_type: guessFileType(attachmentFile.name),
+        uploaded_by: currentUserId,
+      });
     }
 
     let assigneeName: string | undefined;
