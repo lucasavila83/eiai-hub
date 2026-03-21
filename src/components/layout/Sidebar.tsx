@@ -1132,6 +1132,7 @@ function CreateDMModal({
     });
 
   async function startDM(targetUserId: string) {
+    // Check frontend cache first
     const existing = existingDMs.find(
       (dm: any) => dm.otherUser?.id === targetUserId
     );
@@ -1141,6 +1142,40 @@ function CreateDMModal({
     }
 
     setLoading(true);
+
+    // Double-check in database: find DM channels where BOTH users are members
+    const { data: myDMChannels } = await supabase
+      .from("channel_members")
+      .select("channel_id")
+      .eq("user_id", currentUserId);
+
+    if (myDMChannels && myDMChannels.length > 0) {
+      const myChannelIds = myDMChannels.map((c: any) => c.channel_id);
+      // Find DM channels where the target user is also a member
+      const { data: sharedDMs } = await supabase
+        .from("channel_members")
+        .select("channel_id")
+        .eq("user_id", targetUserId)
+        .in("channel_id", myChannelIds);
+
+      if (sharedDMs && sharedDMs.length > 0) {
+        // Check if any of these shared channels is a DM type
+        const { data: dmChannel } = await supabase
+          .from("channels")
+          .select("*")
+          .eq("type", "dm")
+          .in("id", sharedDMs.map((s: any) => s.channel_id))
+          .single();
+
+        if (dmChannel) {
+          onCreated(dmChannel);
+          setLoading(false);
+          return;
+        }
+      }
+    }
+
+    // No existing DM found — create a new one
     const targetProfile = members.find((m: any) => m.user_id === targetUserId)?.profiles;
     const dmName = targetProfile?.full_name || targetProfile?.email || "DM";
 
