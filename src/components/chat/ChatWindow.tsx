@@ -185,20 +185,28 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
         .order("created_at");
 
       if (newMsgs && newMsgs.length > 0) {
-        const existingIds = new Set(currentMsgs.map((m: any) => m.id));
+        let updated = [...useChatStore.getState().messages[channel.id] || []];
+        let changed = false;
+
         for (const msg of newMsgs) {
-          if (!existingIds.has(msg.id)) {
-            addMessage(channel.id, msg as any);
-          }
-          // Replace optimistic message with real one
-          const optimistic = currentMsgs.find(
+          // Skip if already exists with real ID
+          if (updated.some((m: any) => m.id === msg.id)) continue;
+
+          // Replace optimistic message if it matches
+          const optIdx = updated.findIndex(
             (m: any) => m._optimistic && m.user_id === msg.user_id && m.content === msg.content
           );
-          if (optimistic) {
-            const updated = useChatStore.getState().messages[channel.id]
-              .map((m: any) => m.id === optimistic.id ? msg : m);
-            setMessages(channel.id, updated);
+          if (optIdx >= 0) {
+            updated[optIdx] = msg;
+            changed = true;
+          } else {
+            updated.push(msg);
+            changed = true;
           }
+        }
+
+        if (changed) {
+          setMessages(channel.id, updated);
         }
       }
     }, 3000);
