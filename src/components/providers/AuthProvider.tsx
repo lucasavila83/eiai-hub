@@ -58,6 +58,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const orgs = orgsRes.data?.map((o: any) => o.organizations).filter(Boolean) ?? [];
 
       if (orgs.length === 0) {
+        // Check if user has a pending invite — auto-accept or redirect
+        const userEmail = session.user.email;
+        if (userEmail) {
+          const { data: pendingInvite } = await supabase
+            .from("invitations")
+            .select("token")
+            .eq("email", userEmail)
+            .is("accepted_at", null)
+            .gt("expires_at", new Date().toISOString())
+            .limit(1)
+            .single();
+
+          if (pendingInvite) {
+            // Redirect to accept the invite
+            router.replace(`/invite/${pendingInvite.token}`);
+            return;
+          }
+
+          // Also check already-accepted invites where user wasn't added as member
+          const { data: acceptedInvite } = await supabase
+            .from("invitations")
+            .select("token")
+            .eq("email", userEmail)
+            .not("accepted_at", "is", null)
+            .limit(1)
+            .single();
+
+          if (acceptedInvite) {
+            router.replace(`/invite/${acceptedInvite.token}`);
+            return;
+          }
+        }
+
         router.replace("/register");
         return;
       }
