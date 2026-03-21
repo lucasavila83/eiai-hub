@@ -1175,29 +1175,19 @@ function CreateDMModal({
       }
     }
 
-    // No existing DM found — create a new one
+    // No existing DM found — create via API (bypasses RLS timing issue)
     const targetProfile = members.find((m: any) => m.user_id === targetUserId)?.profiles;
     const dmName = targetProfile?.full_name || targetProfile?.email || "DM";
 
-    const { data: channel } = await supabase
-      .from("channels")
-      .insert({
-        org_id: orgId,
-        name: dmName,
-        type: "dm",
-        created_by: currentUserId,
-        is_archived: false,
-      })
-      .select()
-      .single();
+    const res = await fetch("/api/chat/create-dm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orgId, targetUserId, dmName }),
+    });
 
-    if (channel) {
-      const now = new Date().toISOString();
-      await supabase.from("channel_members").insert([
-        { channel_id: channel.id, user_id: currentUserId, last_read_at: now, notifications: "all" },
-        { channel_id: channel.id, user_id: targetUserId, last_read_at: now, notifications: "all" },
-      ]);
-      onCreated(channel);
+    if (res.ok) {
+      const { channel } = await res.json();
+      if (channel) onCreated(channel);
     }
     setLoading(false);
   }
