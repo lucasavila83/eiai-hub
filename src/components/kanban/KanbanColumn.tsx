@@ -336,7 +336,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
                       if (!snapshot.isDragging) onCardClick?.(card);
                     }}
                   >
-                    <KanbanCard card={card} labels={card.labels} subtaskCount={card.subtaskCount} subtaskCompleted={card.subtaskCompleted} isDragging={snapshot.isDragging} visibleFields={visibleFields} />
+                    <KanbanCard card={card} labels={card.labels} subtaskCount={card.subtaskCount} subtaskCompleted={card.subtaskCompleted} attachmentCount={card.attachmentCount} isDragging={snapshot.isDragging} visibleFields={visibleFields} />
                   </div>
                 )}
               </Draggable>

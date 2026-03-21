@@ -31,6 +31,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   const [boardLabels, setBoardLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [cardLabelsMap, setCardLabelsMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({});
   const [subtaskCounts, setSubtaskCounts] = useState<Record<string, { total: number; completed: number }>>({});
+  const [attachmentCounts, setAttachmentCounts] = useState<Record<string, number>>({});
 
   // Field visibility state
   const [visibleFields, setVisibleFields] = useState<VisibleFields>({ ...defaultVisibleFields });
@@ -62,6 +63,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
     }
     loadLabels();
     loadSubtaskCounts();
+    loadAttachmentCounts();
   }, [board.id]);
 
   async function loadLabels() {
@@ -104,6 +106,22 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         if (row.is_completed) counts[row.card_id].completed++;
       }
       setSubtaskCounts(counts);
+    }
+  }
+
+  async function loadAttachmentCounts() {
+    const cardIds = initialCards.map((c) => c.id);
+    if (cardIds.length === 0) return;
+    const { data } = await supabase
+      .from("card_attachments")
+      .select("card_id")
+      .in("card_id", cardIds);
+    if (data) {
+      const counts: Record<string, number> = {};
+      for (const row of data) {
+        counts[row.card_id] = (counts[row.card_id] || 0) + 1;
+      }
+      setAttachmentCounts(counts);
     }
   }
 
@@ -266,6 +284,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
                 labels: cardLabelsMap[c.id] || [],
                 subtaskCount: subtaskCounts[c.id]?.total,
                 subtaskCompleted: subtaskCounts[c.id]?.completed,
+                attachmentCount: attachmentCounts[c.id] || 0,
               }))}
               currentUserId={currentUserId}
               boardId={board.id}

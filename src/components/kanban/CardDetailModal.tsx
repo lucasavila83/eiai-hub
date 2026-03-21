@@ -227,6 +227,7 @@ export function CardDetailModal({
   // Labels
   const [cardLabels, setCardLabels] = useState<{ id: string; name: string; color: string }[]>([]);
   const [showLabelDropdown, setShowLabelDropdown] = useState(false);
+  const labelDropdownRef = useRef<HTMLDivElement>(null);
   const [creatingLabel, setCreatingLabel] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState(LABEL_COLORS[0]);
@@ -280,6 +281,18 @@ export function CardDetailModal({
     loadAttachments();
     loadActivityFeed();
   }, []);
+
+  // Close label dropdown on click outside
+  useEffect(() => {
+    if (!showLabelDropdown) return;
+    function handleClick(e: MouseEvent) {
+      if (labelDropdownRef.current && !labelDropdownRef.current.contains(e.target as Node)) {
+        setShowLabelDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showLabelDropdown]);
 
   async function loadCardLabels() {
     const { data } = await supabase
@@ -917,10 +930,10 @@ export function CardDetailModal({
             <button
               onClick={handleToggleCompleted}
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer",
                 completedAt
-                  ? "bg-green-500/15 text-green-500 hover:bg-green-500/25"
-                  : "bg-muted text-muted-foreground hover:bg-accent"
+                  ? "bg-green-500/15 text-green-500 hover:bg-green-500/25 hover:scale-105"
+                  : "bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary hover:scale-105"
               )}
             >
               <CheckCircle2 className={cn("w-3.5 h-3.5", completedAt && "fill-current")} />
@@ -1154,7 +1167,7 @@ export function CardDetailModal({
                     <Tags className="w-3.5 h-3.5" />
                     Labels
                   </label>
-                  <div className="relative">
+                  <div className="relative" ref={labelDropdownRef}>
                     <button
                       onClick={() => setShowLabelDropdown(!showLabelDropdown)}
                       className="text-xs text-primary hover:text-primary/80 font-medium"
