@@ -52,17 +52,23 @@ export default function MembersPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   // Team assignment modal
   const [teamModalMember, setTeamModalMember] = useState<any | null>(null);
+
+  // Derive current user role from members list (more reliable than separate query)
+  const currentUserRole = members.find((m) => m.user_id === currentUserId)?.role || null;
+  const isAdmin = currentUserRole === "owner" || currentUserRole === "admin";
 
   useEffect(() => {
     if (activeOrgId) {
       loadMembers();
       loadInvitations();
       loadTeams();
-      loadCurrentUser();
     }
+    // Load current user ID
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCurrentUserId(user.id);
+    });
   }, [activeOrgId]);
 
   // Close menu on outside click
@@ -72,20 +78,6 @@ export default function MembersPage() {
     document.addEventListener("click", handleClick);
     return () => document.removeEventListener("click", handleClick);
   }, [openMenuId]);
-
-  async function loadCurrentUser() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      setCurrentUserId(user.id);
-      const { data } = await supabase
-        .from("org_members")
-        .select("role")
-        .eq("org_id", activeOrgId!)
-        .eq("user_id", user.id)
-        .single();
-      if (data) setCurrentUserRole(data.role);
-    }
-  }
 
   async function loadMembers() {
     const { data } = await supabase
@@ -129,8 +121,6 @@ export default function MembersPage() {
   function getTeamRole(userId: string, teamId: string) {
     return teamMembers.find((tm) => tm.user_id === userId && tm.team_id === teamId)?.role || "member";
   }
-
-  const isAdmin = currentUserRole === "owner" || currentUserRole === "admin";
 
   async function getAuthHeaders() {
     const session = await supabase.auth.getSession();
