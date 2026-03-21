@@ -28,16 +28,15 @@ export async function POST(req: NextRequest) {
 
     const { token } = await req.json();
 
-    // Find invitation
+    // Find invitation (allow already-accepted ones so the link always works)
     const { data: invitation } = await adminClient
       .from("invitations")
       .select("*, organizations(name)")
       .eq("token", token)
-      .is("accepted_at", null)
       .single();
 
     if (!invitation) {
-      return NextResponse.json({ error: "Convite não encontrado ou já aceito" }, { status: 404 });
+      return NextResponse.json({ error: "Convite não encontrado" }, { status: 404 });
     }
 
     // Check expiration

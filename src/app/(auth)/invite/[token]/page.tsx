@@ -31,20 +31,26 @@ export default function InvitePage() {
 
     if (!invite) {
       setStatus("error");
-      setError("Convite não encontrado ou já foi utilizado.");
-      return;
-    }
-
-    if (invite.accepted_at) {
-      setStatus("error");
-      setError("Este convite já foi aceito.");
+      setError("Convite não encontrado.");
       return;
     }
 
     if (new Date(invite.expires_at) < new Date()) {
       setStatus("error");
-      setError("Este convite expirou.");
+      setError("Este convite expirou. Peça ao administrador para reenviar.");
       return;
+    }
+
+    // If already accepted, check if user is logged in and redirect
+    if (invite.accepted_at) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setStatus("accepted");
+        setTimeout(() => router.push("/"), 2000);
+        return;
+      }
+      // Not logged in — let them login/register and the accept endpoint
+      // will detect they're already a member and just redirect
     }
 
     setOrgName((invite as any).organizations?.name || "");

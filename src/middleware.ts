@@ -8,6 +8,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
     pathname.startsWith("/invite") ||
+    pathname.startsWith("/reset-password") ||
     pathname.startsWith("/api/")
   ) {
     return NextResponse.next();
