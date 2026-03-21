@@ -13,56 +13,31 @@ export default function ChannelPage() {
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const router = useRouter();
-  const { user, supabase } = useAuth();
+  const { user } = useAuth();
 
   useEffect(() => {
     (async () => {
-      // 1. Verify user is a member of this channel
-      const { data: membership } = await supabase
-        .from("channel_members")
-        .select("id")
-        .eq("channel_id", channelId)
-        .eq("user_id", user.id)
-        .single();
+      // Load channel and messages via server API (bypasses RLS)
+      const res = await fetch("/api/chat/load-channel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId }),
+      });
 
-      if (!membership) {
-        // For public channels, auto-join; for DMs/private, deny access
-        const { data: ch } = await supabase
-          .from("channels")
-          .select("type")
-          .eq("id", channelId)
-          .single();
-
-        if (ch?.type === "public") {
-          // Auto-join public channel
-          await supabase.from("channel_members").insert({
-            channel_id: channelId,
-            user_id: user.id,
-            notifications: "all",
-          });
-        } else {
-          setAccessDenied(true);
-          setLoading(false);
-          return;
-        }
+      if (res.status === 403) {
+        setAccessDenied(true);
+        setLoading(false);
+        return;
       }
 
-      // 2. Load channel and messages
-      const [channelRes, messagesRes] = await Promise.all([
-        supabase.from("channels").select("*").eq("id", channelId).single(),
-        supabase
-          .from("messages")
-          .select(`*, profiles:user_id(id, full_name, avatar_url, email, is_ai_agent)`)
-          .eq("channel_id", channelId)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: true })
-          .limit(50),
-      ]);
+      if (!res.ok) {
+        router.replace("/chat");
+        return;
+      }
 
-      if (!channelRes.data) { router.replace("/chat"); return; }
-
-      setChannel(channelRes.data);
-      setMessages(messagesRes.data || []);
+      const data = await res.json();
+      setChannel(data.channel);
+      setMessages(data.messages || []);
       setLoading(false);
     })();
   }, [channelId]);

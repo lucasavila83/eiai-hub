@@ -1143,39 +1143,7 @@ function CreateDMModal({
 
     setLoading(true);
 
-    // Double-check in database: find DM channels where BOTH users are members
-    const { data: myDMChannels } = await supabase
-      .from("channel_members")
-      .select("channel_id")
-      .eq("user_id", currentUserId);
-
-    if (myDMChannels && myDMChannels.length > 0) {
-      const myChannelIds = myDMChannels.map((c: any) => c.channel_id);
-      // Find DM channels where the target user is also a member
-      const { data: sharedDMs } = await supabase
-        .from("channel_members")
-        .select("channel_id")
-        .eq("user_id", targetUserId)
-        .in("channel_id", myChannelIds);
-
-      if (sharedDMs && sharedDMs.length > 0) {
-        // Check if any of these shared channels is a DM type
-        const { data: dmChannels } = await supabase
-          .from("channels")
-          .select("*")
-          .eq("type", "dm")
-          .in("id", sharedDMs.map((s: any) => s.channel_id))
-          .limit(1);
-
-        if (dmChannels && dmChannels.length > 0) {
-          onCreated(dmChannels[0]);
-          setLoading(false);
-          return;
-        }
-      }
-    }
-
-    // No existing DM found — create via API (bypasses RLS timing issue)
+    // All DM logic goes through server API (bypasses RLS issues)
     const targetProfile = members.find((m: any) => m.user_id === targetUserId)?.profiles;
     const dmName = targetProfile?.full_name || targetProfile?.email || "DM";
 
