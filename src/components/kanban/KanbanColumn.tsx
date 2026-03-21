@@ -43,6 +43,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
   const { addCard } = useKanbanStore();
   const [addingCard, setAddingCard] = useState(false);
   const [newCardTitle, setNewCardTitle] = useState("");
+  const [newCardDueDate, setNewCardDueDate] = useState("");
 
   // Menu state
   const [menuOpen, setMenuOpen] = useState(false);
@@ -139,7 +140,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
   }
 
   async function handleAddCard() {
-    if (!newCardTitle.trim()) return;
+    if (!newCardTitle.trim() || !newCardDueDate) return;
     const position = cards.length;
     const { data } = await supabase
       .from("cards")
@@ -147,6 +148,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
         column_id: column.id,
         board_id: boardId,
         title: newCardTitle.trim(),
+        due_date: newCardDueDate,
         position,
         priority: "medium",
         created_by: currentUserId,
@@ -158,6 +160,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
       addCard({ ...data, card_assignees: [] });
     }
     setNewCardTitle("");
+    setNewCardDueDate("");
     setAddingCard(false);
   }
 
@@ -359,8 +362,23 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
                 if (e.key === "Escape") setAddingCard(false);
               }}
             />
+            <input
+              type="date"
+              value={newCardDueDate}
+              onChange={(e) => setNewCardDueDate(e.target.value)}
+              className="w-full mt-1 px-2 py-1 bg-background border border-input rounded text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              placeholder="Prazo de entrega"
+              required
+            />
+            {!newCardDueDate && (
+              <p className="text-xs text-destructive mt-0.5">Prazo obrigatório</p>
+            )}
             <div className="flex gap-2 mt-2">
-              <button onClick={handleAddCard} className="flex-1 bg-primary text-primary-foreground py-1 rounded-md text-xs font-medium hover:bg-primary/90">
+              <button
+                onClick={handleAddCard}
+                disabled={!newCardTitle.trim() || !newCardDueDate}
+                className="flex-1 bg-primary text-primary-foreground py-1 rounded-md text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+              >
                 Adicionar
               </button>
               <button onClick={() => setAddingCard(false)} className="px-2 py-1 text-muted-foreground hover:text-foreground text-xs">

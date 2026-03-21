@@ -102,7 +102,7 @@ export function CreateTaskModal({
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !selectedBoardId || !selectedColumnId) return;
+    if (!title.trim() || !selectedBoardId || !selectedColumnId || !dueDate) return;
     setLoading(true);
 
     // Get max position in column
@@ -320,18 +320,25 @@ export function CreateTaskModal({
             </div>
           </div>
 
-          {/* Due Date */}
+          {/* Due Date (required) */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
               <Calendar className="w-4 h-4 text-muted-foreground" />
-              Prazo de entrega
+              Prazo de entrega <span className="text-destructive">*</span>
             </label>
             <input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-full px-3 py-2 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              required
+              className={cn(
+                "w-full px-3 py-2 bg-background border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring",
+                !dueDate ? "border-destructive/50" : "border-input"
+              )}
             />
+            {!dueDate && (
+              <p className="text-xs text-destructive">Obrigatório</p>
+            )}
           </div>
 
           {/* Assign to */}
