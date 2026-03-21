@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUIStore } from "@/lib/stores/ui-store";
+import { useAuth } from "@/components/providers/AuthProvider";
 import {
   Users, Mail, Copy, Check, Loader2, Trash2,
   Crown, Shield, User, UserX, Link2, ArrowLeft,
@@ -36,6 +37,8 @@ const roleColors: Record<string, string> = {
 export default function MembersPage() {
   const supabase = createClient();
   const { activeOrgId } = useUIStore();
+  const { user } = useAuth();
+  const currentUserId = user?.id || null;
   const [members, setMembers] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
@@ -51,11 +54,10 @@ export default function MembersPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   // Team assignment modal
   const [teamModalMember, setTeamModalMember] = useState<any | null>(null);
 
-  // Derive current user role from members list (more reliable than separate query)
+  // Derive current user role from members list
   const currentUserRole = members.find((m) => m.user_id === currentUserId)?.role || null;
   const isAdmin = currentUserRole === "owner" || currentUserRole === "admin";
 
@@ -65,10 +67,6 @@ export default function MembersPage() {
       loadInvitations();
       loadTeams();
     }
-    // Load current user ID
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setCurrentUserId(user.id);
-    });
   }, [activeOrgId]);
 
   // Close menu on outside click
