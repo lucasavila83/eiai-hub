@@ -44,7 +44,7 @@ export function CreateTaskModal({
   // Extract file info if the message is a file attachment
   const fileMatch = defaultTitle.match(FILE_URL_REGEX);
   const attachmentFile = fileMatch ? { name: fileMatch[1], url: fileMatch[2] } : null;
-  const cleanTitle = attachmentFile ? attachmentFile.name : defaultTitle;
+  const cleanTitle = attachmentFile ? attachmentFile.name : defaultTitle.split("\n")[0].slice(0, 100);
 
   const [title, setTitle] = useState(cleanTitle);
   const [dueDate, setDueDate] = useState("");

@@ -386,9 +386,8 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
 
   // Context menu: Create Task
   function handleContextCreateTask(messageContent: string) {
-    // Use first line or first 100 chars as default title
-    const firstLine = messageContent.split("\n")[0].slice(0, 100);
-    setTaskDefaultTitle(firstLine);
+    // Pass full content (CreateTaskModal will detect files and extract title)
+    setTaskDefaultTitle(messageContent);
     setTaskDefaultAssigneeId(channel.type === "dm" ? otherUserId : undefined);
     setShowTaskModal(true);
   }
