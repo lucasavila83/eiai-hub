@@ -128,14 +128,31 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   }
 
   async function loadDMs(orgId: string) {
+    if (!profile) return;
+
+    // First get channel IDs where current user is a member
+    const { data: myChannelMembers } = await supabase
+      .from("channel_members")
+      .select("channel_id")
+      .eq("user_id", profile.id);
+
+    if (!myChannelMembers || myChannelMembers.length === 0) {
+      setDmChannels([]);
+      return;
+    }
+
+    const myChannelIds = myChannelMembers.map((cm: any) => cm.channel_id);
+
+    // Then load only DM channels the user belongs to
     const { data } = await supabase
       .from("channels")
       .select("*, channel_members(user_id, profiles:user_id(id, full_name, avatar_url, email, status))")
       .eq("org_id", orgId)
       .eq("type", "dm")
-      .eq("is_archived", false);
+      .eq("is_archived", false)
+      .in("id", myChannelIds);
 
-    if (data && profile) {
+    if (data) {
       const enriched = data.map((ch: any) => {
         const otherMember = ch.channel_members?.find(
           (m: any) => m.user_id !== profile.id
