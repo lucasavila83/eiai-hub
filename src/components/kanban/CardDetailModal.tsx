@@ -227,6 +227,8 @@ export function CardDetailModal({
   const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [showAI, setShowAI] = useState(false);
+  const [descriptionRecording, setDescriptionRecording] = useState(false);
+  const descriptionRecorderRef = useRef<{ recorder: MediaRecorder; stream: MediaStream } | null>(null);
 
   // Labels
   const [cardLabels, setCardLabels] = useState<{ id: string; name: string; color: string }[]>([]);
@@ -1426,7 +1428,7 @@ export function CardDetailModal({
                     className="w-full px-3 py-2 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y"
                     placeholder="Adicione uma descricao..."
                   />
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
                     <button
                       onClick={handleDescriptionSave}
                       className="px-4 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90"
@@ -1438,6 +1440,53 @@ export function CardDetailModal({
                       className="px-4 py-1.5 text-muted-foreground hover:text-foreground text-xs"
                     >
                       Cancelar
+                    </button>
+                    <div className="flex-1" />
+                    <button
+                      onClick={async () => {
+                        // If already recording, stop
+                        if (descriptionRecording && descriptionRecorderRef.current) {
+                          descriptionRecorderRef.current.recorder.stop();
+                          setDescriptionRecording(false);
+                          return;
+                        }
+                        try {
+                          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                          const recorder = new MediaRecorder(stream, {
+                            mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm"
+                          });
+                          const chunks: Blob[] = [];
+                          recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+                          recorder.onstop = async () => {
+                            stream.getTracks().forEach(t => t.stop());
+                            const blob = new Blob(chunks, { type: "audio/webm" });
+                            // Transcribe
+                            const formData = new FormData();
+                            formData.append("audio", blob, "audio.webm");
+                            const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+                            if (res.ok) {
+                              const { text } = await res.json();
+                              if (text) setDescription((prev) => (prev || "") + (prev ? "\n" : "") + text);
+                            }
+                          };
+                          recorder.start();
+                          // Stop after user clicks again or after 60s
+                          setDescriptionRecording(true);
+                          descriptionRecorderRef.current = { recorder, stream };
+                        } catch {
+                          alert("Não foi possível acessar o microfone.");
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                        descriptionRecording
+                          ? "bg-red-500 text-white animate-pulse"
+                          : "bg-muted text-muted-foreground hover:text-foreground hover:bg-accent"
+                      )}
+                      title={descriptionRecording ? "Parar gravação" : "Gravar e transcrever"}
+                    >
+                      <Mic className="w-3.5 h-3.5" />
+                      {descriptionRecording ? "Gravando..." : "Voz"}
                     </button>
                   </div>
                 </div>
@@ -2022,6 +2071,40 @@ export function CardDetailModal({
                     cardDescription={description}
                     subtasks={subtasks}
                     onClose={() => setShowAI(false)}
+                    onInsertContent={async (content, target) => {
+                      if (target === "description") {
+                        // Append to description
+                        const newDesc = (description || "") + (description ? "\n\n" : "") + content;
+                        setDescription(newDesc);
+                        await supabase.from("cards").update({ description: newDesc }).eq("id", card.id);
+                      } else if (target === "subtask") {
+                        // Parse lines as subtasks
+                        const lines = content.split("\n").filter((l) => l.trim());
+                        for (let idx = 0; idx < lines.length; idx++) {
+                          let line = lines[idx].replace(/^[-•*]\s*/, "").replace(/^\d+\.\s*/, "").trim();
+                          if (!line) continue;
+                          // Remove markdown bold
+                          line = line.replace(/\*\*/g, "");
+                          const pos = subtasks.length + idx;
+                          await supabase.from("subtasks").insert({
+                            card_id: card.id,
+                            title: line,
+                            is_completed: false,
+                            position: pos,
+                            assigned_to: null,
+                            created_by: currentUserId,
+                          });
+                        }
+                        await loadSubtasks();
+                      } else if (target === "checklist") {
+                        // Create a new checklist with parsed items
+                        const lines = content.split("\n").filter((l) => l.trim());
+                        const items = lines
+                          .map((l) => l.replace(/^[-•*]\s*/, "").replace(/^\d+\.\s*/, "").replace(/\*\*/g, "").trim())
+                          .filter((l) => l.length > 0);
+                        await handleAddChecklist("IA - Checklist", items.map((t) => ({ title: t })));
+                      }
+                    }}
                   />
                 </div>
               )}

@@ -1,15 +1,20 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Bot, Send, Loader2, X, Sparkles } from "lucide-react";
+import {
+  Bot, Send, Loader2, X, Sparkles,
+  Plus, FileText, ListChecks, ClipboardList, ChevronDown,
+} from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
+
+type InsertTarget = "description" | "subtask" | "checklist";
 
 interface Props {
   cardTitle: string;
   cardDescription: string | null;
   subtasks: { title: string; is_completed: boolean }[];
   onClose: () => void;
-  onInsertText?: (text: string) => void;
+  onInsertContent?: (content: string, target: InsertTarget) => void;
 }
 
 interface Message {
@@ -20,18 +25,11 @@ interface Message {
 function renderMarkdown(text: string) {
   return text.split("\n").map((line, i) => {
     let content: any = line;
-    // Bold
     content = content.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    // Italic
     content = content.replace(/_(.+?)_/g, "<em>$1</em>");
-    // Inline code
     content = content.replace(/`(.+?)`/g, '<code class="bg-muted px-1 rounded text-xs">$1</code>');
-    // List items
     if (line.match(/^[-•]\s/)) {
       content = "• " + content.slice(2);
-    }
-    if (line.match(/^\d+\.\s/)) {
-      // keep numbered lists as is
     }
     return (
       <p
@@ -50,10 +48,17 @@ const QUICK_PROMPTS = [
   { label: "Estimar prazo", prompt: "Estime um prazo razoável para esta tarefa e explique." },
 ];
 
-export function AIAssistant({ cardTitle, cardDescription, subtasks, onClose, onInsertText }: Props) {
+const INSERT_OPTIONS = [
+  { target: "description" as InsertTarget, label: "Descrição", icon: FileText },
+  { target: "subtask" as InsertTarget, label: "Subtarefas", icon: ListChecks },
+  { target: "checklist" as InsertTarget, label: "Novo checklist", icon: ClipboardList },
+];
+
+export function AIAssistant({ cardTitle, cardDescription, subtasks, onClose, onInsertContent }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [insertMenuIdx, setInsertMenuIdx] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,6 +69,14 @@ export function AIAssistant({ cardTitle, cardDescription, subtasks, onClose, onI
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Close insert menu on click outside
+  useEffect(() => {
+    if (insertMenuIdx === null) return;
+    function handleClick() { setInsertMenuIdx(null); }
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [insertMenuIdx]);
 
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return;
@@ -111,6 +124,11 @@ export function AIAssistant({ cardTitle, cardDescription, subtasks, onClose, onI
     }
   }
 
+  function handleInsert(content: string, target: InsertTarget) {
+    setInsertMenuIdx(null);
+    onInsertContent?.(content, target);
+  }
+
   return (
     <div className="flex flex-col h-full max-h-[500px] bg-card border border-border rounded-xl overflow-hidden">
       {/* Header */}
@@ -153,25 +171,64 @@ export function AIAssistant({ cardTitle, cardDescription, subtasks, onClose, onI
         )}
 
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={cn(
-              "max-w-[90%]",
-              msg.role === "user" ? "ml-auto" : "mr-auto"
-            )}
-          >
+          <div key={i}>
             <div
               className={cn(
-                "rounded-xl px-3 py-2",
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted"
+                "max-w-[90%]",
+                msg.role === "user" ? "ml-auto" : "mr-auto"
               )}
             >
-              {msg.role === "assistant" ? (
-                <div className="space-y-0.5">{renderMarkdown(msg.content)}</div>
-              ) : (
-                <p className="text-sm">{msg.content}</p>
+              <div
+                className={cn(
+                  "rounded-xl px-3 py-2",
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted"
+                )}
+              >
+                {msg.role === "assistant" ? (
+                  <div className="space-y-0.5">{renderMarkdown(msg.content)}</div>
+                ) : (
+                  <p className="text-sm">{msg.content}</p>
+                )}
+              </div>
+
+              {/* Insert button for AI responses */}
+              {msg.role === "assistant" && onInsertContent && (
+                <div className="relative mt-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInsertMenuIdx(insertMenuIdx === i ? null : i);
+                    }}
+                    className="flex items-center gap-1 text-[11px] text-primary/70 hover:text-primary font-medium transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Inserir na tarefa
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+
+                  {insertMenuIdx === i && (
+                    <div
+                      className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl py-1 w-48 animate-in fade-in zoom-in-95 duration-100"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {INSERT_OPTIONS.map((opt) => {
+                        const Icon = opt.icon;
+                        return (
+                          <button
+                            key={opt.target}
+                            onClick={() => handleInsert(msg.content, opt.target)}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+                          >
+                            <Icon className="w-4 h-4 text-primary" />
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
