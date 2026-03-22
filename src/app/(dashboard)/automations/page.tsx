@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUIStore } from "@/lib/stores/ui-store";
+import { PermissionGuard } from "@/components/layout/PermissionGuard";
 import {
   Zap,
   Plus,
@@ -306,6 +307,7 @@ export default function AutomationsPage() {
   }
 
   return (
+    <PermissionGuard permission="canManageAutomations">
     <div className="p-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
@@ -658,5 +660,6 @@ export default function AutomationsPage() {
         </div>
       )}
     </div>
+    </PermissionGuard>
   );
 }

@@ -225,17 +225,17 @@ export function TopBar({ profile }: TopBarProps) {
   }
 
   return (
-    <header className="h-12 border-b border-gray-200 bg-white flex items-center px-4 gap-3 shrink-0">
+    <header className="h-12 border-b border-border bg-card flex items-center px-4 gap-3 shrink-0">
       <button
         onClick={toggleSidebar}
-        className="text-gray-500 hover:text-gray-900 transition-colors"
+        className="text-muted-foreground hover:text-foreground transition-colors"
       >
         <Menu className="w-5 h-5" />
       </button>
 
       <div className="flex-1 flex items-center gap-2 max-w-md" ref={containerRef}>
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             ref={inputRef}
             type="text"
@@ -248,21 +248,21 @@ export function TopBar({ profile }: TopBarProps) {
               if (query.trim()) setIsOpen(true);
             }}
             placeholder="Buscar..."
-            className="w-full pl-9 pr-4 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            className="w-full pl-9 pr-4 py-1.5 bg-muted border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           />
 
           {/* Search Dropdown */}
           {isOpen && query.trim().length >= 2 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[400px] overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-[400px] overflow-y-auto">
               {isLoading && (
                 <div className="flex items-center justify-center py-4">
-                  <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
-                  <span className="ml-2 text-sm text-gray-500">Buscando...</span>
+                  <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+                  <span className="ml-2 text-sm text-muted-foreground">Buscando...</span>
                 </div>
               )}
 
               {!isLoading && !hasResults && (
-                <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                <div className="px-4 py-3 text-sm text-muted-foreground text-center">
                   Nenhum resultado encontrado
                 </div>
               )}
@@ -272,7 +272,7 @@ export function TopBar({ profile }: TopBarProps) {
                   {/* Messages */}
                   {results.messages.length > 0 && (
                     <div>
-                      <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 border-b border-gray-100 flex items-center gap-1.5">
+                      <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted border-b border-border/50 flex items-center gap-1.5">
                         <MessageSquare className="w-3.5 h-3.5" />
                         Mensagens
                       </div>
@@ -280,12 +280,12 @@ export function TopBar({ profile }: TopBarProps) {
                         <button
                           key={msg.id}
                           onClick={() => handleNavigateMessage(msg.channel_id)}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0"
+                          className="w-full text-left px-3 py-2 hover:bg-accent transition-colors border-b border-gray-50 last:border-b-0"
                         >
-                          <p className="text-sm text-gray-900 truncate">
+                          <p className="text-sm text-foreground truncate">
                             {truncate(msg.content, 80)}
                           </p>
-                          <p className="text-xs text-gray-400 mt-0.5">
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             {msg.profiles?.full_name || "Desconhecido"}
                           </p>
                         </button>
@@ -296,7 +296,7 @@ export function TopBar({ profile }: TopBarProps) {
                   {/* Cards/Tasks */}
                   {results.cards.length > 0 && (
                     <div>
-                      <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 border-b border-gray-100 flex items-center gap-1.5">
+                      <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted border-b border-border/50 flex items-center gap-1.5">
                         <CheckSquare className="w-3.5 h-3.5" />
                         Tarefas
                       </div>
@@ -304,17 +304,17 @@ export function TopBar({ profile }: TopBarProps) {
                         <button
                           key={card.id}
                           onClick={() => handleNavigateCard(card.board_id)}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0"
+                          className="w-full text-left px-3 py-2 hover:bg-accent transition-colors border-b border-gray-50 last:border-b-0"
                         >
-                          <p className="text-sm text-gray-900 truncate">
+                          <p className="text-sm text-foreground truncate">
                             {truncate(card.title, 80)}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
                             {card.priority && (
-                              <span className="text-xs text-gray-400 capitalize">{card.priority}</span>
+                              <span className="text-xs text-muted-foreground capitalize">{card.priority}</span>
                             )}
                             {card.due_date && (
-                              <span className="text-xs text-gray-400">
+                              <span className="text-xs text-muted-foreground">
                                 {new Date(card.due_date).toLocaleDateString("pt-BR")}
                               </span>
                             )}
@@ -327,7 +327,7 @@ export function TopBar({ profile }: TopBarProps) {
                   {/* Members */}
                   {results.members.length > 0 && (
                     <div>
-                      <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 border-b border-gray-100 flex items-center gap-1.5">
+                      <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted border-b border-border/50 flex items-center gap-1.5">
                         <User className="w-3.5 h-3.5" />
                         Membros
                       </div>
@@ -335,7 +335,7 @@ export function TopBar({ profile }: TopBarProps) {
                         <button
                           key={member.id}
                           onClick={() => handleNavigateMember(member.id)}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0 flex items-center gap-2"
+                          className="w-full text-left px-3 py-2 hover:bg-accent transition-colors border-b border-gray-50 last:border-b-0 flex items-center gap-2"
                         >
                           {member.avatar_url ? (
                             <img
@@ -356,11 +356,11 @@ export function TopBar({ profile }: TopBarProps) {
                             </div>
                           )}
                           <div className="min-w-0">
-                            <p className="text-sm text-gray-900 truncate">
+                            <p className="text-sm text-foreground truncate">
                               {member.full_name || member.email}
                             </p>
                             {member.full_name && (
-                              <p className="text-xs text-gray-400 truncate">{member.email}</p>
+                              <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                             )}
                           </div>
                         </button>
@@ -378,20 +378,21 @@ export function TopBar({ profile }: TopBarProps) {
         {/* Logo Lesco */}
         <img src="/lesco-logo.png" alt="Lesco" className="h-7" />
 
-        <button className="relative text-gray-500 hover:text-gray-900 transition-colors p-1.5">
+        <button className="relative text-muted-foreground hover:text-foreground transition-colors p-1.5">
           <Bell className="w-5 h-5" />
         </button>
         <Link
           href="/settings/profile"
-          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
+          className="relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
           style={{ backgroundColor: generateColor(profile?.full_name || profile?.email || "U") }}
           title="Meu Perfil"
         >
           {profile?.avatar_url ? (
-            <img src={profile.avatar_url} alt="Avatar" className="w-7 h-7 rounded-full object-cover" />
+            <img src={profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
           ) : (
             getInitials(profile?.full_name || profile?.email || "U")
           )}
+          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white" />
         </Link>
       </div>
     </header>

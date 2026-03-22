@@ -1605,26 +1605,20 @@ export function CardDetailModal({
                           </span>
                         )}
 
-                        {/* Due date picker — same style as checklist items */}
+                        {/* Due date picker — always visible like checklist items */}
                         <input
                           type="date"
                           value={st.due_date || ""}
                           onChange={(e) => handleSubtaskDueDate(st.id, e.target.value || null)}
-                          className={cn(
-                            "w-[110px] shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-opacity",
-                            st.due_date && "opacity-100"
-                          )}
+                          className="w-[110px] shrink-0 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                           title="Data de vencimento"
                         />
 
-                        {/* Assignee picker — same style as checklist items */}
+                        {/* Assignee picker — always visible like checklist items */}
                         <select
                           value={st.assigned_to || ""}
                           onChange={(e) => handleSubtaskAssignee(st.id, e.target.value || null)}
-                          className={cn(
-                            "w-[100px] shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-opacity appearance-none",
-                            st.assigned_to && "opacity-100"
-                          )}
+                          className="w-[100px] shrink-0 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring appearance-none"
                           title="Responsável"
                         >
                           <option value="">Ninguem</option>
@@ -1636,7 +1630,7 @@ export function CardDetailModal({
                         </select>
                         <button
                           onClick={() => handleDeleteSubtask(st.id)}
-                          className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                          className="shrink-0 text-muted-foreground/50 hover:text-destructive transition-colors"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -1781,26 +1775,20 @@ export function CardDetailModal({
                                 </span>
                               )}
 
-                              {/* Due date picker */}
+                              {/* Due date picker — always visible */}
                               <input
                                 type="date"
                                 value={item.due_date ? item.due_date.split("T")[0] : ""}
                                 onChange={(e) => handleChecklistItemDueDate(cl.id, item.id, e.target.value)}
-                                className={cn(
-                                  "w-[110px] shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-opacity",
-                                  item.due_date && "opacity-100"
-                                )}
+                                className="w-[110px] shrink-0 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                                 title="Data de vencimento"
                               />
 
-                              {/* Assignee picker */}
+                              {/* Assignee picker — always visible */}
                               <select
                                 value={item.assigned_to || ""}
                                 onChange={(e) => handleChecklistItemAssignee(cl.id, item.id, e.target.value || null)}
-                                className={cn(
-                                  "w-[100px] shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-opacity appearance-none",
-                                  item.assigned_to && "opacity-100"
-                                )}
+                                className="w-[100px] shrink-0 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring appearance-none"
                                 title="Responsavel"
                               >
                                 <option value="">Ninguem</option>

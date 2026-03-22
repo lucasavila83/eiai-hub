@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { UserCircle, Users, UserCog, Bot, Shield, ChevronRight, ArrowLeft } from "lucide-react";
+import { PermissionGuard } from "@/components/layout/PermissionGuard";
 
 export default function SettingsPage() {
   const settingsItems = [
@@ -13,6 +14,7 @@ export default function SettingsPage() {
   ];
 
   return (
+    <PermissionGuard permission="canAccessSettings">
     <div className="p-6 max-w-2xl">
       <div className="flex items-center gap-3 mb-6">
         <Link
@@ -42,5 +44,6 @@ export default function SettingsPage() {
         ))}
       </div>
     </div>
+    </PermissionGuard>
   );
 }

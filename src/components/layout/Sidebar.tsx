@@ -291,25 +291,15 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
             })}
           </nav>
 
-          {/* Bottom: logout + avatar */}
+          {/* Bottom: logout only */}
           <div className="mt-auto flex flex-col items-center gap-2">
             <button
               onClick={handleLogout}
-              className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               title="Sair"
             >
               <LogOut className="w-5 h-5" />
             </button>
-            <div className="relative">
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white cursor-default"
-                style={{ backgroundColor: generateColor(profile?.full_name || profile?.email || "U") }}
-                title={profile?.full_name || profile?.email || "Usuário"}
-              >
-                {getInitials(profile?.full_name || profile?.email || "U")}
-              </div>
-              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white" />
-            </div>
           </div>
         </div>
 

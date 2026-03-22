@@ -36,7 +36,7 @@ function getIcon(type: string) {
     case "unread":
       return <MessageSquare className="w-5 h-5 text-green-500" />;
     default:
-      return <Bell className="w-5 h-5 text-gray-400" />;
+      return <Bell className="w-5 h-5 text-muted-foreground" />;
   }
 }
 
@@ -179,15 +179,15 @@ export default function NotificationsPage() {
         </button>
       </div>
 
-      <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+      <div className="flex items-center gap-1 mb-6 bg-muted rounded-lg p-1">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === tab.key
-                ? "bg-white text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent"
             }`}
           >
             {tab.label}
@@ -196,7 +196,7 @@ export default function NotificationsPage() {
                 className={`text-xs px-1.5 py-0.5 rounded-full ${
                   activeTab === tab.key
                     ? "bg-primary/10 text-primary"
-                    : "bg-gray-200 text-muted-foreground"
+                    : "bg-muted text-muted-foreground"
                 }`}
               >
                 {tab.count}
@@ -208,7 +208,7 @@ export default function NotificationsPage() {
 
       {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20">
-          <div className="p-4 bg-gray-100 rounded-full mb-4">
+          <div className="p-4 bg-muted rounded-full mb-4">
             <Bell className="w-10 h-10 text-muted-foreground" />
           </div>
           <h2 className="text-lg font-semibold text-foreground mb-1">Nenhuma notificacao</h2>
@@ -219,8 +219,8 @@ export default function NotificationsPage() {
           {filtered.map((n) => (
             <div
               key={n.id}
-              className={`bg-white border rounded-xl p-4 transition-colors hover:border-gray-300 ${
-                !n.is_read ? "border-primary/30 bg-primary/[0.02]" : "border-gray-200"
+              className={`bg-card border rounded-xl p-4 transition-colors hover:border-border ${
+                !n.is_read ? "border-primary/30 bg-primary/[0.02]" : "border-border"
               }`}
             >
               <div className="flex items-start gap-3">

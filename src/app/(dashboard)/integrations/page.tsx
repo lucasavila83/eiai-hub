@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useUIStore } from "@/lib/stores/ui-store";
+import { PermissionGuard } from "@/components/layout/PermissionGuard";
 import {
   Plug,
   Plus,
@@ -256,6 +257,7 @@ export default function IntegrationsPage() {
   }
 
   return (
+    <PermissionGuard permission="canManageIntegrations">
     <div className="p-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
@@ -660,5 +662,6 @@ export default function IntegrationsPage() {
         </div>
       )}
     </div>
+    </PermissionGuard>
   );
 }

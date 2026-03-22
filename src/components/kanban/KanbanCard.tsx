@@ -92,8 +92,9 @@ export function KanbanCard({
 
       {/* Bottom row: icons/badges */}
       {hasBottomRow && (
-        <div className="flex items-center justify-between gap-1.5 mt-1">
-          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+        <div className="mt-1.5 space-y-1.5">
+          {/* Badges row */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             {/* Due date */}
             {showDueDate && (
               <div
@@ -105,7 +106,7 @@ export function KanbanCard({
                 )}
               >
                 <Calendar className="w-3 h-3 shrink-0" />
-                <span>{formatDate(card.due_date!)}</span>
+                <span className="truncate">{formatDate(card.due_date!)}</span>
               </div>
             )}
 
@@ -113,7 +114,7 @@ export function KanbanCard({
             {showPriority && (
               <div className={cn("flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5", priority.bg, priority.color)} title={priority.label}>
                 <Flag className={cn("w-3 h-3 shrink-0", priority.flagColor)} />
-                <span className="font-medium hidden sm:inline">{priority.label}</span>
+                <span className="font-medium">{priority.label}</span>
               </div>
             )}
 
@@ -146,27 +147,29 @@ export function KanbanCard({
             )}
           </div>
 
-          {/* Assignee avatars - right aligned */}
+          {/* Assignee avatars - separate row to avoid squishing */}
           {showAssignees && (
-            <div className="flex -space-x-1.5 shrink-0">
-              {card.card_assignees.slice(0, 3).map((a: any) => {
-                const name = a.profiles?.full_name || a.profiles?.email || "?";
-                return (
-                  <div
-                    key={a.user_id}
-                    title={name}
-                    className="w-6 h-6 rounded-full border-2 border-card flex items-center justify-center text-[9px] font-bold text-white"
-                    style={{ backgroundColor: generateColor(name) }}
-                  >
-                    {getInitials(name)}
+            <div className="flex items-center justify-end">
+              <div className="flex -space-x-1.5">
+                {card.card_assignees.slice(0, 3).map((a: any) => {
+                  const name = a.profiles?.full_name || a.profiles?.email || "?";
+                  return (
+                    <div
+                      key={a.user_id}
+                      title={name}
+                      className="w-6 h-6 rounded-full border-2 border-card flex items-center justify-center text-[9px] font-bold text-white"
+                      style={{ backgroundColor: generateColor(name) }}
+                    >
+                      {getInitials(name)}
+                    </div>
+                  );
+                })}
+                {card.card_assignees.length > 3 && (
+                  <div className="w-6 h-6 rounded-full border-2 border-card bg-muted flex items-center justify-center text-[9px] font-medium text-muted-foreground">
+                    +{card.card_assignees.length - 3}
                   </div>
-                );
-              })}
-              {card.card_assignees.length > 3 && (
-                <div className="w-6 h-6 rounded-full border-2 border-card bg-muted flex items-center justify-center text-[9px] font-medium text-muted-foreground">
-                  +{card.card_assignees.length - 3}
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
         </div>

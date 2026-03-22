@@ -92,17 +92,50 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!activeOrgId) return;
     (async () => {
-      const { data } = await supabase
+      // Try loading members with profiles join
+      const { data, error } = await supabase
         .from("org_members")
         .select("user_id, profiles:user_id(id, full_name, email, avatar_url)")
         .eq("org_id", activeOrgId);
+
+      if (error) {
+        console.error("Error loading members for dashboard filter:", error);
+        // Fallback: load profiles separately
+        const { data: membersData } = await supabase
+          .from("org_members")
+          .select("user_id")
+          .eq("org_id", activeOrgId);
+        if (membersData) {
+          const userIds = membersData.map((m: any) => m.user_id);
+          const { data: profilesData } = await supabase
+            .from("profiles")
+            .select("id, full_name, email, avatar_url")
+            .in("id", userIds);
+          if (profilesData) {
+            const mapped = profilesData.map((p: any) => ({
+              id: p.id,
+              full_name: p.full_name,
+              email: p.email,
+              avatar_url: p.avatar_url,
+            }));
+            mapped.sort((a: MemberOption, b: MemberOption) =>
+              (a.full_name || a.email).localeCompare(b.full_name || b.email)
+            );
+            setMembers(mapped);
+          }
+        }
+        return;
+      }
+
       if (data) {
-        const mapped = data.map((m: any) => ({
-          id: m.user_id,
-          full_name: m.profiles.full_name,
-          email: m.profiles.email,
-          avatar_url: m.profiles.avatar_url,
-        }));
+        const mapped = data
+          .filter((m: any) => m.profiles) // Filter out null profiles
+          .map((m: any) => ({
+            id: m.user_id,
+            full_name: m.profiles?.full_name || null,
+            email: m.profiles?.email || "",
+            avatar_url: m.profiles?.avatar_url || null,
+          }));
         mapped.sort((a: MemberOption, b: MemberOption) =>
           (a.full_name || a.email).localeCompare(b.full_name || b.email)
         );
@@ -320,14 +353,14 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Member filter — only visible to admins */}
-        {perms.canViewDashboardAll && (
+        {/* Member filter — visible to admins/owners */}
+        {perms.canViewDashboardAll && members.length > 0 && (
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-muted-foreground" />
             <select
               value={selectedMemberId || ""}
               onChange={(e) => setSelectedMemberId(e.target.value || null)}
-              className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 min-w-[180px]"
+              className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 min-w-[200px] hover:border-primary/50 transition-colors"
             >
               <option value="">Todos os membros</option>
               {members.map((m) => (

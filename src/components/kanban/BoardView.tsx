@@ -7,7 +7,7 @@ import { CardDetailModal } from "./CardDetailModal";
 import { LabelManagerModal } from "./LabelManagerModal";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
-import { Plus, Settings, Tags, SlidersHorizontal } from "lucide-react";
+import { Plus, Settings, Tags, SlidersHorizontal, Filter, X } from "lucide-react";
 import { BoardSettingsModal } from "./BoardSettingsModal";
 import { defaultVisibleFields, type VisibleFields } from "./KanbanCard";
 import type { Board, Column, Card } from "@/lib/types/database";
@@ -37,6 +37,53 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   const [visibleFields, setVisibleFields] = useState<VisibleFields>({ ...defaultVisibleFields });
   const [showFieldsPopover, setShowFieldsPopover] = useState(false);
   const fieldsPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Filters
+  const [filterPriority, setFilterPriority] = useState<string>("");
+  const [filterAssignee, setFilterAssignee] = useState<string>("");
+  const [filterDue, setFilterDue] = useState<string>(""); // "overdue" | "today" | "this_week" | ""
+  const [showFilters, setShowFilters] = useState(false);
+
+  const hasActiveFilters = filterPriority || filterAssignee || filterDue;
+
+  function filterCards(columnCards: (Card & { card_assignees: any[] })[]) {
+    let filtered = columnCards;
+    if (filterPriority) {
+      filtered = filtered.filter((c) => c.priority === filterPriority);
+    }
+    if (filterAssignee) {
+      if (filterAssignee === "__me__") {
+        filtered = filtered.filter((c) =>
+          c.card_assignees?.some((a: any) => a.user_id === currentUserId)
+        );
+      } else {
+        filtered = filtered.filter((c) =>
+          c.card_assignees?.some((a: any) => a.user_id === filterAssignee)
+        );
+      }
+    }
+    if (filterDue) {
+      const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+      if (filterDue === "overdue") {
+        filtered = filtered.filter((c) => c.due_date && c.due_date < todayStr && !c.completed_at);
+      } else if (filterDue === "today") {
+        filtered = filtered.filter((c) => c.due_date === todayStr);
+      } else if (filterDue === "this_week") {
+        const weekEnd = new Date(now);
+        weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
+        const weekEndStr = weekEnd.toISOString().split("T")[0];
+        filtered = filtered.filter((c) => c.due_date && c.due_date >= todayStr && c.due_date <= weekEndStr);
+      }
+    }
+    return filtered;
+  }
+
+  function clearFilters() {
+    setFilterPriority("");
+    setFilterAssignee("");
+    setFilterDue("");
+  }
 
   // Close fields popover on outside click
   useEffect(() => {
@@ -204,14 +251,32 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
       <div className="px-6 py-3 border-b border-border flex items-center justify-between shrink-0">
         <h2 className="font-bold text-foreground text-lg">{board.name}</h2>
         <div className="flex items-center gap-2">
+          {/* Filters button */}
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className={`flex items-center gap-1.5 text-sm transition-colors px-2 py-1 rounded-md ${
+              hasActiveFilters
+                ? "text-primary bg-primary/10"
+                : showFilters
+                ? "text-foreground bg-accent"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent"
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+            Filtros
+            {hasActiveFilters && (
+              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+            )}
+          </button>
+
           {/* Field visibility button */}
           <div className="relative" ref={fieldsPopoverRef}>
             <button
               onClick={() => setShowFieldsPopover((v) => !v)}
-              className={`flex items-center gap-1.5 text-sm transition-colors ${
+              className={`flex items-center gap-1.5 text-sm transition-colors px-2 py-1 rounded-md ${
                 showFieldsPopover
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "text-foreground bg-accent"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
               }`}
             >
               <SlidersHorizontal className="w-4 h-4" />
@@ -273,13 +338,79 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         </div>
       </div>
 
+      {/* Filter bar */}
+      {showFilters && (
+        <div className="px-6 py-2 border-b border-border bg-accent/20 flex items-center gap-3 flex-wrap shrink-0">
+          {/* Filter by assignee */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Responsável:</span>
+            <select
+              value={filterAssignee}
+              onChange={(e) => setFilterAssignee(e.target.value)}
+              className="bg-card border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 min-w-[140px]"
+            >
+              <option value="">Todos</option>
+              <option value="__me__">Minhas tarefas</option>
+              {orgMembers.map((m: any) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {m.profiles?.full_name || m.profiles?.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filter by priority */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Prioridade:</span>
+            <select
+              value={filterPriority}
+              onChange={(e) => setFilterPriority(e.target.value)}
+              className="bg-card border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 min-w-[110px]"
+            >
+              <option value="">Todas</option>
+              <option value="urgent">Urgente</option>
+              <option value="high">Alta</option>
+              <option value="medium">Média</option>
+              <option value="low">Baixa</option>
+              <option value="none">Sem prioridade</option>
+            </select>
+          </div>
+
+          {/* Filter by due date */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Vencimento:</span>
+            <select
+              value={filterDue}
+              onChange={(e) => setFilterDue(e.target.value)}
+              className="bg-card border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 min-w-[120px]"
+            >
+              <option value="">Todos</option>
+              <option value="overdue">Atrasadas</option>
+              <option value="today">Hoje</option>
+              <option value="this_week">Esta semana</option>
+            </select>
+          </div>
+
+          {/* Clear filters */}
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 hover:bg-destructive/10 px-2 py-1 rounded-md transition-colors"
+            >
+              <X className="w-3 h-3" />
+              Limpar filtros
+            </button>
+          )}
+        </div>
+      )}
+
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-4 p-6 overflow-x-auto h-full">
           {boardColumns.map((column) => (
             <KanbanColumn
               key={column.id}
               column={column}
-              cards={(cards[column.id] || []).map((c) => ({
+              cards={filterCards(cards[column.id] || []).map((c) => ({
                 ...c,
                 labels: cardLabelsMap[c.id] || [],
                 subtaskCount: subtaskCounts[c.id]?.total,
