@@ -62,7 +62,7 @@ export function KanbanCard({
   return (
     <div
       className={cn(
-        "bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all group",
+        "bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all group overflow-hidden",
         isDragging && "shadow-lg rotate-1 scale-105 border-primary/50",
         card.cover_color && "border-t-[3px]"
       )}
@@ -92,8 +92,8 @@ export function KanbanCard({
 
       {/* Bottom row: icons/badges */}
       {hasBottomRow && (
-        <div className="flex items-center justify-between gap-2 mt-1">
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
+        <div className="flex items-center justify-between gap-1.5 mt-1">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
             {/* Due date */}
             {showDueDate && (
               <div
@@ -111,9 +111,9 @@ export function KanbanCard({
 
             {/* Priority flag with label */}
             {showPriority && (
-              <div className={cn("flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5", priority.bg, priority.color)}>
+              <div className={cn("flex items-center gap-1 text-[11px] rounded px-1.5 py-0.5", priority.bg, priority.color)} title={priority.label}>
                 <Flag className={cn("w-3 h-3 shrink-0", priority.flagColor)} />
-                <span className="font-medium">{priority.label}</span>
+                <span className="font-medium hidden sm:inline">{priority.label}</span>
               </div>
             )}
 
