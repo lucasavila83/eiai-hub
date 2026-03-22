@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  MessageSquare, Kanban, Bell, Settings, Calendar, BarChart3, Zap, Plug,
+  MessageSquare, Kanban, Bell, Settings, Calendar, BarChart3, Zap, Plug, Workflow,
   Hash, Lock, ChevronDown, ChevronRight, ChevronLeft,
   Plus, LogOut, X, Loader2, Users, MessageCircle, Check,
   MoreHorizontal, Trash2, EyeOff, UserCog,
@@ -216,6 +216,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const allNavItems = [
     { href: "/chat", icon: MessageSquare, label: "Chat", visible: true },
     { href: "/boards", icon: Kanban, label: "Boards", visible: true },
+    { href: "/processes", icon: Workflow, label: "Processos", visible: perms.processes.view || perms.isAdmin },
     { href: "/calendar", icon: Calendar, label: "Calendário", visible: perms.canViewCalendar },
     { href: "/dashboard", icon: BarChart3, label: "Dashboard", visible: perms.canViewDashboard || perms.isAdmin },
     { href: "/automations", icon: Zap, label: "Automações", visible: perms.canManageAutomations || perms.isAdmin },
