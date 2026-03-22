@@ -9,6 +9,7 @@ import { usePermissions } from "@/lib/hooks/usePermissions";
 import { PermissionGuard } from "@/components/layout/PermissionGuard";
 import { PhaseEditor, type Phase } from "@/components/bpm/PhaseEditor";
 import { FieldConfigurator } from "@/components/bpm/FieldConfigurator";
+import { AutomationBuilder, type Automation } from "@/components/bpm/AutomationBuilder";
 import type { FieldDef } from "@/components/bpm/DynamicField";
 import {
   ArrowLeft, Loader2, Workflow, Settings2, Layers, FileText, Zap,
@@ -42,6 +43,9 @@ function PipeSettingsContent() {
   const [fields, setFields] = useState<FieldDef[]>([]);
   const [loadingFields, setLoadingFields] = useState(false);
 
+  // Automations state
+  const [automations, setAutomations] = useState<Automation[]>([]);
+
   useEffect(() => {
     if (pipeId && activeOrgId) loadData();
   }, [pipeId, activeOrgId]);
@@ -49,7 +53,7 @@ function PipeSettingsContent() {
   async function loadData() {
     setLoading(true);
 
-    const [pipeRes, phasesRes, membersRes] = await Promise.all([
+    const [pipeRes, phasesRes, membersRes, autoRes] = await Promise.all([
       supabase.from("bpm_pipes").select("*").eq("id", pipeId).single(),
       supabase
         .from("bpm_phases")
@@ -60,10 +64,16 @@ function PipeSettingsContent() {
         .from("org_members")
         .select("user_id, profiles:user_id(id, full_name, email, avatar_url)")
         .eq("org_id", activeOrgId!),
+      supabase
+        .from("bpm_automations")
+        .select("*")
+        .eq("pipe_id", pipeId)
+        .order("created_at"),
     ]);
 
     if (pipeRes.data) setPipe(pipeRes.data);
     if (phasesRes.data) setPhases(phasesRes.data);
+    if (autoRes.data) setAutomations(autoRes.data);
     if (membersRes.data) {
       setMembers(
         membersRes.data.map((m: any) => ({
@@ -131,6 +141,34 @@ function PipeSettingsContent() {
   async function handleDeleteField(fieldId: string) {
     await supabase.from("bpm_fields").delete().eq("id", fieldId);
     setFields((prev) => prev.filter((f) => f.id !== fieldId));
+  }
+
+  // Automation handlers
+  async function handleAddAutomation(auto: Omit<Automation, "id" | "pipe_id">) {
+    const { data } = await supabase
+      .from("bpm_automations")
+      .insert({ pipe_id: pipeId, ...auto })
+      .select()
+      .single();
+    if (data) setAutomations((prev) => [...prev, data]);
+  }
+
+  async function handleSaveAutomation(auto: Automation) {
+    await supabase
+      .from("bpm_automations")
+      .update({ name: auto.name, trigger_type: auto.trigger_type, action_type: auto.action_type, phase_id: auto.phase_id, config: auto.config, is_active: auto.is_active, updated_at: new Date().toISOString() })
+      .eq("id", auto.id);
+    setAutomations((prev) => prev.map((a) => a.id === auto.id ? auto : a));
+  }
+
+  async function handleDeleteAutomation(id: string) {
+    await supabase.from("bpm_automations").delete().eq("id", id);
+    setAutomations((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  async function handleToggleAutomation(id: string, active: boolean) {
+    await supabase.from("bpm_automations").update({ is_active: active, updated_at: new Date().toISOString() }).eq("id", id);
+    setAutomations((prev) => prev.map((a) => a.id === id ? { ...a, is_active: active } : a));
   }
 
   async function handleSavePhases(updatedPhases: Phase[]) {
@@ -315,11 +353,15 @@ function PipeSettingsContent() {
       )}
 
       {activeTab === "automations" && (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <Zap className="w-10 h-10 mb-3 opacity-50" />
-          <p className="text-sm">Automações serão implementadas na Etapa 7</p>
-          <p className="text-xs mt-1">Configure as fases e campos primeiro</p>
-        </div>
+        <AutomationBuilder
+          automations={automations}
+          phases={phases}
+          members={members}
+          onSave={handleSaveAutomation}
+          onAdd={handleAddAutomation}
+          onDelete={handleDeleteAutomation}
+          onToggle={handleToggleAutomation}
+        />
       )}
     </div>
   );
