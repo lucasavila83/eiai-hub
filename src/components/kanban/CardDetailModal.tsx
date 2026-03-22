@@ -39,7 +39,9 @@ import {
   MoreHorizontal,
   CalendarDays,
   User,
+  Sparkles,
 } from "lucide-react";
+import { AIAssistant } from "./AIAssistant";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -223,6 +225,7 @@ export function CardDetailModal({
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
   const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  const [showAI, setShowAI] = useState(false);
 
   // Labels
   const [cardLabels, setCardLabels] = useState<{ id: string; name: string; color: string }[]>([]);
@@ -1864,9 +1867,28 @@ export function CardDetailModal({
                   </button>
                 </div>
               </div>
-              <p className="text-[10px] text-muted-foreground/60 text-center">
-                Chat com IA em breve...
-              </p>
+              <button
+                onClick={() => setShowAI(!showAI)}
+                className={cn(
+                  "w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg transition-colors font-medium",
+                  showAI
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground/60 hover:text-primary hover:bg-primary/5"
+                )}
+              >
+                <Sparkles className="w-3 h-3" />
+                {showAI ? "Fechar assistente IA" : "Assistente IA"}
+              </button>
+              {showAI && (
+                <div className="mt-2">
+                  <AIAssistant
+                    cardTitle={title}
+                    cardDescription={description}
+                    subtasks={subtasks}
+                    onClose={() => setShowAI(false)}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Footer: Created info + Delete */}
