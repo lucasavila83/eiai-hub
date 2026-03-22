@@ -18,6 +18,8 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
+import { usePermissions } from "@/lib/hooks/usePermissions";
+import { useAuth } from "@/components/providers/AuthProvider";
 import {
   BarChart,
   Bar,
@@ -76,10 +78,15 @@ interface MemberOption {
 export default function DashboardPage() {
   const supabase = createClient();
   const { activeOrgId } = useUIStore();
+  const { user } = useAuth();
+  const perms = usePermissions();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+
+  // Force members to see only their own data
+  const effectiveMemberId = perms.canViewDashboardAll ? selectedMemberId : (user?.id || null);
 
   // Load org members for filter
   useEffect(() => {
@@ -108,7 +115,7 @@ export default function DashboardPage() {
     if (!activeOrgId) return;
     setLoading(true);
 
-    const userId = selectedMemberId;
+    const userId = effectiveMemberId;
 
     try {
       // If filtering by user, get their assigned card IDs first
@@ -274,7 +281,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeOrgId, supabase, selectedMemberId]);
+  }, [activeOrgId, supabase, effectiveMemberId]);
 
   useEffect(() => {
     loadStats();
@@ -306,29 +313,31 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
             <p className="text-sm text-muted-foreground">
-              {selectedMemberId
-                ? `Resultados de ${members.find((m) => m.id === selectedMemberId)?.full_name || "membro"}`
+              {effectiveMemberId
+                ? `Resultados de ${members.find((m) => m.id === effectiveMemberId)?.full_name || "membro"}`
                 : "Visão geral da organização"}
             </p>
           </div>
         </div>
 
-        {/* Member filter */}
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-muted-foreground" />
-          <select
-            value={selectedMemberId || ""}
-            onChange={(e) => setSelectedMemberId(e.target.value || null)}
-            className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 min-w-[180px]"
-          >
-            <option value="">Todos os membros</option>
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.full_name || m.email}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Member filter — only visible to admins */}
+        {perms.canViewDashboardAll && (
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-muted-foreground" />
+            <select
+              value={selectedMemberId || ""}
+              onChange={(e) => setSelectedMemberId(e.target.value || null)}
+              className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 min-w-[180px]"
+            >
+              <option value="">Todos os membros</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.full_name || m.email}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* KPI Cards */}

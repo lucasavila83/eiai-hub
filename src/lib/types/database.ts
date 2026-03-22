@@ -292,6 +292,7 @@ export interface Database {
           is_completed: boolean;
           position: number;
           assigned_to: string | null;
+          due_date: string | null;
           created_by: string | null;
           created_at: string;
         };

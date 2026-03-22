@@ -87,6 +87,7 @@ interface Subtask {
   is_completed: boolean;
   position: number;
   assigned_to: string | null;
+  due_date: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -688,7 +689,39 @@ export function CardDetailModal({
 
     // Create linked card for the assigned person
     if (userId && subtask) {
-      await createLinkedCard(subtask.title, userId);
+      await createLinkedCard(subtask.title, userId, subtask.due_date);
+    }
+  }
+
+  async function handleSubtaskDueDate(subtaskId: string, date: string | null) {
+    setSubtasks((prev) =>
+      prev.map((s) => (s.id === subtaskId ? { ...s, due_date: date } : s))
+    );
+    await supabase.from("subtasks").update({ due_date: date || null }).eq("id", subtaskId);
+
+    // If there's a linked card and assignee, create event in calendar
+    const subtask = subtasks.find((s) => s.id === subtaskId);
+    if (date && subtask?.assigned_to) {
+      // Insert event into calendar for the due date
+      const { data: orgMem } = await supabase
+        .from("org_members")
+        .select("org_id")
+        .eq("user_id", currentUserId)
+        .limit(1)
+        .single();
+
+      if (orgMem) {
+        await supabase.from("events").insert({
+          org_id: orgMem.org_id,
+          title: `📋 ${subtask.title}`,
+          start_at: new Date(`${date}T09:00:00`).toISOString(),
+          end_at: new Date(`${date}T10:00:00`).toISOString(),
+          all_day: false,
+          color: "#f97316",
+          created_by: subtask.assigned_to,
+          card_id: card.id,
+        });
+      }
     }
   }
 
@@ -1523,11 +1556,35 @@ export function CardDetailModal({
                           </span>
                         )}
 
+                        {/* Due date */}
+                        {st.due_date ? (
+                          <span className="shrink-0 text-[11px] text-muted-foreground">
+                            {new Date(st.due_date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                          </span>
+                        ) : null}
+                        <input
+                          type="date"
+                          value={st.due_date || ""}
+                          onChange={(e) => handleSubtaskDueDate(st.id, e.target.value || null)}
+                          className={cn(
+                            "shrink-0 w-[20px] text-[11px] bg-transparent border-none text-muted-foreground focus:outline-none",
+                            !st.due_date && "opacity-0 group-hover:opacity-100"
+                          )}
+                          title="Prazo"
+                        />
                         {/* Assignee select */}
+                        {st.assigned_to ? (
+                          <span className="shrink-0 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5">
+                            {getMemberName(st.assigned_to)}
+                          </span>
+                        ) : null}
                         <select
                           value={st.assigned_to || ""}
                           onChange={(e) => handleSubtaskAssignee(st.id, e.target.value || null)}
-                          className="w-[90px] shrink-0 opacity-0 group-hover:opacity-100 text-[11px] bg-transparent border border-transparent hover:border-input rounded px-1 py-0.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+                          className={cn(
+                            "w-[90px] shrink-0 text-[11px] bg-transparent border border-transparent hover:border-input rounded px-1 py-0.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all",
+                            !st.assigned_to && "opacity-0 group-hover:opacity-100"
+                          )}
                           title="Responsável"
                         >
                           <option value="">Ninguém</option>
@@ -1537,15 +1594,6 @@ export function CardDetailModal({
                             </option>
                           ))}
                         </select>
-                        {st.assigned_to && (
-                          <span
-                            className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-                            style={{ backgroundColor: generateColor(getMemberName(st.assigned_to)) }}
-                            title={getMemberName(st.assigned_to)}
-                          >
-                            {getInitials(getMemberName(st.assigned_to))}
-                          </span>
-                        )}
                         <button
                           onClick={() => handleDeleteSubtask(st.id)}
                           className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"

@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { useUIStore } from "@/lib/stores/ui-store";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 import type { Profile, Organization, Channel } from "@/lib/types/database";
 
 interface SidebarProps {
@@ -210,16 +211,20 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     setContextMenu({ x: e.clientX, y: e.clientY, type: "dm", item: dm });
   }
 
-  const navItems = [
-    { href: "/chat", icon: MessageSquare, label: "Chat" },
-    { href: "/boards", icon: Kanban, label: "Boards" },
-    { href: "/calendar", icon: Calendar, label: "Calendário" },
-    { href: "/dashboard", icon: BarChart3, label: "Dashboard" },
-    { href: "/automations", icon: Zap, label: "Automações" },
-    { href: "/integrations", icon: Plug, label: "Integrações" },
-    { href: "/notifications", icon: Bell, label: "Notificações" },
-    { href: "/settings", icon: Settings, label: "Configurações" },
+  const perms = usePermissions();
+
+  const allNavItems = [
+    { href: "/chat", icon: MessageSquare, label: "Chat", visible: true },
+    { href: "/boards", icon: Kanban, label: "Boards", visible: true },
+    { href: "/calendar", icon: Calendar, label: "Calendário", visible: perms.canViewCalendar },
+    { href: "/dashboard", icon: BarChart3, label: "Dashboard", visible: perms.canViewDashboard || perms.isAdmin },
+    { href: "/automations", icon: Zap, label: "Automações", visible: perms.canManageAutomations || perms.isAdmin },
+    { href: "/integrations", icon: Plug, label: "Integrações", visible: perms.canManageIntegrations || perms.isAdmin },
+    { href: "/notifications", icon: Bell, label: "Notificações", visible: true },
+    { href: "/settings", icon: Settings, label: "Configurações", visible: perms.canAccessSettings || perms.isAdmin },
   ];
+
+  const navItems = allNavItems.filter((item) => item.visible);
 
   // Icon bar hover expand (1st column overlay with labels)
   const [iconBarExpanded, setIconBarExpanded] = useState(false);
