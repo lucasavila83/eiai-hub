@@ -11,6 +11,7 @@ import { PermissionGuard } from "@/components/layout/PermissionGuard";
 import { ProcessKanban, type BpmCard } from "@/components/bpm/ProcessKanban";
 import { BpmCardModal } from "@/components/bpm/BpmCardModal";
 import type { Phase } from "@/components/bpm/PhaseEditor";
+import { createBoardTaskFromBpm, deactivatePreviousTaskLinks } from "@/lib/bpm/task-sync";
 import {
   ArrowLeft, Loader2, Workflow, Settings2, Plus, X,
 } from "lucide-react";
@@ -138,6 +139,32 @@ function PipeKanbanContent() {
       moved_by: user?.id,
       action: isEnd ? "completed" : "moved",
     });
+
+    // Deactivate previous board task links
+    await deactivatePreviousTaskLinks(supabase, cardId);
+
+    // Create board task for assignee if target phase has one
+    if (targetPhase?.default_assignee_id && !isEnd) {
+      // Get required fields for the target phase
+      const { data: reqFields } = await supabase
+        .from("bpm_fields")
+        .select("label")
+        .eq("phase_id", toPhaseId)
+        .eq("is_required", true);
+
+      const movedCard = cards.find((c) => c.id === cardId);
+      await createBoardTaskFromBpm(supabase, {
+        bpmCardId: cardId,
+        bpmCardTitle: movedCard?.title || "Card BPM",
+        pipeName: pipe?.name || "Processo",
+        phaseName: targetPhase.name,
+        phaseId: toPhaseId,
+        assigneeId: targetPhase.default_assignee_id,
+        orgId: activeOrgId!,
+        slaDeadline: slaDeadline,
+        requiredFields: reqFields || [],
+      });
+    }
 
     // Update local state
     setCards((prev) =>
