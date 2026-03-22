@@ -1556,38 +1556,29 @@ export function CardDetailModal({
                           </span>
                         )}
 
-                        {/* Due date */}
-                        {st.due_date ? (
-                          <span className="shrink-0 text-[11px] text-muted-foreground">
-                            {new Date(st.due_date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                          </span>
-                        ) : null}
+                        {/* Due date picker — same style as checklist items */}
                         <input
                           type="date"
                           value={st.due_date || ""}
                           onChange={(e) => handleSubtaskDueDate(st.id, e.target.value || null)}
                           className={cn(
-                            "shrink-0 w-[20px] text-[11px] bg-transparent border-none text-muted-foreground focus:outline-none",
-                            !st.due_date && "opacity-0 group-hover:opacity-100"
+                            "w-[110px] shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-opacity",
+                            st.due_date && "opacity-100"
                           )}
-                          title="Prazo"
+                          title="Data de vencimento"
                         />
-                        {/* Assignee select */}
-                        {st.assigned_to ? (
-                          <span className="shrink-0 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5">
-                            {getMemberName(st.assigned_to)}
-                          </span>
-                        ) : null}
+
+                        {/* Assignee picker — same style as checklist items */}
                         <select
                           value={st.assigned_to || ""}
                           onChange={(e) => handleSubtaskAssignee(st.id, e.target.value || null)}
                           className={cn(
-                            "w-[90px] shrink-0 text-[11px] bg-transparent border border-transparent hover:border-input rounded px-1 py-0.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all",
-                            !st.assigned_to && "opacity-0 group-hover:opacity-100"
+                            "w-[100px] shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-opacity appearance-none",
+                            st.assigned_to && "opacity-100"
                           )}
                           title="Responsável"
                         >
-                          <option value="">Ninguém</option>
+                          <option value="">Ninguem</option>
                           {orgMembers.map((m) => (
                             <option key={m.user_id} value={m.user_id}>
                               {m.profiles?.full_name || m.profiles?.email}
