@@ -87,7 +87,7 @@ export default function DashboardPage() {
     (async () => {
       const { data } = await supabase
         .from("org_members")
-        .select("user_id, profiles!inner(id, full_name, email, avatar_url)")
+        .select("user_id, profiles:user_id(id, full_name, email, avatar_url)")
         .eq("org_id", activeOrgId);
       if (data) {
         const mapped = data.map((m: any) => ({

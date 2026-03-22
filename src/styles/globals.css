@@ -75,4 +75,26 @@
     font-family: Inter, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
+
+  /* Global: all buttons and clickable elements get cursor-pointer + transition */
+  button,
+  [role="button"],
+  a[href],
+  select,
+  input[type="checkbox"],
+  input[type="radio"],
+  label[for] {
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  button:not(:disabled):active,
+  [role="button"]:not(:disabled):active {
+    transform: scale(0.97);
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 }
