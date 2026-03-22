@@ -70,6 +70,8 @@ function ProcessesContent() {
   const [formColor, setFormColor] = useState(PIPE_COLORS[0]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedSuccess, setSeedSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeOrgId) loadPipes();
@@ -190,6 +192,29 @@ function ProcessesContent() {
     loadPipes();
   }
 
+  async function seedProcesses() {
+    setSeeding(true);
+    setSeedSuccess(null);
+    const session = await supabase.auth.getSession();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (session.data.session?.access_token) {
+      headers["Authorization"] = `Bearer ${session.data.session.access_token}`;
+    }
+    const res = await fetch("/api/bpm/seed", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ orgId: activeOrgId }),
+    });
+    const json = await res.json();
+    if (res.ok) {
+      setSeedSuccess(json.message);
+      loadPipes();
+    } else {
+      setError(json.error);
+    }
+    setSeeding(false);
+  }
+
   if (loading || permissions.loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -217,22 +242,39 @@ function ProcessesContent() {
         )}
       </div>
 
+      {/* Success message */}
+      {seedSuccess && (
+        <div className="mb-4 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-2 text-sm text-green-500">
+          {seedSuccess}
+        </div>
+      )}
+
       {/* Pipe list */}
       {pipes.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20">
           <Workflow className="w-12 h-12 text-muted-foreground mb-3" />
           <h2 className="text-lg font-semibold text-foreground mb-1">Nenhum processo criado</h2>
           <p className="text-muted-foreground text-sm mb-4">
-            Crie seu primeiro processo para automatizar fluxos de trabalho
+            Crie seu primeiro processo ou use um modelo pronto
           </p>
           {permissions.processes.edit && (
-            <button
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              Criar processo
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={openCreate}
+                className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Criar do zero
+              </button>
+              <button
+                onClick={seedProcesses}
+                disabled={seeding}
+                className="inline-flex items-center gap-2 bg-card border border-border text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-accent transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {seeding && <Loader2 className="w-4 h-4 animate-spin" />}
+                Usar modelo: Contratação
+              </button>
+            </div>
           )}
         </div>
       ) : (
