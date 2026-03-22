@@ -8,6 +8,8 @@ import { useUIStore } from "@/lib/stores/ui-store";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { PermissionGuard } from "@/components/layout/PermissionGuard";
 import { PhaseEditor, type Phase } from "@/components/bpm/PhaseEditor";
+import { FieldConfigurator } from "@/components/bpm/FieldConfigurator";
+import type { FieldDef } from "@/components/bpm/DynamicField";
 import {
   ArrowLeft, Loader2, Workflow, Settings2, Layers, FileText, Zap,
 } from "lucide-react";
@@ -34,6 +36,11 @@ function PipeSettingsContent() {
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<SettingsTab>("phases");
+
+  // Fields state
+  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
+  const [fields, setFields] = useState<FieldDef[]>([]);
+  const [loadingFields, setLoadingFields] = useState(false);
 
   useEffect(() => {
     if (pipeId && activeOrgId) loadData();
@@ -69,6 +76,61 @@ function PipeSettingsContent() {
     }
 
     setLoading(false);
+  }
+
+  // Load fields when phase selected
+  async function loadFields(phaseId: string) {
+    setLoadingFields(true);
+    const { data } = await supabase
+      .from("bpm_fields")
+      .select("*")
+      .eq("phase_id", phaseId)
+      .order("position");
+    setFields((data || []).map((f: any) => ({
+      ...f,
+      options: f.options || [],
+      validations: f.validations || {},
+    })));
+    setLoadingFields(false);
+  }
+
+  function selectPhase(phaseId: string) {
+    setSelectedPhaseId(phaseId);
+    loadFields(phaseId);
+  }
+
+  async function handleSaveFields(updatedFields: FieldDef[]) {
+    for (const field of updatedFields) {
+      await supabase
+        .from("bpm_fields")
+        .update({
+          label: field.label,
+          placeholder: field.placeholder,
+          help_text: field.help_text,
+          is_required: field.is_required,
+          options: field.options,
+          position: field.position,
+        })
+        .eq("id", field.id);
+    }
+    setFields(updatedFields);
+  }
+
+  async function handleAddField(field: Omit<FieldDef, "id" | "phase_id">) {
+    if (!selectedPhaseId) return;
+    const { data } = await supabase
+      .from("bpm_fields")
+      .insert({ phase_id: selectedPhaseId, ...field })
+      .select()
+      .single();
+    if (data) {
+      setFields((prev) => [...prev, { ...data, options: data.options || [], validations: data.validations || {} }]);
+    }
+  }
+
+  async function handleDeleteField(fieldId: string) {
+    await supabase.from("bpm_fields").delete().eq("id", fieldId);
+    setFields((prev) => prev.filter((f) => f.id !== fieldId));
   }
 
   async function handleSavePhases(updatedPhases: Phase[]) {
@@ -191,10 +253,64 @@ function PipeSettingsContent() {
       )}
 
       {activeTab === "fields" && (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <FileText className="w-10 h-10 mb-3 opacity-50" />
-          <p className="text-sm">Editor de campos será implementado na Etapa 4</p>
-          <p className="text-xs mt-1">Configure as fases primeiro</p>
+        <div className="space-y-4">
+          {phases.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <Layers className="w-10 h-10 mb-3 opacity-50" />
+              <p className="text-sm">Crie fases primeiro na aba "Fases"</p>
+            </div>
+          ) : (
+            <>
+              {/* Phase selector */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Selecione a fase para configurar campos:</label>
+                <div className="flex flex-wrap gap-2">
+                  {phases.map((phase) => (
+                    <button
+                      key={phase.id}
+                      onClick={() => selectPhase(phase.id)}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer border",
+                        selectedPhaseId === phase.id
+                          ? "border-primary bg-primary/5 text-foreground"
+                          : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+                      )}
+                    >
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: phase.color }} />
+                      {phase.name}
+                      {selectedPhaseId === phase.id && (
+                        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
+                          {fields.length}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Field configurator */}
+              {selectedPhaseId ? (
+                loadingFields ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <FieldConfigurator
+                    fields={fields}
+                    phaseName={phases.find((p) => p.id === selectedPhaseId)?.name || ""}
+                    onSave={handleSaveFields}
+                    onAdd={handleAddField}
+                    onDelete={handleDeleteField}
+                  />
+                )
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <FileText className="w-8 h-8 mb-2 opacity-50" />
+                  <p className="text-sm">Selecione uma fase acima para configurar seus campos</p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
