@@ -45,6 +45,8 @@ export default function MembersPage() {
   const [invitations, setInvitations] = useState<any[]>([]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("member");
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -141,7 +143,7 @@ export default function MembersPage() {
     const res = await fetch("/api/invite", {
       method: "POST",
       headers,
-      body: JSON.stringify({ email: email.trim(), orgId: activeOrgId, role }),
+      body: JSON.stringify({ email: email.trim(), orgId: activeOrgId, role, teamIds: selectedTeamIds }),
     });
 
     const json = await res.json();
@@ -149,6 +151,8 @@ export default function MembersPage() {
       setInviteUrl(json.inviteUrl);
       setSuccess(json.message || `Convite criado para ${email}`);
       setEmail("");
+      setSelectedTeamIds([]);
+      setShowTeamPicker(false);
       loadInvitations();
     } else {
       setError(json.error);
@@ -286,35 +290,102 @@ export default function MembersPage() {
 
       {/* Invite Form */}
       {isAdmin && (
-        <div className="bg-card border border-border rounded-xl p-4 mb-6">
-          <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+        <div className="bg-card border border-border rounded-xl p-5 mb-6">
+          <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
             <Mail className="w-4 h-4" />
-            Convidar membro
+            Convidar novo membro
           </h2>
-          <form onSubmit={handleInvite} className="flex gap-2">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="email@exemplo.com"
-              className="flex-1 px-3 py-2 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              required
-            />
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="px-3 py-2 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="member">Membro</option>
-              <option value="admin">Admin</option>
-            </select>
+          <form onSubmit={handleInvite} className="space-y-3">
+            {/* Row 1: Email */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email@exemplo.com"
+                className="w-full px-3 py-2 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                required
+              />
+            </div>
+
+            {/* Row 2: Role + Team */}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Papel</label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full px-3 py-2 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
+                >
+                  <option value="member">Membro — vê equipe, edita o seu</option>
+                  <option value="admin">Admin — acesso total</option>
+                  <option value="guest">Convidado — acesso limitado</option>
+                </select>
+              </div>
+
+              {teams.length > 0 && (
+                <div className="flex-1">
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Equipe(s)</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowTeamPicker(!showTeamPicker)}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-left focus:outline-none focus:ring-2 focus:ring-ring hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    {selectedTeamIds.length === 0 ? (
+                      <span className="text-muted-foreground">Selecionar equipe...</span>
+                    ) : (
+                      <span className="text-foreground">
+                        {selectedTeamIds.length} equipe{selectedTeamIds.length > 1 ? "s" : ""} selecionada{selectedTeamIds.length > 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Team picker dropdown */}
+            {showTeamPicker && teams.length > 0 && (
+              <div className="bg-background border border-input rounded-lg p-2 space-y-1">
+                {teams.map((team) => {
+                  const isSelected = selectedTeamIds.includes(team.id);
+                  return (
+                    <button
+                      key={team.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTeamIds((prev) =>
+                          isSelected ? prev.filter((id) => id !== team.id) : [...prev, team.id]
+                        );
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors text-left cursor-pointer",
+                        isSelected ? "bg-primary/10 text-foreground" : "hover:bg-accent text-muted-foreground"
+                      )}
+                    >
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: team.color || "#6366f1" }} />
+                      <span className="flex-1">{team.name}</span>
+                      {isSelected && <Check className="w-4 h-4 text-primary shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Info about default permissions */}
+            <p className="text-xs text-muted-foreground">
+              O novo membro entrará com as permissões padrão do papel selecionado. Você pode personalizar depois em{" "}
+              <Link href="/settings/permissions" className="text-primary hover:underline">Permissões</Link>.
+            </p>
+
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
-              className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
+              className="w-full bg-primary text-primary-foreground px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer transition-colors"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              Convidar
+              Enviar convite
             </button>
           </form>
 
@@ -327,7 +398,7 @@ export default function MembersPage() {
                 </div>
                 <button
                   onClick={copyLink}
-                  className="shrink-0 flex items-center gap-1 text-sm text-primary hover:underline"
+                  className="shrink-0 flex items-center gap-1 text-sm text-primary hover:underline cursor-pointer"
                 >
                   {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   {copied ? "Copiado!" : "Copiar"}

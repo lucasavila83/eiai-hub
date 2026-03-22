@@ -9,17 +9,17 @@ function getResend() {
   return _resend;
 }
 
-const FROM = process.env.EMAIL_FROM || "EIAI Hub <onboarding@resend.dev>";
+const FROM = process.env.EMAIL_FROM || "Lesco-Hub <onboarding@resend.dev>";
 
 export function inviteEmailHtml(inviteUrl: string, orgName: string, inviterName: string, isReminder = false) {
   const actionText = isReminder
-    ? `<strong>${inviterName}</strong> reenviou o convite para você fazer parte da organização <strong>${orgName}</strong> no EIAI Hub.`
-    : `<strong>${inviterName}</strong> convidou você para fazer parte da organização <strong>${orgName}</strong> no EIAI Hub.`;
+    ? `<strong>${inviterName}</strong> reenviou o convite para você fazer parte da organização <strong>${orgName}</strong> no Lesco-Hub.`
+    : `<strong>${inviterName}</strong> convidou você para fazer parte da organização <strong>${orgName}</strong> no Lesco-Hub.`;
 
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
       <div style="text-align: center; margin-bottom: 32px;">
-        <h1 style="color: #1a1a1a; font-size: 24px; margin: 0;">EIAI Hub</h1>
+        <h1 style="color: #1a1a1a; font-size: 24px; margin: 0;">Lesco-Hub</h1>
         <p style="color: #666; font-size: 14px; margin-top: 4px;">Plataforma de gestão integrada</p>
       </div>
 
@@ -44,7 +44,7 @@ export function inviteEmailHtml(inviteUrl: string, orgName: string, inviterName:
       </p>
 
       <p style="color: #ccc; font-size: 11px; text-align: center; margin-top: 32px;">
-        Enviado por EIAI Hub
+        Enviado por Lesco-Hub
       </p>
     </div>
   `;
@@ -59,8 +59,8 @@ export async function sendInviteEmail(
 ): Promise<boolean> {
   try {
     const subject = isReminder
-      ? `Lembrete: Você foi convidado para ${orgName} — EIAI Hub`
-      : `Você foi convidado para ${orgName} — EIAI Hub`;
+      ? `Lembrete: Você foi convidado para ${orgName} — Lesco-Hub`
+      : `Você foi convidado para ${orgName} — Lesco-Hub`;
 
     const { error } = await getResend().emails.send({
       from: FROM,

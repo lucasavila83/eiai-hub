@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     const userId = user?.id;
-    const { email, orgId, role = "member" } = await req.json();
+    const { email, orgId, role = "member", teamIds = [] } = await req.json();
 
     if (!email || !orgId) {
       return NextResponse.json({ error: "Email e orgId são obrigatórios" }, { status: 400 });
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
         email,
         role,
         invited_by: userId,
+        team_ids: teamIds.length > 0 ? teamIds : [],
       })
       .select()
       .single();

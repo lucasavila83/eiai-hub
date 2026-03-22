@@ -75,6 +75,17 @@ export async function POST(req: NextRequest) {
       .update({ accepted_at: new Date().toISOString() })
       .eq("id", invitation.id);
 
+    // Assign to pre-selected teams
+    const teamIds: string[] = invitation.team_ids || [];
+    if (teamIds.length > 0) {
+      const teamInserts = teamIds.map((teamId: string) => ({
+        team_id: teamId,
+        user_id: userId,
+        role: "member",
+      }));
+      await adminClient.from("team_members").insert(teamInserts);
+    }
+
     // Add to #geral channel if exists
     const { data: geralChannel } = await adminClient
       .from("channels")
