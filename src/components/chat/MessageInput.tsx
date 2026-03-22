@@ -3,12 +3,13 @@
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import {
   Send, Paperclip, Smile, Bold, Italic,
-  Code, ListTodo, AtSign, X,
+  Code, ListTodo, AtSign, X, Mic,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import { EmojiPicker } from "./EmojiPicker";
 import { MentionAutocomplete } from "./MentionAutocomplete";
 import { FileUpload } from "./FileUpload";
+import { AudioRecorder } from "./AudioRecorder";
 import { createClient } from "@/lib/supabase/client";
 
 interface Props {
@@ -32,6 +33,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
   const [showMention, setShowMention] = useState(false);
   const [mentionSearch, setMentionSearch] = useState("");
   const [showFileUpload, setShowFileUpload] = useState(false);
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [orgMembers, setOrgMembers] = useState<any[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
@@ -176,12 +178,23 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
 
   function handleFileUploaded(fileUrl: string, fileName: string, fileType: string) {
     setShowFileUpload(false);
-    // Send as a message with file link
     if (fileType.startsWith("image/")) {
       onSend(`📎 **${fileName}**\n${fileUrl}`);
     } else {
       onSend(`📎 Arquivo: **${fileName}**\n${fileUrl}`);
     }
+  }
+
+  function handleAudioSent(audioUrl: string, transcript: string | null, duration: number) {
+    setShowAudioRecorder(false);
+    const mins = Math.floor(duration / 60);
+    const secs = duration % 60;
+    const durationStr = `${mins}:${String(secs).padStart(2, "0")}`;
+    let message = `🎙️ **Áudio** (${durationStr})\n${audioUrl}`;
+    if (transcript) {
+      message += `\n\n📝 _${transcript}_`;
+    }
+    onSend(message);
   }
 
   async function handleCreateTask(e: React.FormEvent) {
@@ -250,6 +263,17 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
             channelId={channelId}
             onFileUploaded={handleFileUploaded}
             onClose={() => setShowFileUpload(false)}
+          />
+        </div>
+      )}
+
+      {/* Audio recorder inline */}
+      {showAudioRecorder && channelId && (
+        <div className="mb-2">
+          <AudioRecorder
+            channelId={channelId}
+            onAudioSent={handleAudioSent}
+            onClose={() => setShowAudioRecorder(false)}
           />
         </div>
       )}
@@ -374,6 +398,17 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
               title="Emoji"
             >
               <Smile className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-px h-4 bg-border mx-1" />
+            <button
+              onClick={() => { setShowAudioRecorder(!showAudioRecorder); setShowFileUpload(false); }}
+              className={cn(
+                "text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent",
+                showAudioRecorder && "text-red-500 bg-red-500/10"
+              )}
+              title="Gravar áudio"
+            >
+              <Mic className="w-3.5 h-3.5" />
             </button>
           </div>
 
