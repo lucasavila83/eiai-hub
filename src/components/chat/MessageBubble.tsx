@@ -27,8 +27,8 @@ const DOC_EXTENSIONS = [".pdf", ".doc", ".docx"];
 const SHEET_EXTENSIONS = [".xls", ".xlsx", ".csv"];
 const AUDIO_EXTENSIONS = [".webm", ".mp3", ".ogg", ".wav", ".m4a"];
 
-// Audio detection: "🎤 Áudio (X:XX)\nhttps://..."
-const AUDIO_MSG_REGEX = /^🎤\s*[AÁáa]udio\s*\([\d:]+\)\n(https?:\/\/.+?)(\n|$)/s;
+// Audio detection: "🎙️ **Áudio** (X:XX)\nhttps://..."
+const AUDIO_MSG_REGEX = /^🎙️?\s*\*?\*?[AÁáa]udio\*?\*?\s*\([\d:]+\)\n(https?:\/\/\S+)/s;
 
 function getFileIcon(fileName: string) {
   const lower = fileName.toLowerCase();
@@ -287,13 +287,14 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
 
   // Get transcription text if audio message
   const audioTranscription = isAudioMsg
-    ? message.content
-        .split("\n")
-        .slice(2)
-        .filter((l) => l.trim() && !l.startsWith("http"))
-        .join("\n")
-        .replace(/^🗣️?\s*/, "")
-        .trim()
+    ? (() => {
+        // Look for 📝 _text_ pattern
+        const transcriptMatch = message.content.match(/📝\s*_(.+?)_/s);
+        if (transcriptMatch) return transcriptMatch[1].trim();
+        // Fallback: lines after URL that aren't empty or URLs
+        const lines = message.content.split("\n").slice(2).filter((l) => l.trim() && !l.startsWith("http") && !l.startsWith("📝"));
+        return lines.length > 0 ? lines.join("\n").trim() : null;
+      })()
     : null;
 
   return (
