@@ -49,8 +49,8 @@ interface OrgPermissions {
 
 const VISIBILITY_OPTIONS: { value: Visibility; label: string; description: string }[] = [
   { value: "own", label: "Apenas seus cards", description: "Vê somente as tarefas atribuídas a ele" },
-  { value: "team", label: "Cards da equipe", description: "Vê tarefas dos boards da sua equipe" },
-  { value: "all", label: "Todos os cards", description: "Vê todas as tarefas da organização" },
+  { value: "team", label: "Cards da sua equipe", description: "Vê tarefas dos boards da equipe em que está inserido" },
+  { value: "all", label: "Todos os cards da empresa", description: "Vê todas as tarefas de todas as equipes da organização" },
 ];
 
 const DEFAULT_PERMISSIONS: OrgPermissions = {
@@ -682,7 +682,7 @@ export default function PermissionsPage() {
 
       {/* ===== MEMBER PERMISSIONS ===== */}
       <div className="space-y-6">
-        <SectionTitle icon={Users} label="Permissões de Membros" description="Visualiza dados da equipe, edita apenas os seus" />
+        <SectionTitle icon={Users} label="Permissões de Membros" description="Visualiza dados da sua equipe, edita apenas os seus" />
 
         {/* Edit scope */}
         <div className="bg-card border border-border rounded-xl p-5">
@@ -710,9 +710,9 @@ export default function PermissionsPage() {
               />
               <div>
                 <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Eye className="w-3.5 h-3.5 text-blue-400" /> Vê tudo, edita só o seu
+                  <Eye className="w-3.5 h-3.5 text-blue-400" /> Vê dados da equipe, edita só o seu
                 </p>
-                <p className="text-xs text-muted-foreground">Pode visualizar dados da equipe/organização, mas só edita tarefas, eventos e itens atribuídos a ele</p>
+                <p className="text-xs text-muted-foreground">Pode visualizar tarefas, eventos e dados da equipe em que está inserido, mas só edita itens atribuídos a ele</p>
               </div>
             </label>
             <label
@@ -731,9 +731,9 @@ export default function PermissionsPage() {
               />
               <div>
                 <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Pencil className="w-3.5 h-3.5 text-orange-400" /> Vê tudo e edita tudo
+                  <Pencil className="w-3.5 h-3.5 text-orange-400" /> Vê e edita dados da equipe
                 </p>
-                <p className="text-xs text-muted-foreground">Pode visualizar e editar qualquer item dentro dos módulos permitidos</p>
+                <p className="text-xs text-muted-foreground">Pode visualizar e editar qualquer item da equipe em que está inserido</p>
               </div>
             </label>
           </div>
@@ -746,7 +746,7 @@ export default function PermissionsPage() {
             <h3 className="text-sm font-semibold text-foreground">Visibilidade de Boards</h3>
           </div>
           <p className="text-xs text-muted-foreground mb-4">
-            Define quais tarefas e boards os membros podem <strong>visualizar</strong>
+            Define o alcance de visualização: apenas seus cards, da equipe, ou de toda a empresa
           </p>
           <div className="grid gap-2">
             {VISIBILITY_OPTIONS.map((opt) => (
@@ -789,7 +789,7 @@ export default function PermissionsPage() {
         </div>
 
         {/* ===== GUEST PERMISSIONS ===== */}
-        <SectionTitle icon={Users} label="Permissões de Convidados" description="Só visualiza itens atribuídos, edição restrita" />
+        <SectionTitle icon={Users} label="Permissões de Convidados" description="Acesso limitado, vê apenas o que foi atribuído a ele" />
 
         {/* Guest edit scope */}
         <div className="bg-card border border-border rounded-xl p-5">
@@ -814,7 +814,7 @@ export default function PermissionsPage() {
               />
               <div>
                 <p className="text-sm font-medium text-foreground">Edita apenas seus itens</p>
-                <p className="text-xs text-muted-foreground">Convidado só pode modificar itens atribuídos a ele</p>
+                <p className="text-xs text-muted-foreground">Convidado só pode modificar tarefas e itens atribuídos diretamente a ele</p>
               </div>
             </label>
             <label
@@ -833,7 +833,7 @@ export default function PermissionsPage() {
               />
               <div>
                 <p className="text-sm font-medium text-foreground">Edita itens visíveis</p>
-                <p className="text-xs text-muted-foreground">Convidado pode editar qualquer item que consiga visualizar</p>
+                <p className="text-xs text-muted-foreground">Convidado pode editar qualquer item que consiga visualizar dentro do seu escopo</p>
               </div>
             </label>
           </div>
