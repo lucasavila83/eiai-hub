@@ -48,9 +48,9 @@ interface OrgPermissions {
 }
 
 const VISIBILITY_OPTIONS: { value: Visibility; label: string; description: string }[] = [
-  { value: "own", label: "Apenas seus cards", description: "Vê somente as tarefas atribuídas a ele" },
-  { value: "team", label: "Cards da sua equipe", description: "Vê tarefas dos boards da equipe em que está inserido" },
-  { value: "all", label: "Todos os cards da empresa", description: "Vê todas as tarefas de todas as equipes da organização" },
+  { value: "own", label: "Apenas seus cards", description: "Vê e edita somente as tarefas atribuídas a ele" },
+  { value: "team", label: "Cards da sua equipe", description: "Vê tarefas da equipe em que está inserido, mas edita apenas os seus" },
+  { value: "all", label: "Todos os cards da empresa", description: "Vê tarefas de todas as equipes, mas edita apenas os seus" },
 ];
 
 const DEFAULT_PERMISSIONS: OrgPermissions = {
