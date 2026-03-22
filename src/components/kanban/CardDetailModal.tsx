@@ -593,6 +593,58 @@ export function CardDetailModal({
     }
   }
 
+  // ─── Create linked card for assigned subtask/checklist item ─────────────
+
+  async function createLinkedCard(itemTitle: string, assigneeId: string, dueDate?: string | null) {
+    // Find "A Fazer" column (first column)
+    const firstColumn = columns[0];
+    if (!firstColumn) return;
+
+    // Check if a linked card already exists for this item
+    const { data: existingCards } = await supabase
+      .from("cards")
+      .select("id")
+      .eq("board_id", boardId)
+      .contains("metadata", { parent_card_id: card.id, linked_item_title: itemTitle })
+      .limit(1);
+
+    if (existingCards && existingCards.length > 0) return; // Already exists
+
+    // Create the linked card
+    const { data: newCard } = await supabase
+      .from("cards")
+      .insert({
+        column_id: firstColumn.id,
+        board_id: boardId,
+        title: itemTitle,
+        description: `Subtarefa de: **${card.title}**`,
+        priority: card.priority || "none",
+        due_date: dueDate || null,
+        created_by: currentUserId,
+        position: 0,
+        is_archived: false,
+        metadata: { parent_card_id: card.id, linked_item_title: itemTitle },
+      })
+      .select()
+      .single();
+
+    if (newCard) {
+      // Assign to the person
+      await supabase.from("card_assignees").insert({
+        card_id: newCard.id,
+        user_id: assigneeId,
+      });
+
+      // Log activity
+      await supabase.from("card_activity").insert({
+        card_id: card.id,
+        user_id: currentUserId,
+        action: "linked_card_created",
+        details: { linked_card_id: newCard.id, assignee_id: assigneeId, title: itemTitle },
+      });
+    }
+  }
+
   // ─── Subtasks (legacy) ──────────────────────────────────────────────────
 
   async function handleAddSubtask() {
@@ -625,6 +677,19 @@ export function CardDetailModal({
   async function handleDeleteSubtask(subtaskId: string) {
     setSubtasks((prev) => prev.filter((s) => s.id !== subtaskId));
     await supabase.from("subtasks").delete().eq("id", subtaskId);
+  }
+
+  async function handleSubtaskAssignee(subtaskId: string, userId: string | null) {
+    const subtask = subtasks.find((s) => s.id === subtaskId);
+    setSubtasks((prev) =>
+      prev.map((s) => (s.id === subtaskId ? { ...s, assigned_to: userId } : s))
+    );
+    await supabase.from("subtasks").update({ assigned_to: userId }).eq("id", subtaskId);
+
+    // Create linked card for the assigned person
+    if (userId && subtask) {
+      await createLinkedCard(subtask.title, userId);
+    }
   }
 
   async function handleEditSubtaskSave(subtaskId: string) {
@@ -759,6 +824,10 @@ export function CardDetailModal({
   }
 
   async function handleChecklistItemAssignee(checklistId: string, itemId: string, userId: string | null) {
+    // Find the item to get its title and due_date
+    const checklist = checklists.find((c) => c.id === checklistId);
+    const item = checklist?.items.find((i) => i.id === itemId);
+
     setChecklists((prev) =>
       prev.map((c) =>
         c.id === checklistId
@@ -767,6 +836,11 @@ export function CardDetailModal({
       )
     );
     await supabase.from("checklist_items").update({ assigned_to: userId }).eq("id", itemId);
+
+    // Create a linked card for the assigned person
+    if (userId && item) {
+      await createLinkedCard(item.title, userId, item.due_date);
+    }
   }
 
   // ─── Attachments ────────────────────────────────────────────────────────
@@ -1449,6 +1523,29 @@ export function CardDetailModal({
                           </span>
                         )}
 
+                        {/* Assignee select */}
+                        <select
+                          value={st.assigned_to || ""}
+                          onChange={(e) => handleSubtaskAssignee(st.id, e.target.value || null)}
+                          className="w-[90px] shrink-0 opacity-0 group-hover:opacity-100 text-[11px] bg-transparent border border-transparent hover:border-input rounded px-1 py-0.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+                          title="Responsável"
+                        >
+                          <option value="">Ninguém</option>
+                          {orgMembers.map((m) => (
+                            <option key={m.user_id} value={m.user_id}>
+                              {m.profiles?.full_name || m.profiles?.email}
+                            </option>
+                          ))}
+                        </select>
+                        {st.assigned_to && (
+                          <span
+                            className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                            style={{ backgroundColor: generateColor(getMemberName(st.assigned_to)) }}
+                            title={getMemberName(st.assigned_to)}
+                          >
+                            {getInitials(getMemberName(st.assigned_to))}
+                          </span>
+                        )}
                         <button
                           onClick={() => handleDeleteSubtask(st.id)}
                           className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
