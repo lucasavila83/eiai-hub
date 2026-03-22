@@ -23,6 +23,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { cn, getInitials, generateColor, formatDateTime } from "@/lib/utils/helpers";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 
 const EVENT_COLORS = [
   "#3b82f6", "#6366f1", "#8b5cf6", "#ec4899",
@@ -79,6 +80,7 @@ export default function CalendarPage() {
   const { activeOrgId } = useUIStore();
   const { user } = useAuth();
   const router = useRouter();
+  const permissions = usePermissions();
 
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(today);
@@ -173,7 +175,9 @@ export default function CalendarPage() {
         endRange.setHours(23, 59, 59);
       }
 
-      // Build query - filter by user if showOnlyMine
+      const isAdmin = permissions.isAdmin;
+
+      // Build events query
       let evQuery = supabase
         .from("events")
         .select("*")
@@ -182,15 +186,19 @@ export default function CalendarPage() {
         .lte("start_at", endRange.toISOString())
         .order("start_at");
 
-      if (showOnlyMine && currentUserId) {
+      // Non-admins: ALWAYS filter to own events only
+      // Admins: can toggle showOnlyMine
+      if (!isAdmin && currentUserId) {
+        evQuery = evQuery.eq("created_by", currentUserId);
+      } else if (isAdmin && showOnlyMine && currentUserId) {
         evQuery = evQuery.eq("created_by", currentUserId);
       }
 
       const { data: eventsData } = await evQuery;
       let allEvents = eventsData || [];
 
-      // Also load shared members' events
-      if (sharedMembers.size > 0) {
+      // Shared members' events — ONLY for admins
+      if (isAdmin && sharedMembers.size > 0) {
         const { data: sharedData } = await supabase
           .from("events")
           .select("*")
@@ -207,7 +215,7 @@ export default function CalendarPage() {
 
       setEvents(allEvents);
 
-      // Cards with due dates
+      // Cards with due dates — non-admins: only cards assigned to them
       const startStr = startRange.toISOString().split("T")[0];
       const endStr = endRange.toISOString().split("T")[0];
 
@@ -220,11 +228,22 @@ export default function CalendarPage() {
         .lte("due_date", endStr);
 
       const { data: cardsData } = await cardsQuery;
-      setCardDues(cardsData || []);
+
+      // Filter cards: non-admins only see cards assigned to them
+      if (!isAdmin && currentUserId) {
+        const { data: assignedCardIds } = await supabase
+          .from("card_assignees")
+          .select("card_id")
+          .eq("user_id", currentUserId);
+        const myCardIds = new Set((assignedCardIds || []).map((a) => a.card_id));
+        setCardDues((cardsData || []).filter((c) => myCardIds.has(c.id)));
+      } else {
+        setCardDues(cardsData || []);
+      }
     } finally {
       setLoading(false);
     }
-  }, [activeOrgId, currentDate, viewMode, currentUserId, showOnlyMine, sharedMembers, supabase, currentMonth, currentYear]);
+  }, [activeOrgId, currentDate, viewMode, currentUserId, showOnlyMine, sharedMembers, supabase, currentMonth, currentYear, permissions.isAdmin]);
 
   useEffect(() => {
     loadData();
@@ -474,33 +493,37 @@ export default function CalendarPage() {
           ))}
         </div>
 
-        {/* Filter and share */}
+        {/* Filter and share — ONLY for admins */}
         <div className="flex items-center gap-2 ml-auto">
-          <button
-            onClick={() => setShowOnlyMine(!showOnlyMine)}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors",
-              showOnlyMine
-                ? "border-primary bg-primary/5 text-primary"
-                : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
-            )}
-          >
-            {showOnlyMine ? <Eye className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-            {showOnlyMine ? "Minha agenda" : "Todos"}
-          </button>
+          {permissions.isAdmin && (
+            <>
+              <button
+                onClick={() => setShowOnlyMine(!showOnlyMine)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer",
+                  showOnlyMine
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+                )}
+              >
+                {showOnlyMine ? <Eye className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
+                {showOnlyMine ? "Minha agenda" : "Todos"}
+              </button>
 
-          <button
-            onClick={() => setShowSharePanel(!showSharePanel)}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors",
-              showSharePanel
-                ? "border-primary bg-primary/5 text-primary"
-                : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
-            )}
-          >
-            <Users className="w-3.5 h-3.5" />
-            Compartilhar
-          </button>
+              <button
+                onClick={() => setShowSharePanel(!showSharePanel)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer",
+                  showSharePanel
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+                )}
+              >
+                <Users className="w-3.5 h-3.5" />
+                Compartilhar
+              </button>
+            </>
+          )}
 
           <button
             onClick={() => openCreateForDate(today.toISOString().split("T")[0])}
