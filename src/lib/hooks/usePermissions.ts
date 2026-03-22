@@ -7,73 +7,132 @@ import { useAuth } from "@/components/providers/AuthProvider";
 
 export type OrgRole = "owner" | "admin" | "member" | "guest" | null;
 
+export interface ModulePermission {
+  view: boolean;
+  edit: boolean;
+}
+
 export interface Permissions {
   role: OrgRole;
-  isAdmin: boolean; // owner or admin
-  // Module access
-  canViewDashboard: boolean;
-  canViewDashboardAll: boolean; // can see other members' data
-  canManageAutomations: boolean;
-  canManageIntegrations: boolean;
-  canAccessSettings: boolean;
+  isAdmin: boolean;
+  // Module access (view/edit)
+  dashboard: ModulePermission;
+  automations: ModulePermission;
+  integrations: ModulePermission;
+  settings: ModulePermission;
+  boards: ModulePermission;
+  calendar: ModulePermission;
+  chat: ModulePermission;
+  // Specific actions
   canInviteMembers: boolean;
   canCreateBoards: boolean;
   canCreateChannels: boolean;
   canDeleteCards: boolean;
   canManageLabels: boolean;
-  // Board visibility
-  boardVisibility: "own" | "team" | "all";
-  // Guest
   canCreateCards: boolean;
   canComment: boolean;
-  canViewCalendar: boolean;
+  // Edit scope
+  canEditOwnOnly: boolean; // true = edits only own items, false = can edit all
+  // Board visibility
+  boardVisibility: "own" | "team" | "all";
   // Loading
   loading: boolean;
+
+  // Legacy compat helpers
+  canViewDashboard: boolean;
+  canViewDashboardAll: boolean;
+  canManageAutomations: boolean;
+  canManageIntegrations: boolean;
+  canAccessSettings: boolean;
+  canViewCalendar: boolean;
 }
+
+const MOD_ALL: ModulePermission = { view: true, edit: true };
+const MOD_NONE: ModulePermission = { view: false, edit: false };
+const MOD_VIEW: ModulePermission = { view: true, edit: false };
 
 const DEFAULT_PERMISSIONS: Permissions = {
   role: null,
   isAdmin: false,
-  canViewDashboard: false,
-  canViewDashboardAll: false,
-  canManageAutomations: false,
-  canManageIntegrations: false,
-  canAccessSettings: false,
+  dashboard: MOD_NONE,
+  automations: MOD_NONE,
+  integrations: MOD_NONE,
+  settings: MOD_NONE,
+  boards: MOD_VIEW,
+  calendar: MOD_VIEW,
+  chat: MOD_ALL,
   canInviteMembers: false,
   canCreateBoards: false,
   canCreateChannels: false,
   canDeleteCards: false,
   canManageLabels: false,
-  boardVisibility: "own",
   canCreateCards: true,
   canComment: true,
-  canViewCalendar: true,
+  canEditOwnOnly: true,
+  boardVisibility: "own",
   loading: true,
+  // Legacy compat
+  canViewDashboard: false,
+  canViewDashboardAll: false,
+  canManageAutomations: false,
+  canManageIntegrations: false,
+  canAccessSettings: false,
+  canViewCalendar: false,
 };
 
 const ADMIN_PERMISSIONS: Permissions = {
   role: "admin",
   isAdmin: true,
-  canViewDashboard: true,
-  canViewDashboardAll: true,
-  canManageAutomations: true,
-  canManageIntegrations: true,
-  canAccessSettings: true,
+  dashboard: MOD_ALL,
+  automations: MOD_ALL,
+  integrations: MOD_ALL,
+  settings: MOD_ALL,
+  boards: MOD_ALL,
+  calendar: MOD_ALL,
+  chat: MOD_ALL,
   canInviteMembers: true,
   canCreateBoards: true,
   canCreateChannels: true,
   canDeleteCards: true,
   canManageLabels: true,
-  boardVisibility: "all",
   canCreateCards: true,
   canComment: true,
-  canViewCalendar: true,
+  canEditOwnOnly: false,
+  boardVisibility: "all",
   loading: false,
+  // Legacy compat
+  canViewDashboard: true,
+  canViewDashboardAll: true,
+  canManageAutomations: true,
+  canManageIntegrations: true,
+  canAccessSettings: true,
+  canViewCalendar: true,
 };
 
 // Helper: apply override (non-null values take precedence)
 function applyOverride(base: boolean, override: boolean | null): boolean {
   return override !== null && override !== undefined ? override : base;
+}
+
+function applyModuleOverride(
+  base: ModulePermission,
+  viewOverride: boolean | null,
+  editOverride: boolean | null,
+): ModulePermission {
+  return {
+    view: applyOverride(base.view, viewOverride),
+    edit: applyOverride(base.edit, editOverride),
+  };
+}
+
+function syncLegacy(perms: Permissions): Permissions {
+  perms.canViewDashboard = perms.dashboard.view;
+  perms.canViewDashboardAll = perms.dashboard.edit; // edit = can see all
+  perms.canManageAutomations = perms.automations.edit;
+  perms.canManageIntegrations = perms.integrations.edit;
+  perms.canAccessSettings = perms.settings.edit;
+  perms.canViewCalendar = perms.calendar.view;
+  return perms;
 }
 
 export function usePermissions(): Permissions {
@@ -117,47 +176,64 @@ export function usePermissions(): Permissions {
         perms = {
           role,
           isAdmin: false,
-          canViewDashboard: orgPerms?.member_can_view_dashboard ?? true,
-          canViewDashboardAll: false,
-          canManageAutomations: orgPerms?.member_can_manage_automations ?? false,
-          canManageIntegrations: orgPerms?.member_can_manage_integrations ?? false,
-          canAccessSettings: false,
+          // Members can VIEW team data but EDIT only their own by default
+          dashboard: { view: orgPerms?.member_can_view_dashboard ?? true, edit: false },
+          automations: { view: orgPerms?.member_can_manage_automations ?? false, edit: orgPerms?.member_can_manage_automations ?? false },
+          integrations: { view: orgPerms?.member_can_manage_integrations ?? false, edit: orgPerms?.member_can_manage_integrations ?? false },
+          settings: { view: false, edit: false },
+          boards: { view: true, edit: true },
+          calendar: { view: true, edit: true },
+          chat: { view: true, edit: true },
           canInviteMembers: orgPerms?.member_can_invite_members ?? false,
           canCreateBoards: orgPerms?.member_can_create_boards ?? false,
           canCreateChannels: orgPerms?.member_can_create_channels ?? false,
           canDeleteCards: orgPerms?.member_can_delete_cards ?? false,
           canManageLabels: orgPerms?.member_can_manage_labels ?? false,
-          boardVisibility: orgPerms?.member_board_visibility ?? "own",
           canCreateCards: true,
           canComment: true,
-          canViewCalendar: true,
+          canEditOwnOnly: orgPerms?.member_can_edit_own_only ?? true,
+          boardVisibility: orgPerms?.member_board_visibility ?? "team",
           loading: false,
+          // Legacy (will be synced below)
+          canViewDashboard: true,
+          canViewDashboardAll: false,
+          canManageAutomations: false,
+          canManageIntegrations: false,
+          canAccessSettings: false,
+          canViewCalendar: true,
         };
       } else {
         // guest
         perms = {
           role,
           isAdmin: false,
-          canViewDashboard: false,
-          canViewDashboardAll: false,
-          canManageAutomations: false,
-          canManageIntegrations: false,
-          canAccessSettings: false,
+          dashboard: { view: false, edit: false },
+          automations: { view: false, edit: false },
+          integrations: { view: false, edit: false },
+          settings: { view: false, edit: false },
+          boards: { view: true, edit: false },
+          calendar: { view: orgPerms?.guest_can_view_calendar ?? true, edit: false },
+          chat: { view: true, edit: true },
           canInviteMembers: false,
           canCreateBoards: false,
           canCreateChannels: false,
           canDeleteCards: false,
           canManageLabels: false,
-          boardVisibility: orgPerms?.guest_board_visibility ?? "own",
           canCreateCards: orgPerms?.guest_can_create_cards ?? false,
           canComment: orgPerms?.guest_can_comment ?? true,
-          canViewCalendar: orgPerms?.guest_can_view_calendar ?? true,
+          canEditOwnOnly: orgPerms?.guest_can_edit_own_only ?? true,
+          boardVisibility: orgPerms?.guest_board_visibility ?? "own",
           loading: false,
+          canViewDashboard: false,
+          canViewDashboardAll: false,
+          canManageAutomations: false,
+          canManageIntegrations: false,
+          canAccessSettings: false,
+          canViewCalendar: true,
         };
       }
 
       // Layer 2: Team-level overrides
-      // Get user's teams
       const { data: teamMemberships } = await supabase
         .from("team_members")
         .select("team_id")
@@ -172,18 +248,19 @@ export function usePermissions(): Permissions {
           .in("team_id", teamIds);
 
         if (teamPermsData) {
-          // Merge team permissions (OR logic: if ANY team grants, user gets it)
           for (const tp of teamPermsData) {
-            perms.canViewDashboard = applyOverride(perms.canViewDashboard, tp.can_view_dashboard);
-            perms.canManageAutomations = applyOverride(perms.canManageAutomations, tp.can_manage_automations);
-            perms.canManageIntegrations = applyOverride(perms.canManageIntegrations, tp.can_manage_integrations);
-            perms.canAccessSettings = applyOverride(perms.canAccessSettings, tp.can_access_settings);
+            // New view/edit columns
+            perms.dashboard = applyModuleOverride(perms.dashboard, tp.can_view_dashboard_view ?? tp.can_view_dashboard ?? null, tp.can_view_dashboard_edit ?? null);
+            perms.automations = applyModuleOverride(perms.automations, tp.can_manage_automations_view ?? tp.can_manage_automations ?? null, tp.can_manage_automations_edit ?? tp.can_manage_automations ?? null);
+            perms.integrations = applyModuleOverride(perms.integrations, tp.can_manage_integrations_view ?? tp.can_manage_integrations ?? null, tp.can_manage_integrations_edit ?? tp.can_manage_integrations ?? null);
+            perms.settings = applyModuleOverride(perms.settings, tp.can_access_settings_view ?? tp.can_access_settings ?? null, tp.can_access_settings_edit ?? tp.can_access_settings ?? null);
+            perms.boards = applyModuleOverride(perms.boards, tp.can_view_boards_view ?? null, tp.can_view_boards_edit ?? tp.can_create_boards ?? null);
+            perms.calendar = applyModuleOverride(perms.calendar, tp.can_view_calendar_view ?? tp.can_view_calendar ?? null, tp.can_view_calendar_edit ?? null);
+            perms.chat = applyModuleOverride(perms.chat, tp.can_view_chat_view ?? null, tp.can_view_chat_edit ?? tp.can_create_channels ?? null);
+            // Legacy actions
             perms.canInviteMembers = applyOverride(perms.canInviteMembers, tp.can_invite_members);
-            perms.canCreateBoards = applyOverride(perms.canCreateBoards, tp.can_create_boards);
-            perms.canCreateChannels = applyOverride(perms.canCreateChannels, tp.can_create_channels);
             perms.canDeleteCards = applyOverride(perms.canDeleteCards, tp.can_delete_cards);
             perms.canManageLabels = applyOverride(perms.canManageLabels, tp.can_manage_labels);
-            perms.canViewCalendar = applyOverride(perms.canViewCalendar, tp.can_view_calendar);
             if (tp.board_visibility) perms.boardVisibility = tp.board_visibility;
           }
         }
@@ -198,23 +275,22 @@ export function usePermissions(): Permissions {
         .single();
 
       if (userPerms) {
-        perms.canViewDashboard = applyOverride(perms.canViewDashboard, userPerms.can_view_dashboard);
-        perms.canViewDashboardAll = applyOverride(perms.canViewDashboardAll, userPerms.can_view_dashboard_all);
-        perms.canManageAutomations = applyOverride(perms.canManageAutomations, userPerms.can_manage_automations);
-        perms.canManageIntegrations = applyOverride(perms.canManageIntegrations, userPerms.can_manage_integrations);
-        perms.canAccessSettings = applyOverride(perms.canAccessSettings, userPerms.can_access_settings);
+        perms.dashboard = applyModuleOverride(perms.dashboard, userPerms.can_view_dashboard_view ?? userPerms.can_view_dashboard ?? null, userPerms.can_view_dashboard_edit ?? null);
+        perms.automations = applyModuleOverride(perms.automations, userPerms.can_manage_automations_view ?? userPerms.can_manage_automations ?? null, userPerms.can_manage_automations_edit ?? userPerms.can_manage_automations ?? null);
+        perms.integrations = applyModuleOverride(perms.integrations, userPerms.can_manage_integrations_view ?? userPerms.can_manage_integrations ?? null, userPerms.can_manage_integrations_edit ?? userPerms.can_manage_integrations ?? null);
+        perms.settings = applyModuleOverride(perms.settings, userPerms.can_access_settings_view ?? userPerms.can_access_settings ?? null, userPerms.can_access_settings_edit ?? userPerms.can_access_settings ?? null);
+        perms.boards = applyModuleOverride(perms.boards, userPerms.can_view_boards_view ?? null, userPerms.can_view_boards_edit ?? userPerms.can_create_boards ?? null);
+        perms.calendar = applyModuleOverride(perms.calendar, userPerms.can_view_calendar_view ?? userPerms.can_view_calendar ?? null, userPerms.can_view_calendar_edit ?? null);
+        perms.chat = applyModuleOverride(perms.chat, userPerms.can_view_chat_view ?? null, userPerms.can_view_chat_edit ?? userPerms.can_create_channels ?? null);
         perms.canInviteMembers = applyOverride(perms.canInviteMembers, userPerms.can_invite_members);
-        perms.canCreateBoards = applyOverride(perms.canCreateBoards, userPerms.can_create_boards);
-        perms.canCreateChannels = applyOverride(perms.canCreateChannels, userPerms.can_create_channels);
         perms.canDeleteCards = applyOverride(perms.canDeleteCards, userPerms.can_delete_cards);
         perms.canManageLabels = applyOverride(perms.canManageLabels, userPerms.can_manage_labels);
-        perms.canViewCalendar = applyOverride(perms.canViewCalendar, userPerms.can_view_calendar);
         perms.canCreateCards = applyOverride(perms.canCreateCards, userPerms.can_create_cards);
         perms.canComment = applyOverride(perms.canComment, userPerms.can_comment);
         if (userPerms.board_visibility) perms.boardVisibility = userPerms.board_visibility;
       }
 
-      setPermissions(perms);
+      setPermissions(syncLegacy(perms));
     }
 
     load();

@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Shield,
   Eye,
+  Pencil,
   Users,
   Kanban,
   MessageSquare,
@@ -23,13 +24,12 @@ import {
   CheckCircle,
   Info,
   User,
-  UserCog,
 } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 
 type Visibility = "own" | "team" | "all";
 
-interface Permissions {
+interface OrgPermissions {
   member_board_visibility: Visibility;
   guest_board_visibility: Visibility;
   member_can_create_boards: boolean;
@@ -40,9 +40,11 @@ interface Permissions {
   member_can_view_dashboard: boolean;
   member_can_delete_cards: boolean;
   member_can_manage_labels: boolean;
+  member_can_edit_own_only: boolean;
   guest_can_create_cards: boolean;
   guest_can_comment: boolean;
   guest_can_view_calendar: boolean;
+  guest_can_edit_own_only: boolean;
 }
 
 const VISIBILITY_OPTIONS: { value: Visibility; label: string; description: string }[] = [
@@ -51,8 +53,8 @@ const VISIBILITY_OPTIONS: { value: Visibility; label: string; description: strin
   { value: "all", label: "Todos os cards", description: "Vê todas as tarefas da organização" },
 ];
 
-const DEFAULT_PERMISSIONS: Permissions = {
-  member_board_visibility: "all",
+const DEFAULT_PERMISSIONS: OrgPermissions = {
+  member_board_visibility: "team",
   guest_board_visibility: "own",
   member_can_create_boards: true,
   member_can_create_channels: true,
@@ -62,25 +64,35 @@ const DEFAULT_PERMISSIONS: Permissions = {
   member_can_view_dashboard: true,
   member_can_delete_cards: true,
   member_can_manage_labels: true,
+  member_can_edit_own_only: true,
   guest_can_create_cards: true,
   guest_can_comment: true,
   guest_can_view_calendar: true,
+  guest_can_edit_own_only: true,
 };
 
 type PermTab = "role" | "user" | "team";
 
+// Modules with VIEW and EDIT for user/team tabs
 const PERM_MODULES = [
-  { key: "can_view_dashboard", label: "Ver Dashboard", icon: BarChart3 },
-  { key: "can_manage_automations", label: "Automações", icon: Zap },
-  { key: "can_manage_integrations", label: "Integrações", icon: Plug },
-  { key: "can_access_settings", label: "Configurações", icon: Shield },
-  { key: "can_invite_members", label: "Convidar membros", icon: UserPlus },
-  { key: "can_create_boards", label: "Criar Boards", icon: Kanban },
-  { key: "can_create_channels", label: "Criar Canais", icon: MessageSquare },
-  { key: "can_delete_cards", label: "Deletar Cards", icon: Trash2 },
-  { key: "can_manage_labels", label: "Gerenciar Labels", icon: Tag },
-  { key: "can_view_calendar", label: "Ver Calendário", icon: Calendar },
+  { key: "dashboard", label: "Dashboard", icon: BarChart3, description: "Métricas e relatórios" },
+  { key: "automations", label: "Automações", icon: Zap, description: "Regras automáticas" },
+  { key: "integrations", label: "Integrações", icon: Plug, description: "Conexões externas" },
+  { key: "settings", label: "Configurações", icon: Shield, description: "Config. da organização" },
+  { key: "boards", label: "Boards", icon: Kanban, description: "Quadros e tarefas" },
+  { key: "calendar", label: "Calendário", icon: Calendar, description: "Agenda e eventos" },
+  { key: "chat", label: "Chat", icon: MessageSquare, description: "Mensagens e canais" },
 ] as const;
+
+// Additional action permissions for user/team
+const ACTION_MODULES = [
+  { key: "can_invite_members", label: "Convidar membros", icon: UserPlus },
+  { key: "can_delete_cards", label: "Excluir cards", icon: Trash2 },
+  { key: "can_manage_labels", label: "Gerenciar labels", icon: Tag },
+] as const;
+
+// Tri-state values: null=inherit, true=allowed, false=blocked
+type TriState = boolean | null;
 
 interface UserPermRow {
   id?: string;
@@ -88,7 +100,7 @@ interface UserPermRow {
   full_name: string | null;
   email: string;
   avatar_url: string | null;
-  perms: Record<string, boolean | null>;
+  perms: Record<string, TriState>; // key_view, key_edit, action keys
 }
 
 interface TeamPermRow {
@@ -96,7 +108,33 @@ interface TeamPermRow {
   team_id: string;
   team_name: string;
   team_color: string;
-  perms: Record<string, boolean | null>;
+  perms: Record<string, TriState>;
+}
+
+// DB column mapping
+function moduleToDbKeys(modKey: string): { view: string; edit: string } {
+  const map: Record<string, { view: string; edit: string }> = {
+    dashboard: { view: "can_view_dashboard_view", edit: "can_view_dashboard_edit" },
+    automations: { view: "can_manage_automations_view", edit: "can_manage_automations_edit" },
+    integrations: { view: "can_manage_integrations_view", edit: "can_manage_integrations_edit" },
+    settings: { view: "can_access_settings_view", edit: "can_access_settings_edit" },
+    boards: { view: "can_view_boards_view", edit: "can_view_boards_edit" },
+    calendar: { view: "can_view_calendar_view", edit: "can_view_calendar_edit" },
+    chat: { view: "can_view_chat_view", edit: "can_view_chat_edit" },
+  };
+  return map[modKey];
+}
+
+function getAllPermKeys(): string[] {
+  const keys: string[] = [];
+  for (const mod of PERM_MODULES) {
+    const db = moduleToDbKeys(mod.key);
+    keys.push(db.view, db.edit);
+  }
+  for (const act of ACTION_MODULES) {
+    keys.push(act.key);
+  }
+  return keys;
 }
 
 export default function PermissionsPage() {
@@ -105,7 +143,7 @@ export default function PermissionsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [permissions, setPermissions] = useState<Permissions>(DEFAULT_PERMISSIONS);
+  const [permissions, setPermissions] = useState<OrgPermissions>(DEFAULT_PERMISSIONS);
   const [activeTab, setActiveTab] = useState<PermTab>("role");
   const [userPerms, setUserPerms] = useState<UserPermRow[]>([]);
   const [teamPerms, setTeamPerms] = useState<TeamPermRow[]>([]);
@@ -147,12 +185,13 @@ export default function PermissionsPage() {
         member_can_view_dashboard: data.member_can_view_dashboard,
         member_can_delete_cards: data.member_can_delete_cards,
         member_can_manage_labels: data.member_can_manage_labels,
+        member_can_edit_own_only: data.member_can_edit_own_only ?? true,
         guest_can_create_cards: data.guest_can_create_cards,
         guest_can_comment: data.guest_can_comment,
         guest_can_view_calendar: data.guest_can_view_calendar,
+        guest_can_edit_own_only: data.guest_can_edit_own_only ?? true,
       });
     } else {
-      // Create default permissions for org
       await supabase.from("org_permissions").insert({ org_id: activeOrgId! });
     }
     setLoading(false);
@@ -161,29 +200,22 @@ export default function PermissionsPage() {
   async function handleSave() {
     if (!activeOrgId) return;
     setSaving(true);
-
     const { error } = await supabase
       .from("org_permissions")
-      .update({
-        ...permissions,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ ...permissions, updated_at: new Date().toISOString() })
       .eq("org_id", activeOrgId);
-
     if (!error) setSuccess(true);
     setSaving(false);
   }
 
   async function loadUserPermissions() {
     if (!activeOrgId) return;
-    // Load org members
     const { data: members } = await supabase
       .from("org_members")
       .select("user_id, role, profiles:user_id(id, full_name, email, avatar_url)")
       .eq("org_id", activeOrgId)
       .in("role", ["member", "guest"]);
 
-    // Load existing user permissions
     const { data: existingPerms } = await supabase
       .from("user_permissions")
       .select("*")
@@ -192,16 +224,17 @@ export default function PermissionsPage() {
     const permMap: Record<string, any> = {};
     (existingPerms || []).forEach((p: any) => { permMap[p.user_id] = p; });
 
+    const allKeys = getAllPermKeys();
     const rows: UserPermRow[] = (members || []).map((m: any) => ({
       id: permMap[m.user_id]?.id,
       user_id: m.user_id,
       full_name: m.profiles?.full_name,
       email: m.profiles?.email,
       avatar_url: m.profiles?.avatar_url,
-      perms: PERM_MODULES.reduce((acc, mod) => {
-        acc[mod.key] = permMap[m.user_id]?.[mod.key] ?? null;
+      perms: allKeys.reduce((acc, key) => {
+        acc[key] = permMap[m.user_id]?.[key] ?? null;
         return acc;
-      }, {} as Record<string, boolean | null>),
+      }, {} as Record<string, TriState>),
     }));
     setUserPerms(rows);
   }
@@ -221,35 +254,32 @@ export default function PermissionsPage() {
     const permMap: Record<string, any> = {};
     (existingPerms || []).forEach((p: any) => { permMap[p.team_id] = p; });
 
+    const allKeys = getAllPermKeys();
     const rows: TeamPermRow[] = (teams || []).map((t: any) => ({
       id: permMap[t.id]?.id,
       team_id: t.id,
       team_name: t.name,
       team_color: t.color || "#6366f1",
-      perms: PERM_MODULES.reduce((acc, mod) => {
-        acc[mod.key] = permMap[t.id]?.[mod.key] ?? null;
+      perms: allKeys.reduce((acc, key) => {
+        acc[key] = permMap[t.id]?.[key] ?? null;
         return acc;
-      }, {} as Record<string, boolean | null>),
+      }, {} as Record<string, TriState>),
     }));
     setTeamPerms(rows);
   }
 
-  function toggleUserPerm(userId: string, key: string) {
-    setUserPerms((prev) => prev.map((u) => {
-      if (u.user_id !== userId) return u;
-      const current = u.perms[key];
+  function togglePerm(
+    setter: typeof setUserPerms | typeof setTeamPerms,
+    id: string,
+    idField: "user_id" | "team_id",
+    key: string,
+  ) {
+    setter((prev: any[]) => prev.map((row: any) => {
+      if (row[idField] !== id) return row;
+      const current = row.perms[key];
       // Cycle: null -> true -> false -> null
       const next = current === null ? true : current === true ? false : null;
-      return { ...u, perms: { ...u.perms, [key]: next } };
-    }));
-  }
-
-  function toggleTeamPerm(teamId: string, key: string) {
-    setTeamPerms((prev) => prev.map((t) => {
-      if (t.team_id !== teamId) return t;
-      const current = t.perms[key];
-      const next = current === null ? true : current === true ? false : null;
-      return { ...t, perms: { ...t.perms, [key]: next } };
+      return { ...row, perms: { ...row.perms, [key]: next } };
     }));
   }
 
@@ -266,7 +296,6 @@ export default function PermissionsPage() {
           updated_at: new Date().toISOString(),
         }, { onConflict: "org_id,user_id" });
       } else if (row.id) {
-        // Remove override if all null
         await supabase.from("user_permissions").delete().eq("id", row.id);
       }
     }
@@ -294,7 +323,7 @@ export default function PermissionsPage() {
     setSuccess(true);
   }
 
-  function toggleBool(key: keyof Permissions) {
+  function toggleBool(key: keyof OrgPermissions) {
     setPermissions((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
@@ -311,7 +340,7 @@ export default function PermissionsPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Link
@@ -323,7 +352,7 @@ export default function PermissionsPage() {
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">Permissões</h1>
           <p className="text-sm text-muted-foreground">
-            Configure o que cada papel pode fazer na organização
+            Configure quem pode ver e editar cada módulo
           </p>
         </div>
       </div>
@@ -362,14 +391,30 @@ export default function PermissionsPage() {
         })}
       </div>
 
+      {/* Hierarchy info */}
+      <div className="mb-6 flex items-start gap-3 bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3">
+        <Info className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+        <div className="text-sm text-muted-foreground">
+          <strong className="text-foreground">Hierarquia:</strong> Pessoa &gt; Equipe &gt; Papel.
+          Permissões individuais sobrepõem as da equipe, que sobrepõem as do papel.
+          <span className="flex items-center gap-3 mt-1.5 text-xs">
+            <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> = Visualizar</span>
+            <span className="flex items-center gap-1"><Pencil className="w-3 h-3" /> = Editar</span>
+          </span>
+        </div>
+      </div>
+
       {/* ===== TAB: BY USER ===== */}
       {activeTab === "user" && (
         <div className="space-y-4">
           <div className="flex items-start gap-3 bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 mb-4">
             <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
             <div className="text-sm text-muted-foreground">
-              Configure permissões individuais. Valores <strong className="text-foreground">nulos</strong> (—) usam o padrão do papel.
-              <strong className="text-green-500"> ✓</strong> = permitido, <strong className="text-red-500">✗</strong> = bloqueado.
+              Defina para cada pessoa se ela pode <Eye className="w-3 h-3 inline" /> <strong className="text-foreground">Visualizar</strong> e/ou <Pencil className="w-3 h-3 inline" /> <strong className="text-foreground">Editar</strong> cada módulo.
+              <br />
+              <strong className="text-green-500">✓</strong> = permitido &nbsp;
+              <strong className="text-red-500">✗</strong> = bloqueado &nbsp;
+              <strong className="text-muted-foreground">—</strong> = herda do papel/equipe
             </div>
           </div>
 
@@ -380,17 +425,58 @@ export default function PermissionsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground">Pessoa</th>
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground sticky left-0 bg-background z-10">Pessoa</th>
                     {PERM_MODULES.map((mod) => {
                       const Icon = mod.icon;
-                      return <th key={mod.key} className="text-center py-2 px-1 w-10" title={mod.label}><Icon className="w-3.5 h-3.5 text-muted-foreground mx-auto" /></th>;
+                      return (
+                        <th key={mod.key} colSpan={2} className="text-center py-2 px-1" title={mod.label}>
+                          <div className="flex flex-col items-center gap-0.5">
+                            <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-[9px] text-muted-foreground font-normal">{mod.label}</span>
+                          </div>
+                        </th>
+                      );
                     })}
+                    {ACTION_MODULES.map((act) => {
+                      const Icon = act.icon;
+                      return (
+                        <th key={act.key} className="text-center py-2 px-1" title={act.label}>
+                          <div className="flex flex-col items-center gap-0.5">
+                            <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-[9px] text-muted-foreground font-normal truncate max-w-[50px]">{act.label}</span>
+                          </div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                  {/* Sub-header for view/edit */}
+                  <tr className="border-b border-border/50">
+                    <th className="sticky left-0 bg-background z-10"></th>
+                    {PERM_MODULES.map((mod) => (
+                      <>
+                        <th key={`${mod.key}_v`} className="text-center py-1 px-0.5">
+                          <span className="text-[8px] text-blue-400 font-medium flex items-center justify-center gap-0.5">
+                            <Eye className="w-2.5 h-2.5" /> Ver
+                          </span>
+                        </th>
+                        <th key={`${mod.key}_e`} className="text-center py-1 px-0.5">
+                          <span className="text-[8px] text-orange-400 font-medium flex items-center justify-center gap-0.5">
+                            <Pencil className="w-2.5 h-2.5" /> Edit
+                          </span>
+                        </th>
+                      </>
+                    ))}
+                    {ACTION_MODULES.map((act) => (
+                      <th key={`${act.key}_h`} className="text-center py-1 px-0.5">
+                        <span className="text-[8px] text-purple-400 font-medium">Ação</span>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {userPerms.map((row) => (
                     <tr key={row.user_id} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
-                      <td className="py-2 px-3">
+                      <td className="py-2 px-3 sticky left-0 bg-background z-10">
                         <div className="flex items-center gap-2">
                           <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0" style={{ backgroundColor: generateColor(row.full_name || row.email) }}>
                             {getInitials(row.full_name || row.email)}
@@ -399,21 +485,37 @@ export default function PermissionsPage() {
                         </div>
                       </td>
                       {PERM_MODULES.map((mod) => {
-                        const val = row.perms[mod.key];
+                        const db = moduleToDbKeys(mod.key);
+                        const viewVal = row.perms[db.view];
+                        const editVal = row.perms[db.edit];
                         return (
-                          <td key={mod.key} className="text-center py-2 px-1">
-                            <button
-                              onClick={() => toggleUserPerm(row.user_id, mod.key)}
-                              className={cn(
-                                "w-7 h-7 rounded-md text-xs font-bold transition-colors",
-                                val === true ? "bg-green-500/15 text-green-500 hover:bg-green-500/25" :
-                                val === false ? "bg-red-500/15 text-red-500 hover:bg-red-500/25" :
-                                "bg-muted text-muted-foreground hover:bg-accent"
-                              )}
-                              title={`${mod.label}: ${val === true ? "Permitido" : val === false ? "Bloqueado" : "Padrão do papel"}`}
-                            >
-                              {val === true ? "✓" : val === false ? "✗" : "—"}
-                            </button>
+                          <>
+                            <td key={`${mod.key}_v`} className="text-center py-2 px-0.5">
+                              <TriStateButton
+                                value={viewVal}
+                                onClick={() => togglePerm(setUserPerms, row.user_id, "user_id", db.view)}
+                                title={`${mod.label} - Visualizar: ${triLabel(viewVal)}`}
+                              />
+                            </td>
+                            <td key={`${mod.key}_e`} className="text-center py-2 px-0.5">
+                              <TriStateButton
+                                value={editVal}
+                                onClick={() => togglePerm(setUserPerms, row.user_id, "user_id", db.edit)}
+                                title={`${mod.label} - Editar: ${triLabel(editVal)}`}
+                              />
+                            </td>
+                          </>
+                        );
+                      })}
+                      {ACTION_MODULES.map((act) => {
+                        const val = row.perms[act.key];
+                        return (
+                          <td key={act.key} className="text-center py-2 px-0.5">
+                            <TriStateButton
+                              value={val}
+                              onClick={() => togglePerm(setUserPerms, row.user_id, "user_id", act.key)}
+                              title={`${act.label}: ${triLabel(val)}`}
+                            />
                           </td>
                         );
                       })}
@@ -428,7 +530,7 @@ export default function PermissionsPage() {
             <button
               onClick={saveUserPermissions}
               disabled={savingUser}
-              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors cursor-pointer"
             >
               {savingUser && <Loader2 className="w-4 h-4 animate-spin" />}
               Salvar permissões individuais
@@ -443,7 +545,8 @@ export default function PermissionsPage() {
           <div className="flex items-start gap-3 bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 mb-4">
             <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
             <div className="text-sm text-muted-foreground">
-              Permissões de equipe são aplicadas a todos os membros da equipe. Se um membro pertence a múltiplas equipes, a permissão mais permissiva é usada.
+              Defina para cada equipe se pode <Eye className="w-3 h-3 inline" /> <strong className="text-foreground">Visualizar</strong> e/ou <Pencil className="w-3 h-3 inline" /> <strong className="text-foreground">Editar</strong> cada módulo.
+              Se um membro pertence a múltiplas equipes, a permissão mais permissiva prevalece.
             </div>
           </div>
 
@@ -454,38 +557,94 @@ export default function PermissionsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground">Equipe</th>
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground sticky left-0 bg-background z-10">Equipe</th>
                     {PERM_MODULES.map((mod) => {
                       const Icon = mod.icon;
-                      return <th key={mod.key} className="text-center py-2 px-1 w-10" title={mod.label}><Icon className="w-3.5 h-3.5 text-muted-foreground mx-auto" /></th>;
+                      return (
+                        <th key={mod.key} colSpan={2} className="text-center py-2 px-1" title={mod.label}>
+                          <div className="flex flex-col items-center gap-0.5">
+                            <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-[9px] text-muted-foreground font-normal">{mod.label}</span>
+                          </div>
+                        </th>
+                      );
                     })}
+                    {ACTION_MODULES.map((act) => {
+                      const Icon = act.icon;
+                      return (
+                        <th key={act.key} className="text-center py-2 px-1" title={act.label}>
+                          <div className="flex flex-col items-center gap-0.5">
+                            <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-[9px] text-muted-foreground font-normal truncate max-w-[50px]">{act.label}</span>
+                          </div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                  <tr className="border-b border-border/50">
+                    <th className="sticky left-0 bg-background z-10"></th>
+                    {PERM_MODULES.map((mod) => (
+                      <>
+                        <th key={`${mod.key}_v`} className="text-center py-1 px-0.5">
+                          <span className="text-[8px] text-blue-400 font-medium flex items-center justify-center gap-0.5">
+                            <Eye className="w-2.5 h-2.5" /> Ver
+                          </span>
+                        </th>
+                        <th key={`${mod.key}_e`} className="text-center py-1 px-0.5">
+                          <span className="text-[8px] text-orange-400 font-medium flex items-center justify-center gap-0.5">
+                            <Pencil className="w-2.5 h-2.5" /> Edit
+                          </span>
+                        </th>
+                      </>
+                    ))}
+                    {ACTION_MODULES.map((act) => (
+                      <th key={`${act.key}_h`} className="text-center py-1 px-0.5">
+                        <span className="text-[8px] text-purple-400 font-medium">Ação</span>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {teamPerms.map((row) => (
                     <tr key={row.team_id} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
-                      <td className="py-2 px-3">
+                      <td className="py-2 px-3 sticky left-0 bg-background z-10">
                         <div className="flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: row.team_color }} />
                           <span className="text-foreground text-xs font-medium">{row.team_name}</span>
                         </div>
                       </td>
                       {PERM_MODULES.map((mod) => {
-                        const val = row.perms[mod.key];
+                        const db = moduleToDbKeys(mod.key);
+                        const viewVal = row.perms[db.view];
+                        const editVal = row.perms[db.edit];
                         return (
-                          <td key={mod.key} className="text-center py-2 px-1">
-                            <button
-                              onClick={() => toggleTeamPerm(row.team_id, mod.key)}
-                              className={cn(
-                                "w-7 h-7 rounded-md text-xs font-bold transition-colors",
-                                val === true ? "bg-green-500/15 text-green-500 hover:bg-green-500/25" :
-                                val === false ? "bg-red-500/15 text-red-500 hover:bg-red-500/25" :
-                                "bg-muted text-muted-foreground hover:bg-accent"
-                              )}
-                              title={`${mod.label}: ${val === true ? "Permitido" : val === false ? "Bloqueado" : "Padrão"}`}
-                            >
-                              {val === true ? "✓" : val === false ? "✗" : "—"}
-                            </button>
+                          <>
+                            <td key={`${mod.key}_v`} className="text-center py-2 px-0.5">
+                              <TriStateButton
+                                value={viewVal}
+                                onClick={() => togglePerm(setTeamPerms, row.team_id, "team_id", db.view)}
+                                title={`${mod.label} - Visualizar: ${triLabel(viewVal)}`}
+                              />
+                            </td>
+                            <td key={`${mod.key}_e`} className="text-center py-2 px-0.5">
+                              <TriStateButton
+                                value={editVal}
+                                onClick={() => togglePerm(setTeamPerms, row.team_id, "team_id", db.edit)}
+                                title={`${mod.label} - Editar: ${triLabel(editVal)}`}
+                              />
+                            </td>
+                          </>
+                        );
+                      })}
+                      {ACTION_MODULES.map((act) => {
+                        const val = row.perms[act.key];
+                        return (
+                          <td key={act.key} className="text-center py-2 px-0.5">
+                            <TriStateButton
+                              value={val}
+                              onClick={() => togglePerm(setTeamPerms, row.team_id, "team_id", act.key)}
+                              title={`${act.label}: ${triLabel(val)}`}
+                            />
                           </td>
                         );
                       })}
@@ -500,7 +659,7 @@ export default function PermissionsPage() {
             <button
               onClick={saveTeamPermissions}
               disabled={savingTeam}
-              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors cursor-pointer"
             >
               {savingTeam && <Loader2 className="w-4 h-4 animate-spin" />}
               Salvar permissões de equipe
@@ -509,30 +668,85 @@ export default function PermissionsPage() {
         </div>
       )}
 
-      {/* ===== TAB: BY ROLE (original content) ===== */}
+      {/* ===== TAB: BY ROLE ===== */}
       {activeTab === "role" && <>
 
       {/* Info box */}
       <div className="mb-6 flex items-start gap-3 bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3">
         <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
         <div className="text-sm text-muted-foreground">
-          <strong className="text-foreground">Owners e Admins</strong> sempre têm acesso total.
+          <strong className="text-foreground">Owners e Admins</strong> sempre têm acesso total (ver + editar).
           Estas configurações se aplicam aos papéis <strong className="text-foreground">Membro</strong> e <strong className="text-foreground">Convidado</strong>.
         </div>
       </div>
 
       {/* ===== MEMBER PERMISSIONS ===== */}
       <div className="space-y-6">
-        <SectionTitle icon={Users} label="Permissões de Membros" description="Usuários com papel 'Membro' na organização" />
+        <SectionTitle icon={Users} label="Permissões de Membros" description="Visualiza dados da equipe, edita apenas os seus" />
+
+        {/* Edit scope */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Pencil className="w-4 h-4 text-orange-400" />
+            <h3 className="text-sm font-semibold text-foreground">Escopo de edição</h3>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">
+            Define se membros podem editar apenas seus próprios itens ou de todos
+          </p>
+          <div className="grid gap-2">
+            <label
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-all",
+                permissions.member_can_edit_own_only
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-foreground/20"
+              )}
+            >
+              <input
+                type="radio"
+                checked={permissions.member_can_edit_own_only}
+                onChange={() => setPermissions((p) => ({ ...p, member_can_edit_own_only: true }))}
+                className="accent-primary"
+              />
+              <div>
+                <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Eye className="w-3.5 h-3.5 text-blue-400" /> Vê tudo, edita só o seu
+                </p>
+                <p className="text-xs text-muted-foreground">Pode visualizar dados da equipe/organização, mas só edita tarefas, eventos e itens atribuídos a ele</p>
+              </div>
+            </label>
+            <label
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-all",
+                !permissions.member_can_edit_own_only
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-foreground/20"
+              )}
+            >
+              <input
+                type="radio"
+                checked={!permissions.member_can_edit_own_only}
+                onChange={() => setPermissions((p) => ({ ...p, member_can_edit_own_only: false }))}
+                className="accent-primary"
+              />
+              <div>
+                <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Pencil className="w-3.5 h-3.5 text-orange-400" /> Vê tudo e edita tudo
+                </p>
+                <p className="text-xs text-muted-foreground">Pode visualizar e editar qualquer item dentro dos módulos permitidos</p>
+              </div>
+            </label>
+          </div>
+        </div>
 
         {/* Board Visibility */}
         <div className="bg-card border border-border rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
-            <Eye className="w-4 h-4 text-muted-foreground" />
+            <Eye className="w-4 h-4 text-blue-400" />
             <h3 className="text-sm font-semibold text-foreground">Visibilidade de Boards</h3>
           </div>
           <p className="text-xs text-muted-foreground mb-4">
-            Define quais tarefas e boards os membros podem visualizar
+            Define quais tarefas e boards os membros podem <strong>visualizar</strong>
           </p>
           <div className="grid gap-2">
             {VISIBILITY_OPTIONS.map((opt) => (
@@ -564,76 +778,73 @@ export default function PermissionsPage() {
         {/* Member Action Toggles */}
         <div className="bg-card border border-border rounded-xl p-5 space-y-1">
           <h3 className="text-sm font-semibold text-foreground mb-3">Ações permitidas</h3>
-          <ToggleRow
-            icon={Kanban}
-            label="Criar boards"
-            description="Criar novos boards e projetos"
-            checked={permissions.member_can_create_boards}
-            onChange={() => toggleBool("member_can_create_boards")}
-          />
-          <ToggleRow
-            icon={MessageSquare}
-            label="Criar canais"
-            description="Criar novos canais de chat"
-            checked={permissions.member_can_create_channels}
-            onChange={() => toggleBool("member_can_create_channels")}
-          />
-          <ToggleRow
-            icon={UserPlus}
-            label="Convidar membros"
-            description="Enviar convites para novos membros"
-            checked={permissions.member_can_invite_members}
-            onChange={() => toggleBool("member_can_invite_members")}
-          />
-          <ToggleRow
-            icon={Zap}
-            label="Gerenciar automações"
-            description="Criar e editar automações"
-            checked={permissions.member_can_manage_automations}
-            onChange={() => toggleBool("member_can_manage_automations")}
-          />
-          <ToggleRow
-            icon={Plug}
-            label="Gerenciar integrações"
-            description="Configurar integrações externas"
-            checked={permissions.member_can_manage_integrations}
-            onChange={() => toggleBool("member_can_manage_integrations")}
-          />
-          <ToggleRow
-            icon={BarChart3}
-            label="Ver dashboard"
-            description="Acessar métricas e relatórios"
-            checked={permissions.member_can_view_dashboard}
-            onChange={() => toggleBool("member_can_view_dashboard")}
-          />
-          <ToggleRow
-            icon={Trash2}
-            label="Excluir tarefas"
-            description="Arquivar ou excluir cards"
-            checked={permissions.member_can_delete_cards}
-            onChange={() => toggleBool("member_can_delete_cards")}
-          />
-          <ToggleRow
-            icon={Tag}
-            label="Gerenciar labels"
-            description="Criar e editar labels dos boards"
-            checked={permissions.member_can_manage_labels}
-            onChange={() => toggleBool("member_can_manage_labels")}
-          />
+          <ToggleRow icon={Kanban} label="Criar boards" description="Criar novos boards e projetos" checked={permissions.member_can_create_boards} onChange={() => toggleBool("member_can_create_boards")} />
+          <ToggleRow icon={MessageSquare} label="Criar canais" description="Criar novos canais de chat" checked={permissions.member_can_create_channels} onChange={() => toggleBool("member_can_create_channels")} />
+          <ToggleRow icon={UserPlus} label="Convidar membros" description="Enviar convites para novos membros" checked={permissions.member_can_invite_members} onChange={() => toggleBool("member_can_invite_members")} />
+          <ToggleRow icon={Zap} label="Gerenciar automações" description="Criar e editar automações" checked={permissions.member_can_manage_automations} onChange={() => toggleBool("member_can_manage_automations")} />
+          <ToggleRow icon={Plug} label="Gerenciar integrações" description="Configurar integrações externas" checked={permissions.member_can_manage_integrations} onChange={() => toggleBool("member_can_manage_integrations")} />
+          <ToggleRow icon={BarChart3} label="Ver dashboard" description="Acessar métricas e relatórios" checked={permissions.member_can_view_dashboard} onChange={() => toggleBool("member_can_view_dashboard")} />
+          <ToggleRow icon={Trash2} label="Excluir tarefas" description="Arquivar ou excluir cards" checked={permissions.member_can_delete_cards} onChange={() => toggleBool("member_can_delete_cards")} />
+          <ToggleRow icon={Tag} label="Gerenciar labels" description="Criar e editar labels dos boards" checked={permissions.member_can_manage_labels} onChange={() => toggleBool("member_can_manage_labels")} />
         </div>
 
         {/* ===== GUEST PERMISSIONS ===== */}
-        <SectionTitle icon={Users} label="Permissões de Convidados" description="Usuários com papel 'Convidado' na organização" />
+        <SectionTitle icon={Users} label="Permissões de Convidados" description="Só visualiza itens atribuídos, edição restrita" />
+
+        {/* Guest edit scope */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Pencil className="w-4 h-4 text-orange-400" />
+            <h3 className="text-sm font-semibold text-foreground">Escopo de edição</h3>
+          </div>
+          <div className="grid gap-2">
+            <label
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-all",
+                permissions.guest_can_edit_own_only
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-foreground/20"
+              )}
+            >
+              <input
+                type="radio"
+                checked={permissions.guest_can_edit_own_only}
+                onChange={() => setPermissions((p) => ({ ...p, guest_can_edit_own_only: true }))}
+                className="accent-primary"
+              />
+              <div>
+                <p className="text-sm font-medium text-foreground">Edita apenas seus itens</p>
+                <p className="text-xs text-muted-foreground">Convidado só pode modificar itens atribuídos a ele</p>
+              </div>
+            </label>
+            <label
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-all",
+                !permissions.guest_can_edit_own_only
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-foreground/20"
+              )}
+            >
+              <input
+                type="radio"
+                checked={!permissions.guest_can_edit_own_only}
+                onChange={() => setPermissions((p) => ({ ...p, guest_can_edit_own_only: false }))}
+                className="accent-primary"
+              />
+              <div>
+                <p className="text-sm font-medium text-foreground">Edita itens visíveis</p>
+                <p className="text-xs text-muted-foreground">Convidado pode editar qualquer item que consiga visualizar</p>
+              </div>
+            </label>
+          </div>
+        </div>
 
         {/* Guest Visibility */}
         <div className="bg-card border border-border rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
-            <Eye className="w-4 h-4 text-muted-foreground" />
+            <Eye className="w-4 h-4 text-blue-400" />
             <h3 className="text-sm font-semibold text-foreground">Visibilidade de Boards</h3>
           </div>
-          <p className="text-xs text-muted-foreground mb-4">
-            Define quais tarefas e boards os convidados podem visualizar
-          </p>
           <div className="grid gap-2">
             {VISIBILITY_OPTIONS.map((opt) => (
               <label
@@ -664,42 +875,21 @@ export default function PermissionsPage() {
         {/* Guest Action Toggles */}
         <div className="bg-card border border-border rounded-xl p-5 space-y-1">
           <h3 className="text-sm font-semibold text-foreground mb-3">Ações permitidas</h3>
-          <ToggleRow
-            icon={PenLine}
-            label="Criar tarefas"
-            description="Criar novos cards nos boards"
-            checked={permissions.guest_can_create_cards}
-            onChange={() => toggleBool("guest_can_create_cards")}
-          />
-          <ToggleRow
-            icon={MessageSquare}
-            label="Comentar"
-            description="Adicionar comentários em cards"
-            checked={permissions.guest_can_comment}
-            onChange={() => toggleBool("guest_can_comment")}
-          />
-          <ToggleRow
-            icon={Calendar}
-            label="Ver calendário"
-            description="Acessar a visualização de calendário"
-            checked={permissions.guest_can_view_calendar}
-            onChange={() => toggleBool("guest_can_view_calendar")}
-          />
+          <ToggleRow icon={PenLine} label="Criar tarefas" description="Criar novos cards nos boards" checked={permissions.guest_can_create_cards} onChange={() => toggleBool("guest_can_create_cards")} />
+          <ToggleRow icon={MessageSquare} label="Comentar" description="Adicionar comentários em cards" checked={permissions.guest_can_comment} onChange={() => toggleBool("guest_can_comment")} />
+          <ToggleRow icon={Calendar} label="Ver calendário" description="Acessar a visualização de calendário" checked={permissions.guest_can_view_calendar} onChange={() => toggleBool("guest_can_view_calendar")} />
         </div>
       </div>
 
       {/* Save Button */}
       <div className="flex items-center justify-between mt-8 pt-6 border-t border-border">
-        <Link
-          href="/settings"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <Link href="/settings" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
           Voltar
         </Link>
         <button
           onClick={handleSave}
           disabled={saving}
-          className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
           {saving && <Loader2 className="w-4 h-4 animate-spin" />}
           Salvar permissões
@@ -708,6 +898,29 @@ export default function PermissionsPage() {
 
       </>}
     </div>
+  );
+}
+
+// ===== Helper Components =====
+
+function triLabel(val: TriState): string {
+  return val === true ? "Permitido" : val === false ? "Bloqueado" : "Padrão do papel";
+}
+
+function TriStateButton({ value, onClick, title }: { value: TriState; onClick: () => void; title: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "w-7 h-7 rounded-md text-xs font-bold transition-all cursor-pointer",
+        value === true ? "bg-green-500/15 text-green-500 hover:bg-green-500/25 ring-1 ring-green-500/30" :
+        value === false ? "bg-red-500/15 text-red-500 hover:bg-red-500/25 ring-1 ring-red-500/30" :
+        "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+      )}
+      title={title}
+    >
+      {value === true ? "✓" : value === false ? "✗" : "—"}
+    </button>
   );
 }
 
@@ -725,18 +938,8 @@ function SectionTitle({ icon: Icon, label, description }: { icon: any; label: st
   );
 }
 
-function ToggleRow({
-  icon: Icon,
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  icon: any;
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: () => void;
+function ToggleRow({ icon: Icon, label, description, checked, onChange }: {
+  icon: any; label: string; description: string; checked: boolean; onChange: () => void;
 }) {
   return (
     <label className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors">
@@ -751,16 +954,14 @@ function ToggleRow({
         aria-checked={checked}
         onClick={(e) => { e.preventDefault(); onChange(); }}
         className={cn(
-          "relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0",
+          "relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 cursor-pointer",
           checked ? "bg-primary" : "bg-muted"
         )}
       >
-        <span
-          className={cn(
-            "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-            checked ? "translate-x-6" : "translate-x-1"
-          )}
-        />
+        <span className={cn(
+          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+          checked ? "translate-x-6" : "translate-x-1"
+        )} />
       </button>
     </label>
   );
