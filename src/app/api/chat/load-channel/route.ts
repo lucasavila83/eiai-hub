@@ -47,6 +47,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Canal não encontrado" }, { status: 404 });
     }
 
+    // Validate user belongs to the channel's org
+    const { data: orgMembership } = await adminClient
+      .from("org_members")
+      .select("id")
+      .eq("org_id", channel.org_id)
+      .eq("user_id", userId)
+      .single();
+
+    if (!orgMembership) {
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+    }
+
     // For public channels, auto-join if not member
     if (!membership && channel.type === "public") {
       await adminClient.from("channel_members").insert({

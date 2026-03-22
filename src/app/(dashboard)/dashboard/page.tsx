@@ -188,22 +188,35 @@ export default function DashboardPage() {
         .eq("org_id", activeOrgId);
       if (userId) eventsQuery = eventsQuery.eq("created_by", userId);
 
-      // Parallel queries
+      // Step 1: Load boards first (scoped to org)
+      const { data: boardsData } = await supabase
+        .from("boards")
+        .select("id, name")
+        .eq("org_id", activeOrgId)
+        .eq("is_archived", false);
+      const boards = boardsData || [];
+      const boardIds = boards.map((b) => b.id);
+      const boardIdSet = new Set(boardIds);
+
+      // Dummy ID to prevent empty IN clause
+      const safeBoardIds = boardIds.length > 0 ? boardIds : ["00000000-0000-0000-0000-000000000000"];
+
+      // Step 2: Load everything else filtered by org boards
       const [
         cardsRes,
         messagesCountRes,
         membersRes,
-        boardsRes,
         eventsRes,
         columnsRes,
         messagesRecentRes,
         cardsRecentRes,
       ] = await Promise.all([
-        // All cards in org boards
+        // Cards: ONLY from this org's boards
         supabase
           .from("cards")
           .select("id, priority, due_date, completed_at, is_archived, column_id, board_id, created_at, created_by")
-          .eq("is_archived", false),
+          .eq("is_archived", false)
+          .in("board_id", safeBoardIds),
         // Message count
         messagesCountQuery,
         // Org members
@@ -211,28 +224,20 @@ export default function DashboardPage() {
           .from("org_members")
           .select("id", { count: "exact", head: true })
           .eq("org_id", activeOrgId),
-        // Boards
-        supabase
-          .from("boards")
-          .select("id, name")
-          .eq("org_id", activeOrgId)
-          .eq("is_archived", false),
         // Events
         eventsQuery,
-        // Columns for all boards
+        // Columns: ONLY from this org's boards
         supabase
           .from("columns")
-          .select("id, name, board_id, is_done_column"),
+          .select("id, name, board_id, is_done_column")
+          .in("board_id", safeBoardIds),
         // Messages last 7 days
         messagesRecentQuery,
         // Cards created last 7 days
         cardsRecentQuery,
       ]);
 
-      const allCards = cardsRes.data || [];
-      const boards = boardsRes.data || [];
-      const boardIds = new Set(boards.map((b) => b.id));
-      let orgCards = allCards.filter((c) => boardIds.has(c.board_id));
+      let orgCards = cardsRes.data || [];
       const columns = columnsRes.data || [];
 
       // If filtering by user, only keep cards assigned to them

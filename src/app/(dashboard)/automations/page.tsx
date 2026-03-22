@@ -126,21 +126,27 @@ export default function AutomationsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) setCurrentUserId(user.id);
 
-    const [autoRes, boardsRes, colsRes, membersRes] = await Promise.all([
+    // Step 1: Load boards first (scoped to org)
+    const boardsRes = await supabase
+      .from("boards")
+      .select("id, name")
+      .eq("org_id", activeOrgId!)
+      .eq("is_archived", false)
+      .order("name");
+    const orgBoardIds = (boardsRes.data || []).map((b) => b.id);
+    const safeBoardIds = orgBoardIds.length > 0 ? orgBoardIds : ["00000000-0000-0000-0000-000000000000"];
+
+    // Step 2: Load rest filtered by org boards
+    const [autoRes, colsRes, membersRes] = await Promise.all([
       supabase
         .from("automations")
         .select("*")
         .eq("org_id", activeOrgId!)
         .order("created_at", { ascending: false }),
       supabase
-        .from("boards")
-        .select("id, name")
-        .eq("org_id", activeOrgId!)
-        .eq("is_archived", false)
-        .order("name"),
-      supabase
         .from("columns")
         .select("id, name, board_id")
+        .in("board_id", safeBoardIds)
         .order("position"),
       supabase
         .from("org_members")

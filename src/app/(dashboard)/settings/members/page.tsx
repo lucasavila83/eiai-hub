@@ -105,10 +105,17 @@ export default function MembersPage() {
       .eq("org_id", activeOrgId!);
     if (data) setTeams(data);
 
-    const { data: tm } = await supabase
-      .from("team_members")
-      .select("id, team_id, user_id, role");
-    if (tm) setTeamMembers(tm);
+    // Filter team_members to only teams in this org
+    const teamIds = (data || []).map((t: any) => t.id);
+    if (teamIds.length > 0) {
+      const { data: tm } = await supabase
+        .from("team_members")
+        .select("id, team_id, user_id, role")
+        .in("team_id", teamIds);
+      if (tm) setTeamMembers(tm);
+    } else {
+      setTeamMembers([]);
+    }
   }
 
   function getMemberTeams(userId: string) {
