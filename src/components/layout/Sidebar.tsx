@@ -254,7 +254,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         onMouseLeave={handleIconBarLeave}
       >
         {/* Narrow icon strip */}
-        <div className="w-14 h-full bg-white border-r border-gray-200 flex flex-col items-center py-3">
+        <div className="w-14 h-full bg-card border-r border-border flex flex-col items-center py-3">
           {/* Lesco Icon */}
           <div className="mb-4">
             <Image
@@ -278,7 +278,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                     "relative w-10 h-10 flex items-center justify-center rounded-lg transition-colors",
                     pathname.startsWith(href)
                       ? "bg-primary/10 text-primary"
-                      : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
                   )}
                   title={label}
                 >
@@ -306,7 +306,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         {/* Hover overlay: expanded icon bar with labels (like ClickUp) */}
         <div
           className={cn(
-            "absolute top-0 left-0 h-full bg-white border-r border-gray-200 shadow-xl flex flex-col py-3 transition-all duration-200 ease-in-out overflow-hidden",
+            "absolute top-0 left-0 h-full bg-card border-r border-border shadow-xl flex flex-col py-3 transition-all duration-200 ease-in-out overflow-hidden",
             iconBarExpanded ? "w-48 opacity-100" : "w-0 opacity-0 pointer-events-none"
           )}
         >
@@ -320,7 +320,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                 height={32}
                 className="w-8 h-8 rounded shrink-0"
               />
-              <span className="text-sm font-bold text-gray-900">Lesco</span>
+              <span className="text-sm font-bold text-foreground">Lesco</span>
             </div>
 
             {/* Nav items with labels */}
@@ -336,7 +336,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                       "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                       pathname.startsWith(href)
                         ? "bg-primary/10 text-primary"
-                        : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
                     )}
                   >
                     <Icon className="w-5 h-5 shrink-0" />
@@ -353,7 +353,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
             <div className="mt-auto px-2">
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               >
                 <LogOut className="w-5 h-5 shrink-0" />
                 <span>Sair</span>
@@ -365,26 +365,26 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
       {/* ===== 2nd COLUMN: Content panel (ALWAYS FIXED when sidebarOpen) ===== */}
       {sidebarOpen && (
-        <div className="w-56 bg-gray-50 border-r border-gray-200 flex flex-col h-full shrink-0 z-10">
+        <div className="w-56 bg-muted border-r border-border flex flex-col h-full shrink-0 z-10">
           {/* Header: Org Switcher + Collapse button */}
-          <div className="p-3 border-b border-gray-200">
+          <div className="p-3 border-b border-border">
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 flex-1 min-w-0 px-1 py-1 rounded-lg hover:bg-gray-100 cursor-pointer">
+              <div className="flex items-center gap-2 flex-1 min-w-0 px-1 py-1 rounded-lg hover:bg-accent cursor-pointer">
                 <div
                   className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white shrink-0"
                   style={{ backgroundColor: generateColor(activeOrg?.name || "X") }}
                 >
                   {getInitials(activeOrg?.name || "?")}
                 </div>
-                <span className="flex-1 text-sm font-semibold text-gray-900 truncate">
+                <span className="flex-1 text-sm font-semibold text-foreground truncate">
                   {activeOrg?.name || "Selecione org"}
                 </span>
-                <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
               </div>
               {/* Collapse button «  */}
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
                 title="Fechar barra lateral"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -397,12 +397,12 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
             {/* Canais section */}
             <div className="mb-4">
               <div className="flex items-center justify-between px-2 py-1.5">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Canais
                 </span>
                 <button
                   onClick={() => setShowCreateChannel(true)}
-                  className="hover:text-gray-700 text-gray-400 transition-colors"
+                  className="hover:text-foreground text-muted-foreground hover:bg-accent rounded-md p-0.5 transition-colors"
                 >
                   <Plus className="w-4 h-4" />
                 </button>
@@ -424,8 +424,8 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                           isActive
                             ? "bg-primary/10 text-primary font-medium"
                             : unread > 0
-                            ? "text-gray-900 font-semibold hover:bg-gray-100"
-                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                            ? "text-foreground font-semibold hover:bg-accent"
+                            : "text-muted-foreground hover:text-foreground hover:bg-accent"
                         )}
                       >
                         {channel.type === "private" ? (
@@ -446,7 +446,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                           e.stopPropagation();
                           setChannelSettingsTarget(channel);
                         }}
-                        className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 opacity-0 group-hover/channel:opacity-100 transition-opacity"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover/channel:opacity-100 transition-opacity"
                         title="Configurações do canal"
                       >
                         <MoreHorizontal className="w-3.5 h-3.5" />
@@ -460,12 +460,12 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
             {/* Mensagens Diretas section */}
             <div>
               <div className="flex items-center justify-between px-2 py-1.5">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Mensagens diretas
                 </span>
                 <button
                   onClick={() => setShowCreateDM(true)}
-                  className="hover:text-gray-700 text-gray-400 transition-colors"
+                  className="hover:text-foreground text-muted-foreground hover:bg-accent rounded-md p-0.5 transition-colors"
                 >
                   <Plus className="w-4 h-4" />
                 </button>
@@ -487,8 +487,8 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                         isActive
                           ? "bg-primary/10 text-primary font-medium"
                           : unread > 0
-                          ? "text-gray-900 font-semibold hover:bg-gray-100"
-                          : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                          ? "text-foreground font-semibold hover:bg-accent"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent"
                       )}
                     >
                       <div className="relative shrink-0">
@@ -519,7 +519,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                   );
                 })}
                 {dmChannels.length === 0 && (
-                  <p className="text-xs text-gray-400 px-2 py-1">
+                  <p className="text-xs text-muted-foreground px-2 py-1">
                     Nenhuma conversa ainda
                   </p>
                 )}
@@ -534,7 +534,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
       {!sidebarOpen && (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="absolute top-3 left-[60px] z-20 w-6 h-6 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors"
+          className="absolute top-3 left-[60px] z-20 w-6 h-6 flex items-center justify-center rounded-full bg-card border border-border shadow-sm text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
           title="Abrir barra lateral"
         >
           <ChevronRight className="w-3.5 h-3.5" />
@@ -544,7 +544,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
       {/* Context Menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[180px]"
+          className="fixed z-50 bg-card border border-border rounded-lg shadow-xl py-1 min-w-[180px]"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -555,7 +555,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                   setChannelSettingsTarget(contextMenu.item);
                   setContextMenu(null);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
               >
                 <UserCog className="w-4 h-4" />
                 Gerenciar membros
@@ -568,7 +568,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                     handleDeleteChannel(channel.id);
                   }
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-destructive/10 transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
                 Deletar canal
@@ -581,7 +581,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                 handleArchiveDM(contextMenu.item.id);
                 setContextMenu(null);
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
             >
               <EyeOff className="w-4 h-4" />
               Ocultar conversa
@@ -845,7 +845,7 @@ function ChannelSettingsModal({
           {!showDeleteConfirm ? (
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium text-red-600 border border-red-200 hover:bg-destructive/10 transition-colors"
             >
               <Trash2 className="w-4 h-4" />
               Deletar canal
@@ -858,7 +858,7 @@ function ChannelSettingsModal({
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 py-2 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors"
+                  className="flex-1 py-2 rounded-lg text-sm font-medium text-foreground border border-border hover:bg-muted transition-colors"
                 >
                   Cancelar
                 </button>
@@ -1200,7 +1200,7 @@ function CreateDMModal({
                   <div
                     className={cn(
                       "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-card",
-                      isOnline ? "bg-green-500" : "bg-gray-500"
+                      isOnline ? "bg-green-500" : "bg-muted0"
                     )}
                   />
                 </div>

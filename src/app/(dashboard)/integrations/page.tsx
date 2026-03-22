@@ -303,7 +303,7 @@ export default function IntegrationsPage() {
                     setError(null);
                     setShowModal(true);
                   }}
-                  className="bg-card border border-border rounded-xl p-4 text-left hover:border-primary/50 transition-all group"
+                  className="bg-card border border-border rounded-xl p-4 text-left hover:border-primary/50 hover:bg-accent/50 hover:shadow-md transition-all group"
                 >
                   <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center mb-3", type.bg)}>
                     <Icon className={cn("w-5 h-5", type.color)} />
