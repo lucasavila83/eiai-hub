@@ -23,6 +23,7 @@ export interface Permissions {
   boards: ModulePermission;
   calendar: ModulePermission;
   chat: ModulePermission;
+  processes: ModulePermission;
   // Specific actions
   canInviteMembers: boolean;
   canCreateBoards: boolean;
@@ -61,6 +62,7 @@ const DEFAULT_PERMISSIONS: Permissions = {
   boards: MOD_VIEW,
   calendar: MOD_VIEW,
   chat: MOD_ALL,
+  processes: MOD_NONE,
   canInviteMembers: false,
   canCreateBoards: false,
   canCreateChannels: false,
@@ -90,6 +92,7 @@ const ADMIN_PERMISSIONS: Permissions = {
   boards: MOD_ALL,
   calendar: MOD_ALL,
   chat: MOD_ALL,
+  processes: MOD_ALL,
   canInviteMembers: true,
   canCreateBoards: true,
   canCreateChannels: true,
@@ -184,6 +187,7 @@ export function usePermissions(): Permissions {
           boards: { view: true, edit: true },
           calendar: { view: true, edit: true },
           chat: { view: true, edit: true },
+          processes: { view: orgPerms?.member_can_view_processes ?? false, edit: orgPerms?.member_can_manage_processes ?? false },
           canInviteMembers: orgPerms?.member_can_invite_members ?? false,
           canCreateBoards: orgPerms?.member_can_create_boards ?? false,
           canCreateChannels: orgPerms?.member_can_create_channels ?? false,
@@ -214,6 +218,7 @@ export function usePermissions(): Permissions {
           boards: { view: true, edit: false },
           calendar: { view: orgPerms?.guest_can_view_calendar ?? true, edit: false },
           chat: { view: true, edit: true },
+          processes: { view: false, edit: false },
           canInviteMembers: false,
           canCreateBoards: false,
           canCreateChannels: false,
@@ -257,6 +262,7 @@ export function usePermissions(): Permissions {
             perms.boards = applyModuleOverride(perms.boards, tp.can_view_boards_view ?? null, tp.can_view_boards_edit ?? tp.can_create_boards ?? null);
             perms.calendar = applyModuleOverride(perms.calendar, tp.can_view_calendar_view ?? tp.can_view_calendar ?? null, tp.can_view_calendar_edit ?? null);
             perms.chat = applyModuleOverride(perms.chat, tp.can_view_chat_view ?? null, tp.can_view_chat_edit ?? tp.can_create_channels ?? null);
+            perms.processes = applyModuleOverride(perms.processes, tp.can_view_processes_view ?? null, tp.can_view_processes_edit ?? null);
             // Legacy actions
             perms.canInviteMembers = applyOverride(perms.canInviteMembers, tp.can_invite_members);
             perms.canDeleteCards = applyOverride(perms.canDeleteCards, tp.can_delete_cards);
@@ -282,6 +288,7 @@ export function usePermissions(): Permissions {
         perms.boards = applyModuleOverride(perms.boards, userPerms.can_view_boards_view ?? null, userPerms.can_view_boards_edit ?? userPerms.can_create_boards ?? null);
         perms.calendar = applyModuleOverride(perms.calendar, userPerms.can_view_calendar_view ?? userPerms.can_view_calendar ?? null, userPerms.can_view_calendar_edit ?? null);
         perms.chat = applyModuleOverride(perms.chat, userPerms.can_view_chat_view ?? null, userPerms.can_view_chat_edit ?? userPerms.can_create_channels ?? null);
+        perms.processes = applyModuleOverride(perms.processes, userPerms.can_view_processes_view ?? null, userPerms.can_view_processes_edit ?? null);
         perms.canInviteMembers = applyOverride(perms.canInviteMembers, userPerms.can_invite_members);
         perms.canDeleteCards = applyOverride(perms.canDeleteCards, userPerms.can_delete_cards);
         perms.canManageLabels = applyOverride(perms.canManageLabels, userPerms.can_manage_labels);
