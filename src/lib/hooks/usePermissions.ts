@@ -71,6 +71,11 @@ const ADMIN_PERMISSIONS: Permissions = {
   loading: false,
 };
 
+// Helper: apply override (non-null values take precedence)
+function applyOverride(base: boolean, override: boolean | null): boolean {
+  return override !== null && override !== undefined ? override : base;
+}
+
 export function usePermissions(): Permissions {
   const { user } = useAuth();
   const { activeOrgId } = useUIStore();
@@ -98,22 +103,25 @@ export function usePermissions(): Permissions {
         return;
       }
 
-      // Load org permissions for this role
+      // Load org-level permissions (role-based defaults)
       const { data: orgPerms } = await supabase
         .from("org_permissions")
         .select("*")
         .eq("org_id", activeOrgId!)
         .single();
 
+      // Start with role-based defaults
+      let perms: Permissions;
+
       if (role === "member") {
-        setPermissions({
+        perms = {
           role,
           isAdmin: false,
           canViewDashboard: orgPerms?.member_can_view_dashboard ?? true,
-          canViewDashboardAll: false, // members NEVER see others' data
+          canViewDashboardAll: false,
           canManageAutomations: orgPerms?.member_can_manage_automations ?? false,
           canManageIntegrations: orgPerms?.member_can_manage_integrations ?? false,
-          canAccessSettings: false, // members NEVER access settings
+          canAccessSettings: false,
           canInviteMembers: orgPerms?.member_can_invite_members ?? false,
           canCreateBoards: orgPerms?.member_can_create_boards ?? false,
           canCreateChannels: orgPerms?.member_can_create_channels ?? false,
@@ -124,9 +132,10 @@ export function usePermissions(): Permissions {
           canComment: true,
           canViewCalendar: true,
           loading: false,
-        });
-      } else if (role === "guest") {
-        setPermissions({
+        };
+      } else {
+        // guest
+        perms = {
           role,
           isAdmin: false,
           canViewDashboard: false,
@@ -144,8 +153,68 @@ export function usePermissions(): Permissions {
           canComment: orgPerms?.guest_can_comment ?? true,
           canViewCalendar: orgPerms?.guest_can_view_calendar ?? true,
           loading: false,
-        });
+        };
       }
+
+      // Layer 2: Team-level overrides
+      // Get user's teams
+      const { data: teamMemberships } = await supabase
+        .from("team_members")
+        .select("team_id")
+        .eq("user_id", user!.id);
+
+      if (teamMemberships && teamMemberships.length > 0) {
+        const teamIds = teamMemberships.map((t) => t.team_id);
+        const { data: teamPermsData } = await supabase
+          .from("team_permissions")
+          .select("*")
+          .eq("org_id", activeOrgId!)
+          .in("team_id", teamIds);
+
+        if (teamPermsData) {
+          // Merge team permissions (OR logic: if ANY team grants, user gets it)
+          for (const tp of teamPermsData) {
+            perms.canViewDashboard = applyOverride(perms.canViewDashboard, tp.can_view_dashboard);
+            perms.canManageAutomations = applyOverride(perms.canManageAutomations, tp.can_manage_automations);
+            perms.canManageIntegrations = applyOverride(perms.canManageIntegrations, tp.can_manage_integrations);
+            perms.canAccessSettings = applyOverride(perms.canAccessSettings, tp.can_access_settings);
+            perms.canInviteMembers = applyOverride(perms.canInviteMembers, tp.can_invite_members);
+            perms.canCreateBoards = applyOverride(perms.canCreateBoards, tp.can_create_boards);
+            perms.canCreateChannels = applyOverride(perms.canCreateChannels, tp.can_create_channels);
+            perms.canDeleteCards = applyOverride(perms.canDeleteCards, tp.can_delete_cards);
+            perms.canManageLabels = applyOverride(perms.canManageLabels, tp.can_manage_labels);
+            perms.canViewCalendar = applyOverride(perms.canViewCalendar, tp.can_view_calendar);
+            if (tp.board_visibility) perms.boardVisibility = tp.board_visibility;
+          }
+        }
+      }
+
+      // Layer 3: User-level overrides (highest priority)
+      const { data: userPerms } = await supabase
+        .from("user_permissions")
+        .select("*")
+        .eq("org_id", activeOrgId!)
+        .eq("user_id", user!.id)
+        .single();
+
+      if (userPerms) {
+        perms.canViewDashboard = applyOverride(perms.canViewDashboard, userPerms.can_view_dashboard);
+        perms.canViewDashboardAll = applyOverride(perms.canViewDashboardAll, userPerms.can_view_dashboard_all);
+        perms.canManageAutomations = applyOverride(perms.canManageAutomations, userPerms.can_manage_automations);
+        perms.canManageIntegrations = applyOverride(perms.canManageIntegrations, userPerms.can_manage_integrations);
+        perms.canAccessSettings = applyOverride(perms.canAccessSettings, userPerms.can_access_settings);
+        perms.canInviteMembers = applyOverride(perms.canInviteMembers, userPerms.can_invite_members);
+        perms.canCreateBoards = applyOverride(perms.canCreateBoards, userPerms.can_create_boards);
+        perms.canCreateChannels = applyOverride(perms.canCreateChannels, userPerms.can_create_channels);
+        perms.canDeleteCards = applyOverride(perms.canDeleteCards, userPerms.can_delete_cards);
+        perms.canManageLabels = applyOverride(perms.canManageLabels, userPerms.can_manage_labels);
+        perms.canViewCalendar = applyOverride(perms.canViewCalendar, userPerms.can_view_calendar);
+        perms.canCreateCards = applyOverride(perms.canCreateCards, userPerms.can_create_cards);
+        perms.canComment = applyOverride(perms.canComment, userPerms.can_comment);
+        if (userPerms.board_visibility) perms.boardVisibility = userPerms.board_visibility;
+      }
+
+      setPermissions(perms);
     }
 
     load();

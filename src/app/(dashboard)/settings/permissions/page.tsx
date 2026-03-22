@@ -22,8 +22,10 @@ import {
   Loader2,
   CheckCircle,
   Info,
+  User,
+  UserCog,
 } from "lucide-react";
-import { cn } from "@/lib/utils/helpers";
+import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 
 type Visibility = "own" | "team" | "all";
 
@@ -65,6 +67,38 @@ const DEFAULT_PERMISSIONS: Permissions = {
   guest_can_view_calendar: true,
 };
 
+type PermTab = "role" | "user" | "team";
+
+const PERM_MODULES = [
+  { key: "can_view_dashboard", label: "Ver Dashboard", icon: BarChart3 },
+  { key: "can_manage_automations", label: "Automações", icon: Zap },
+  { key: "can_manage_integrations", label: "Integrações", icon: Plug },
+  { key: "can_access_settings", label: "Configurações", icon: Shield },
+  { key: "can_invite_members", label: "Convidar membros", icon: UserPlus },
+  { key: "can_create_boards", label: "Criar Boards", icon: Kanban },
+  { key: "can_create_channels", label: "Criar Canais", icon: MessageSquare },
+  { key: "can_delete_cards", label: "Deletar Cards", icon: Trash2 },
+  { key: "can_manage_labels", label: "Gerenciar Labels", icon: Tag },
+  { key: "can_view_calendar", label: "Ver Calendário", icon: Calendar },
+] as const;
+
+interface UserPermRow {
+  id?: string;
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  avatar_url: string | null;
+  perms: Record<string, boolean | null>;
+}
+
+interface TeamPermRow {
+  id?: string;
+  team_id: string;
+  team_name: string;
+  team_color: string;
+  perms: Record<string, boolean | null>;
+}
+
 export default function PermissionsPage() {
   const supabase = createClient();
   const { activeOrgId } = useUIStore();
@@ -72,9 +106,18 @@ export default function PermissionsPage() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [permissions, setPermissions] = useState<Permissions>(DEFAULT_PERMISSIONS);
+  const [activeTab, setActiveTab] = useState<PermTab>("role");
+  const [userPerms, setUserPerms] = useState<UserPermRow[]>([]);
+  const [teamPerms, setTeamPerms] = useState<TeamPermRow[]>([]);
+  const [savingUser, setSavingUser] = useState(false);
+  const [savingTeam, setSavingTeam] = useState(false);
 
   useEffect(() => {
-    if (activeOrgId) loadPermissions();
+    if (activeOrgId) {
+      loadPermissions();
+      loadUserPermissions();
+      loadTeamPermissions();
+    }
   }, [activeOrgId]);
 
   useEffect(() => {
@@ -131,6 +174,126 @@ export default function PermissionsPage() {
     setSaving(false);
   }
 
+  async function loadUserPermissions() {
+    if (!activeOrgId) return;
+    // Load org members
+    const { data: members } = await supabase
+      .from("org_members")
+      .select("user_id, role, profiles:user_id(id, full_name, email, avatar_url)")
+      .eq("org_id", activeOrgId)
+      .in("role", ["member", "guest"]);
+
+    // Load existing user permissions
+    const { data: existingPerms } = await supabase
+      .from("user_permissions")
+      .select("*")
+      .eq("org_id", activeOrgId);
+
+    const permMap: Record<string, any> = {};
+    (existingPerms || []).forEach((p: any) => { permMap[p.user_id] = p; });
+
+    const rows: UserPermRow[] = (members || []).map((m: any) => ({
+      id: permMap[m.user_id]?.id,
+      user_id: m.user_id,
+      full_name: m.profiles?.full_name,
+      email: m.profiles?.email,
+      avatar_url: m.profiles?.avatar_url,
+      perms: PERM_MODULES.reduce((acc, mod) => {
+        acc[mod.key] = permMap[m.user_id]?.[mod.key] ?? null;
+        return acc;
+      }, {} as Record<string, boolean | null>),
+    }));
+    setUserPerms(rows);
+  }
+
+  async function loadTeamPermissions() {
+    if (!activeOrgId) return;
+    const { data: teams } = await supabase
+      .from("teams")
+      .select("id, name, color")
+      .eq("org_id", activeOrgId);
+
+    const { data: existingPerms } = await supabase
+      .from("team_permissions")
+      .select("*")
+      .eq("org_id", activeOrgId);
+
+    const permMap: Record<string, any> = {};
+    (existingPerms || []).forEach((p: any) => { permMap[p.team_id] = p; });
+
+    const rows: TeamPermRow[] = (teams || []).map((t: any) => ({
+      id: permMap[t.id]?.id,
+      team_id: t.id,
+      team_name: t.name,
+      team_color: t.color || "#6366f1",
+      perms: PERM_MODULES.reduce((acc, mod) => {
+        acc[mod.key] = permMap[t.id]?.[mod.key] ?? null;
+        return acc;
+      }, {} as Record<string, boolean | null>),
+    }));
+    setTeamPerms(rows);
+  }
+
+  function toggleUserPerm(userId: string, key: string) {
+    setUserPerms((prev) => prev.map((u) => {
+      if (u.user_id !== userId) return u;
+      const current = u.perms[key];
+      // Cycle: null -> true -> false -> null
+      const next = current === null ? true : current === true ? false : null;
+      return { ...u, perms: { ...u.perms, [key]: next } };
+    }));
+  }
+
+  function toggleTeamPerm(teamId: string, key: string) {
+    setTeamPerms((prev) => prev.map((t) => {
+      if (t.team_id !== teamId) return t;
+      const current = t.perms[key];
+      const next = current === null ? true : current === true ? false : null;
+      return { ...t, perms: { ...t.perms, [key]: next } };
+    }));
+  }
+
+  async function saveUserPermissions() {
+    if (!activeOrgId) return;
+    setSavingUser(true);
+    for (const row of userPerms) {
+      const hasAnyOverride = Object.values(row.perms).some((v) => v !== null);
+      if (hasAnyOverride) {
+        await supabase.from("user_permissions").upsert({
+          org_id: activeOrgId,
+          user_id: row.user_id,
+          ...row.perms,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "org_id,user_id" });
+      } else if (row.id) {
+        // Remove override if all null
+        await supabase.from("user_permissions").delete().eq("id", row.id);
+      }
+    }
+    setSavingUser(false);
+    setSuccess(true);
+  }
+
+  async function saveTeamPermissions() {
+    if (!activeOrgId) return;
+    setSavingTeam(true);
+    for (const row of teamPerms) {
+      const hasAnyOverride = Object.values(row.perms).some((v) => v !== null);
+      if (hasAnyOverride) {
+        await supabase.from("team_permissions").upsert({
+          org_id: activeOrgId,
+          team_id: row.team_id,
+          ...row.perms,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "org_id,team_id" });
+      } else if (row.id) {
+        await supabase.from("team_permissions").delete().eq("id", row.id);
+      }
+    }
+    setSavingTeam(false);
+    setSuccess(true);
+  }
+
   function toggleBool(key: keyof Permissions) {
     setPermissions((prev) => ({ ...prev, [key]: !prev[key] }));
   }
@@ -172,6 +335,182 @@ export default function PermissionsPage() {
           Permissões salvas com sucesso!
         </div>
       )}
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-6 bg-muted rounded-lg p-1">
+        {([
+          { key: "role" as PermTab, label: "Por Papel", icon: Shield },
+          { key: "user" as PermTab, label: "Por Pessoa", icon: User },
+          { key: "team" as PermTab, label: "Por Equipe", icon: Users },
+        ]).map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                "flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors flex-1 justify-center",
+                activeTab === tab.key
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ===== TAB: BY USER ===== */}
+      {activeTab === "user" && (
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 mb-4">
+            <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+            <div className="text-sm text-muted-foreground">
+              Configure permissões individuais. Valores <strong className="text-foreground">nulos</strong> (—) usam o padrão do papel.
+              <strong className="text-green-500"> ✓</strong> = permitido, <strong className="text-red-500">✗</strong> = bloqueado.
+            </div>
+          </div>
+
+          {userPerms.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Nenhum membro ou convidado na organização</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground">Pessoa</th>
+                    {PERM_MODULES.map((mod) => {
+                      const Icon = mod.icon;
+                      return <th key={mod.key} className="text-center py-2 px-1 w-10" title={mod.label}><Icon className="w-3.5 h-3.5 text-muted-foreground mx-auto" /></th>;
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {userPerms.map((row) => (
+                    <tr key={row.user_id} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
+                      <td className="py-2 px-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0" style={{ backgroundColor: generateColor(row.full_name || row.email) }}>
+                            {getInitials(row.full_name || row.email)}
+                          </div>
+                          <span className="text-foreground text-xs truncate max-w-[120px]">{row.full_name || row.email}</span>
+                        </div>
+                      </td>
+                      {PERM_MODULES.map((mod) => {
+                        const val = row.perms[mod.key];
+                        return (
+                          <td key={mod.key} className="text-center py-2 px-1">
+                            <button
+                              onClick={() => toggleUserPerm(row.user_id, mod.key)}
+                              className={cn(
+                                "w-7 h-7 rounded-md text-xs font-bold transition-colors",
+                                val === true ? "bg-green-500/15 text-green-500 hover:bg-green-500/25" :
+                                val === false ? "bg-red-500/15 text-red-500 hover:bg-red-500/25" :
+                                "bg-muted text-muted-foreground hover:bg-accent"
+                              )}
+                              title={`${mod.label}: ${val === true ? "Permitido" : val === false ? "Bloqueado" : "Padrão do papel"}`}
+                            >
+                              {val === true ? "✓" : val === false ? "✗" : "—"}
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={saveUserPermissions}
+              disabled={savingUser}
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {savingUser && <Loader2 className="w-4 h-4 animate-spin" />}
+              Salvar permissões individuais
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===== TAB: BY TEAM ===== */}
+      {activeTab === "team" && (
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 mb-4">
+            <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+            <div className="text-sm text-muted-foreground">
+              Permissões de equipe são aplicadas a todos os membros da equipe. Se um membro pertence a múltiplas equipes, a permissão mais permissiva é usada.
+            </div>
+          </div>
+
+          {teamPerms.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Nenhuma equipe criada. Crie equipes em <Link href="/settings/teams" className="text-primary hover:underline">Configurações &gt; Times</Link>.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground">Equipe</th>
+                    {PERM_MODULES.map((mod) => {
+                      const Icon = mod.icon;
+                      return <th key={mod.key} className="text-center py-2 px-1 w-10" title={mod.label}><Icon className="w-3.5 h-3.5 text-muted-foreground mx-auto" /></th>;
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {teamPerms.map((row) => (
+                    <tr key={row.team_id} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
+                      <td className="py-2 px-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: row.team_color }} />
+                          <span className="text-foreground text-xs font-medium">{row.team_name}</span>
+                        </div>
+                      </td>
+                      {PERM_MODULES.map((mod) => {
+                        const val = row.perms[mod.key];
+                        return (
+                          <td key={mod.key} className="text-center py-2 px-1">
+                            <button
+                              onClick={() => toggleTeamPerm(row.team_id, mod.key)}
+                              className={cn(
+                                "w-7 h-7 rounded-md text-xs font-bold transition-colors",
+                                val === true ? "bg-green-500/15 text-green-500 hover:bg-green-500/25" :
+                                val === false ? "bg-red-500/15 text-red-500 hover:bg-red-500/25" :
+                                "bg-muted text-muted-foreground hover:bg-accent"
+                              )}
+                              title={`${mod.label}: ${val === true ? "Permitido" : val === false ? "Bloqueado" : "Padrão"}`}
+                            >
+                              {val === true ? "✓" : val === false ? "✗" : "—"}
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={saveTeamPermissions}
+              disabled={savingTeam}
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {savingTeam && <Loader2 className="w-4 h-4 animate-spin" />}
+              Salvar permissões de equipe
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===== TAB: BY ROLE (original content) ===== */}
+      {activeTab === "role" && <>
 
       {/* Info box */}
       <div className="mb-6 flex items-start gap-3 bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3">
@@ -366,6 +705,8 @@ export default function PermissionsPage() {
           Salvar permissões
         </button>
       </div>
+
+      </>}
     </div>
   );
 }
