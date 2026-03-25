@@ -303,13 +303,26 @@ export function CardDetailModal({
   const cardLinkedToBpm = !!(card.metadata as any)?.linked_to_bpm;
 
   async function loadAvailablePipes() {
-    if (!activeOrgId || loadingPipes) return;
+    if (loadingPipes) return;
     setLoadingPipes(true);
+
+    // Resolve org_id: prefer store, fallback to board's org_id
+    let orgId = activeOrgId;
+    if (!orgId) {
+      const { data: board } = await supabase
+        .from("boards")
+        .select("org_id")
+        .eq("id", boardId)
+        .single();
+      orgId = board?.org_id;
+    }
+    if (!orgId) { setLoadingPipes(false); return; }
+
     const { data } = await supabase
       .from("bpm_pipes")
       .select("id, name, color")
-      .eq("org_id", activeOrgId)
-      .eq("is_active", true)
+      .eq("org_id", orgId)
+      .eq("is_archived", false)
       .order("name");
     setAvailablePipes(data || []);
     setLoadingPipes(false);
