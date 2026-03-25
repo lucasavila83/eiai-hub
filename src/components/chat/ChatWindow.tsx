@@ -12,6 +12,7 @@ import { useChatStore } from "@/lib/stores/chat-store";
 import {
   Hash, Lock, MessageSquare, ListTodo,
   Kanban, CheckCircle2, Clock, AlertCircle,
+  CheckSquare, Square, X, Mail,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils/helpers";
 import type { Channel, Message } from "@/lib/types/database";
@@ -71,6 +72,8 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailContent, setEmailContent] = useState("");
   const [emailSender, setEmailSender] = useState("");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const channelMessages = messages[channel.id] || [];
 
@@ -384,6 +387,36 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
     return otherMsg?.profiles?.id;
   }, [channel, channelMessages, currentUserId]);
 
+  // Selection mode
+  function toggleSelect(msgId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msgId)) next.delete(msgId);
+      else next.add(msgId);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  function handleBulkEmail() {
+    const selected = channelMessages.filter((m: any) => selectedIds.has(m.id));
+    const body = selected
+      .map((m: any) => {
+        const name = m.profiles?.full_name || "Desconhecido";
+        const time = new Date(m.created_at).toLocaleString("pt-BR");
+        return `[${name} - ${time}]\n${m.content}`;
+      })
+      .join("\n\n---\n\n");
+    setEmailContent(body);
+    setEmailSender(channel.type === "dm" ? headerName : `#${channel.name}`);
+    setShowEmailModal(true);
+    exitSelectMode();
+  }
+
   // Context menu: Create Task
   function handleContextCreateTask(messageContent: string) {
     // Pass full content (CreateTaskModal will detect files and extract title)
@@ -477,6 +510,25 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
             <ListTodo className="w-3.5 h-3.5" />
             {tabLabel}
           </button>
+          <div className="flex-1" />
+          {activeTab === "chat" && channelMessages.length > 0 && !selectMode && (
+            <button
+              onClick={() => setSelectMode(true)}
+              className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors cursor-pointer flex items-center gap-1"
+              title="Selecionar mensagens"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              Selecionar
+            </button>
+          )}
+          {selectMode && (
+            <button
+              onClick={() => { setSelectedIds(new Set(channelMessages.map((m: any) => m.id))); }}
+              className="px-2 py-1 text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer"
+            >
+              Selecionar todas
+            </button>
+          )}
         </div>
       </div>
 
@@ -540,21 +592,63 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
                       <div className="flex-1 border-t border-destructive" />
                     </div>
                   )}
-                  <MessageBubble
-                    message={msg}
-                    showHeader={showHeader}
-                    isOwn={msg.user_id === currentUserId}
-                    onCreateTask={handleContextCreateTask}
-                    onEmail={handleContextEmail}
-                    onForward={handleContextForward}
-                  />
+                  <div className={cn("flex items-start gap-2", selectMode && "group/select")}>
+                    {selectMode && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleSelect(msg.id); }}
+                        className="mt-2 shrink-0 cursor-pointer"
+                      >
+                        {selectedIds.has(msg.id) ? (
+                          <CheckSquare className="w-4.5 h-4.5 text-primary" />
+                        ) : (
+                          <Square className="w-4.5 h-4.5 text-muted-foreground hover:text-foreground transition-colors" />
+                        )}
+                      </button>
+                    )}
+                    <div className="flex-1">
+                      <MessageBubble
+                        message={msg}
+                        showHeader={showHeader}
+                        isOwn={msg.user_id === currentUserId}
+                        onCreateTask={handleContextCreateTask}
+                        onEmail={handleContextEmail}
+                        onForward={handleContextForward}
+                      />
+                    </div>
+                  </div>
                 </div>
               );
             })}
             <div ref={bottomRef} />
           </div>
 
+          {/* Selection action bar */}
+          {selectMode && (
+            <div className="flex items-center gap-3 px-4 py-2 bg-primary/5 border-t border-primary/20">
+              <span className="text-sm text-foreground font-medium">
+                {selectedIds.size} {selectedIds.size === 1 ? "mensagem selecionada" : "mensagens selecionadas"}
+              </span>
+              <div className="flex-1" />
+              <button
+                onClick={handleBulkEmail}
+                disabled={selectedIds.size === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                Enviar por e-mail
+              </button>
+              <button
+                onClick={exitSelectMode}
+                className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+                Cancelar
+              </button>
+            </div>
+          )}
+
           {/* Input */}
+          {!selectMode && (
           <MessageInput
             onSend={sendMessage}
             channelName={channel.type === "dm" ? headerName : channel.name}
@@ -564,6 +658,7 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
             orgId={channel.org_id}
             currentUserId={currentUserId}
           />
+          )}
         </>
       ) : (
         /* Tasks Tab */
