@@ -61,6 +61,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
   const [addHelp, setAddHelp] = useState("");
   const [addRequired, setAddRequired] = useState(false);
   const [addOptions, setAddOptions] = useState("");
+  const [addRequiredItems, setAddRequiredItems] = useState<string[]>([]);
 
   // Edit form
   const [editLabel, setEditLabel] = useState("");
@@ -68,6 +69,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
   const [editHelp, setEditHelp] = useState("");
   const [editRequired, setEditRequired] = useState(false);
   const [editOptions, setEditOptions] = useState("");
+  const [editRequiredItems, setEditRequiredItems] = useState<string[]>([]);
 
   function generateKey(label: string): string {
     return label
@@ -86,6 +88,9 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
     setEditOptions(
       (field.options || []).map((o) => o.label).join("\n")
     );
+    setEditRequiredItems(
+      (field.options || []).filter((o: any) => o.required).map((o) => o.label)
+    );
   }
 
   async function saveEdit(field: FieldDef) {
@@ -94,7 +99,11 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
       .split("\n")
       .map((l) => l.trim())
       .filter(Boolean)
-      .map((l) => ({ value: generateKey(l), label: l }));
+      .map((l) => ({
+        value: generateKey(l),
+        label: l,
+        ...(field.field_type === "checklist" && editRequiredItems.includes(l) ? { required: true } : {}),
+      }));
 
     const updated = fields.map((f) =>
       f.id === field.id
@@ -123,7 +132,11 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
       .split("\n")
       .map((l) => l.trim())
       .filter(Boolean)
-      .map((l) => ({ value: generateKey(l), label: l }));
+      .map((l) => ({
+        value: generateKey(l),
+        label: l,
+        ...(addType === "checklist" && addRequiredItems.includes(l) ? { required: true } : {}),
+      }));
 
     await onAdd({
       field_key: key,
@@ -145,6 +158,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
     setAddHelp("");
     setAddRequired(false);
     setAddOptions("");
+    setAddRequiredItems([]);
     setShowAdd(false);
     setSaving(false);
   }
@@ -227,13 +241,21 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
                               placeholder="Texto de ajuda (opcional)"
                               className="w-full px-2 py-1 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                             />
-                            {(field.field_type === "select" || field.field_type === "multiselect" || field.field_type === "checklist") && (
+                            {(field.field_type === "select" || field.field_type === "multiselect") && (
                               <textarea
                                 value={editOptions}
                                 onChange={(e) => setEditOptions(e.target.value)}
                                 placeholder="Opções (uma por linha)"
                                 rows={3}
                                 className="w-full px-2 py-1 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                              />
+                            )}
+                            {field.field_type === "checklist" && (
+                              <ChecklistOptionsEditor
+                                options={editOptions}
+                                requiredItems={editRequiredItems}
+                                onChange={setEditOptions}
+                                onRequiredChange={setEditRequiredItems}
                               />
                             )}
                             <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
@@ -349,7 +371,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
           </div>
 
           {/* Options for select/multiselect */}
-          {needsOptions && (
+          {needsOptions && addType !== "checklist" && (
             <div>
               <label className="text-xs font-medium text-foreground mb-1 block">Opções (uma por linha)</label>
               <textarea
@@ -360,6 +382,14 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
                 className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none font-mono"
               />
             </div>
+          )}
+          {addType === "checklist" && (
+            <ChecklistOptionsEditor
+              options={addOptions}
+              requiredItems={addRequiredItems}
+              onChange={setAddOptions}
+              onRequiredChange={setAddRequiredItems}
+            />
           )}
 
           {/* Required checkbox */}
@@ -400,6 +430,61 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
           <Plus className="w-4 h-4" />
           Adicionar campo
         </button>
+      )}
+    </div>
+  );
+}
+
+/* ─── Checklist Options Editor (with per-item required toggle) ─── */
+function ChecklistOptionsEditor({
+  options,
+  requiredItems,
+  onChange,
+  onRequiredChange,
+}: {
+  options: string;
+  requiredItems: string[];
+  onChange: (val: string) => void;
+  onRequiredChange: (val: string[]) => void;
+}) {
+  const lines = options.split("\n").map((l) => l.trim()).filter(Boolean);
+
+  function toggleRequired(label: string) {
+    onRequiredChange(
+      requiredItems.includes(label)
+        ? requiredItems.filter((r) => r !== label)
+        : [...requiredItems, label]
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-medium text-foreground mb-1 block">Itens do checklist (um por linha)</label>
+      <textarea
+        value={options}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={"Item 1\nItem 2\nItem 3"}
+        rows={4}
+        className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none font-mono"
+      />
+      {lines.length > 0 && (
+        <div className="space-y-1 bg-muted/50 rounded-lg p-2">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Marcar como obrigatório:</p>
+          {lines.map((line) => (
+            <label key={line} className="flex items-center gap-2 cursor-pointer py-0.5">
+              <input
+                type="checkbox"
+                checked={requiredItems.includes(line)}
+                onChange={() => toggleRequired(line)}
+                className="accent-destructive w-3.5 h-3.5 cursor-pointer"
+              />
+              <span className="text-xs text-foreground">{line}</span>
+              {requiredItems.includes(line) && (
+                <span className="text-[9px] text-destructive font-medium">obrigatório</span>
+              )}
+            </label>
+          ))}
+        </div>
       )}
     </div>
   );

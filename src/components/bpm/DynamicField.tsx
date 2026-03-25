@@ -237,6 +237,11 @@ export function DynamicField({ field, value, onChange, members = [], disabled = 
           ? value
           : (field.options || []).map((opt) => ({ label: opt.label, checked: false }));
 
+        // Build a set of required item labels from field options
+        const requiredLabels = new Set(
+          (field.options || []).filter((o: any) => o.required).map((o) => o.label)
+        );
+
         // Initialize value if empty
         if (!Array.isArray(value) && field.options?.length) {
           onChange(items);
@@ -266,25 +271,34 @@ export function DynamicField({ field, value, onChange, members = [], disabled = 
                 <span className="text-xs text-muted-foreground ml-auto">{checkedCount}/{items.length}</span>
               </label>
             )}
-            {items.map((item, idx) => (
-              <label key={idx} className="flex items-center gap-2 cursor-pointer py-1">
-                <input
-                  type="checkbox"
-                  checked={item.checked}
-                  onChange={() => {
-                    if (disabled) return;
-                    const updated = [...items];
-                    updated[idx] = { ...updated[idx], checked: !updated[idx].checked };
-                    onChange(updated);
-                  }}
-                  className="accent-primary w-4 h-4 cursor-pointer"
-                  disabled={disabled}
-                />
-                <span className={cn("text-sm", item.checked ? "text-muted-foreground line-through" : "text-foreground")}>
-                  {item.label}
-                </span>
-              </label>
-            ))}
+            {items.map((item, idx) => {
+              const isItemRequired = requiredLabels.has(item.label);
+              return (
+                <label key={idx} className="flex items-center gap-2 cursor-pointer py-1">
+                  <input
+                    type="checkbox"
+                    checked={item.checked}
+                    onChange={() => {
+                      if (disabled) return;
+                      const updated = [...items];
+                      updated[idx] = { ...updated[idx], checked: !updated[idx].checked };
+                      onChange(updated);
+                    }}
+                    className="accent-primary w-4 h-4 cursor-pointer"
+                    disabled={disabled}
+                  />
+                  <span className={cn("text-sm", item.checked ? "text-muted-foreground line-through" : "text-foreground")}>
+                    {item.label}
+                  </span>
+                  {isItemRequired && !item.checked && (
+                    <span className="text-[9px] text-destructive font-medium ml-auto">obrigatório</span>
+                  )}
+                  {isItemRequired && item.checked && (
+                    <span className="text-[9px] text-green-500 font-medium ml-auto">✓</span>
+                  )}
+                </label>
+              );
+            })}
           </div>
         );
       }

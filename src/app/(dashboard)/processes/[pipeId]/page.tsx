@@ -114,26 +114,47 @@ function PipeKanbanContent() {
     // Check required fields of current phase
     const { data: currentFields } = await supabase
       .from("bpm_fields")
-      .select("id, label, is_required")
-      .eq("phase_id", fromPhaseId)
-      .eq("is_required", true);
+      .select("id, label, is_required, field_type, options")
+      .eq("phase_id", fromPhaseId);
 
-    if (currentFields && currentFields.length > 0) {
+    const requiredFields = (currentFields || []).filter((f: any) => f.is_required);
+    const checklistFields = (currentFields || []).filter((f: any) => f.field_type === "checklist");
+    const fieldsToCheck = [...new Set([...requiredFields, ...checklistFields])];
+
+    if (fieldsToCheck.length > 0) {
       const { data: fieldValues } = await supabase
         .from("bpm_card_values")
         .select("field_id, value")
         .eq("card_id", cardId)
-        .in("field_id", currentFields.map((f) => f.id));
+        .in("field_id", fieldsToCheck.map((f: any) => f.id));
 
-      const valueMap = new Map((fieldValues || []).map((v) => [v.field_id, v.value]));
-      const missing = currentFields.filter((f) => {
+      const valueMap = new Map((fieldValues || []).map((v: any) => [v.field_id, v.value]));
+      const errors: string[] = [];
+
+      for (const f of fieldsToCheck) {
         const val = valueMap.get(f.id);
-        return val === null || val === undefined || val === "" || (Array.isArray(val) && val.length === 0);
-      });
+        // Check if required field is empty
+        if (f.is_required) {
+          if (val === null || val === undefined || val === "" || (Array.isArray(val) && val.length === 0)) {
+            errors.push(f.label);
+            continue;
+          }
+        }
+        // Check individual required items in checklists
+        if (f.field_type === "checklist" && Array.isArray(val) && Array.isArray(f.options)) {
+          const requiredLabels = f.options.filter((o: any) => o.required).map((o: any) => o.label);
+          const unchecked = requiredLabels.filter((label: string) => {
+            const item = val.find((i: any) => i.label === label);
+            return !item || !item.checked;
+          });
+          if (unchecked.length > 0) {
+            errors.push(`${f.label}: ${unchecked.join(", ")}`);
+          }
+        }
+      }
 
-      if (missing.length > 0) {
-        const names = missing.map((f) => f.label).join(", ");
-        setMoveError(`Campos obrigatórios não preenchidos: ${names}. Clique no card para preencher.`);
+      if (errors.length > 0) {
+        setMoveError(`Campos obrigatórios não preenchidos: ${errors.join("; ")}. Clique no card para preencher.`);
         setTimeout(() => setMoveError(null), 5000);
         return false;
       }
@@ -404,6 +425,7 @@ function PipeKanbanContent() {
           canEdit={permissions.processes.edit}
           onClose={() => setSelectedCard(null)}
           onUpdate={loadData}
+          onMoveCard={handleMoveCard}
         />
       )}
 

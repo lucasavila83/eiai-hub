@@ -121,7 +121,11 @@ function formatFieldValue(value: any, fieldType: string): string {
     return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   }
   if (fieldType === "checkbox") return value ? "Sim" : "Não";
-  if (Array.isArray(value)) return value.join(", ");
+  if (fieldType === "checklist" && Array.isArray(value)) {
+    const checked = value.filter((i: any) => i.checked).length;
+    return `${checked}/${value.length} concluídos`;
+  }
+  if (Array.isArray(value)) return value.map((v: any) => typeof v === "object" ? v.label || JSON.stringify(v) : v).join(", ");
   return String(value);
 }
 
