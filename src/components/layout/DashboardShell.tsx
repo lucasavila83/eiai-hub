@@ -4,6 +4,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { PresenceTracker } from "@/components/layout/PresenceTracker";
+import { NotificationListener } from "@/components/layout/NotificationListener";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const { user, profile, organizations } = useAuth();
@@ -11,6 +12,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <PresenceTracker userId={user.id} currentStatus={profile?.status || "online"} />
+      <NotificationListener />
       <Sidebar profile={profile} organizations={organizations} />
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar profile={profile} />
