@@ -165,12 +165,12 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     return () => { supabase.removeChannel(sub); };
   }, [activeOrg, profile]);
 
-  // Polling fallback: refresh unread counts every 10s (realtime may miss events)
+  // Polling fallback: refresh unread counts every 5s (realtime may miss events)
   useEffect(() => {
     if (!profile) return;
     const interval = setInterval(() => {
       loadUnreadCounts();
-    }, 10000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [profile, loadUnreadCounts]);
 
