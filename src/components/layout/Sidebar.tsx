@@ -436,9 +436,12 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                         )}
                         <span className="flex-1 truncate">{channel.name}</span>
                         {unread > 0 && !isActive && (
-                          <span className="bg-red-500 text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
-                            {unread > 99 ? "99+" : unread}
-                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <MessageSquare className="w-3.5 h-3.5 text-pink-500 fill-pink-500" />
+                            <span className="bg-pink-500 text-white text-[10px] rounded-full min-w-[16px] h-[16px] flex items-center justify-center font-bold px-1">
+                              {unread > 99 ? "99+" : unread}
+                            </span>
+                          </div>
                         )}
                       </Link>
                       {/* Hover settings icon */}
@@ -512,9 +515,12 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                       </div>
                       <span className="flex-1 truncate">{name}</span>
                       {unread > 0 && !isActive && (
-                        <span className="bg-red-500 text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
-                          {unread > 99 ? "99+" : unread}
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <MessageSquare className="w-3.5 h-3.5 text-pink-500 fill-pink-500" />
+                          <span className="bg-pink-500 text-white text-[10px] rounded-full min-w-[16px] h-[16px] flex items-center justify-center font-bold px-1">
+                            {unread > 99 ? "99+" : unread}
+                          </span>
+                        </div>
                       )}
                     </Link>
                   );

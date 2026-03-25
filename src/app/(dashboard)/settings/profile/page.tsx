@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/components/providers/AuthProvider";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -14,6 +15,7 @@ import { getInitials, generateColor } from "@/lib/utils/helpers";
 
 export default function ProfileSettingsPage() {
   const supabase = createClient();
+  const { refreshProfile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -117,6 +119,8 @@ export default function ProfileSettingsPage() {
         .from("profiles")
         .update({ avatar_url: freshUrl })
         .eq("id", userId);
+
+      await refreshProfile();
     } catch (err: any) {
       setError(err.message ?? "Erro ao enviar imagem.");
       setAvatarPreview(avatarUrl); // revert preview
@@ -146,6 +150,7 @@ export default function ProfileSettingsPage() {
 
       if (updateError) throw updateError;
       setSuccess(true);
+      await refreshProfile();
     } catch (err: any) {
       setError(err.message ?? "Erro ao salvar perfil.");
     } finally {
