@@ -137,6 +137,45 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       });
 
     markAsRead(channel.id);
+
+    // Fetch other members' last_read_at for read receipts
+    supabase
+      .from("channel_members")
+      .select("last_read_at")
+      .eq("channel_id", channel.id)
+      .neq("user_id", currentUserId)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          // Use the most recent last_read_at among other members
+          const maxRead = data.reduce((max: string, m: any) => {
+            return m.last_read_at > max ? m.last_read_at : max;
+          }, data[0].last_read_at);
+          setOthersLastRead(maxRead);
+        }
+      });
+  }, [channel.id]);
+
+  // Realtime subscription for read receipts: watch other members' last_read_at changes
+  useEffect(() => {
+    const readSub = supabase
+      .channel(`read-receipts:${channel.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "channel_members",
+        filter: `channel_id=eq.${channel.id}`,
+      }, (payload: any) => {
+        const updated = payload.new;
+        if (updated.user_id !== currentUserId && updated.last_read_at) {
+          setOthersLastRead((prev) => {
+            if (!prev || updated.last_read_at > prev) return updated.last_read_at;
+            return prev;
+          });
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(readSub); };
   }, [channel.id]);
 
   // Scroll to bottom — instant on initial load, smooth on new messages
@@ -719,6 +758,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
                         message={msg}
                         showHeader={showHeader}
                         isOwn={msg.user_id === currentUserId}
+                        isRead={!!(msg.user_id === currentUserId && othersLastRead && msg.created_at <= othersLastRead)}
                         onCreateTask={handleContextCreateTask}
                         onEmail={handleContextEmail}
                         onForward={handleContextForward}

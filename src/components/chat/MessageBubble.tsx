@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, getInitials, generateColor } from "@/lib/utils/helpers";
 import {
   Bot, ListTodo, Mail, Forward, ChevronDown, ChevronUp,
-  Pencil, Check, X, FileText, Image as ImageIcon, Download,
+  Pencil, Check, CheckCheck, X, FileText, Image as ImageIcon, Download,
   File, FileSpreadsheet, FileArchive, Play, Pause,
 } from "lucide-react";
 import type { Message } from "@/lib/types/database";
@@ -14,6 +14,7 @@ interface Props {
   message: Message & { profiles: any };
   showHeader: boolean;
   isOwn: boolean;
+  isRead?: boolean;
   onCreateTask?: (messageContent: string) => void;
   onForward?: (messageContent: string, senderName: string) => void;
   onEmail?: (messageContent: string, senderName: string) => void;
@@ -191,7 +192,7 @@ function FileAttachment({ fileName, fileUrl, isOwn }: { fileName: string; fileUr
   );
 }
 
-export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForward, onEmail, onMessageEdited }: Props) {
+export function MessageBubble({ message, showHeader, isOwn, isRead, onCreateTask, onForward, onEmail, onMessageEdited }: Props) {
   const profile = message.profiles;
   const name = profile?.full_name || profile?.email || "Usuário";
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -412,7 +413,7 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
             </p>
           )}
 
-          {/* Time + edited indicator */}
+          {/* Time + edited indicator + read receipts */}
           <div className={`flex items-center gap-1 mt-0.5 ${isOwn ? "justify-end" : "justify-end"}`}>
             {message.edited_at && !editing && (
               <span className={`text-[10px] ${isOwn ? "text-white/50" : "text-muted-foreground"}`}>(editado)</span>
@@ -420,6 +421,13 @@ export function MessageBubble({ message, showHeader, isOwn, onCreateTask, onForw
             <span className={`text-[10px] ${isOwn ? "text-white/50" : "text-muted-foreground"}`}>
               {timeStr}
             </span>
+            {isOwn && (
+              isRead ? (
+                <CheckCheck className="w-3.5 h-3.5 text-blue-400" />
+              ) : (
+                <CheckCheck className="w-3.5 h-3.5 text-white/40" />
+              )
+            )}
           </div>
 
           {/* Edit button on hover for own messages */}
