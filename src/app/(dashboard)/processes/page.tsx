@@ -255,26 +255,16 @@ function ProcessesContent() {
           <Workflow className="w-12 h-12 text-muted-foreground mb-3" />
           <h2 className="text-lg font-semibold text-foreground mb-1">Nenhum processo criado</h2>
           <p className="text-muted-foreground text-sm mb-4">
-            Crie seu primeiro processo ou use um modelo pronto
+            Crie seu primeiro processo para começar
           </p>
           {permissions.processes.edit && (
-            <div className="flex items-center gap-3">
-              <button
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                Criar do zero
-              </button>
-              <button
-                onClick={seedProcesses}
-                disabled={seeding}
-                className="inline-flex items-center gap-2 bg-card border border-border text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-accent transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {seeding && <Loader2 className="w-4 h-4 animate-spin" />}
-                Usar modelo: Contratação
-              </button>
-            </div>
+            <button
+              onClick={openCreate}
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Novo Processo
+            </button>
           )}
         </div>
       ) : (
