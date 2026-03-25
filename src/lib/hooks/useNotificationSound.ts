@@ -9,8 +9,8 @@ export function useNotificationSound() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    audioRef.current = new Audio("/sounds/notification.wav");
-    audioRef.current.volume = 0.5;
+    audioRef.current = new Audio("/sounds/notification-pop.wav");
+    audioRef.current.volume = 0.6;
     audioRef.current.preload = "auto";
 
     // Unlock audio on first user interaction (required by browsers)
@@ -40,7 +40,7 @@ export function useNotificationSound() {
     if (!enabled || !audioRef.current) return;
 
     const audio = audioRef.current.cloneNode(true) as HTMLAudioElement;
-    audio.volume = 0.5;
+    audio.volume = 0.6;
     audio.play().catch(() => {
       // Autoplay still blocked — try again on next interaction
       unlockedRef.current = false;
