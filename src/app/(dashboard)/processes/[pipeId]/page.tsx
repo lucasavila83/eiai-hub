@@ -36,6 +36,8 @@ function PipeKanbanContent() {
   const [phases, setPhases] = useState<Phase[]>([]);
   const [cards, setCards] = useState<BpmCard[]>([]);
   const [members, setMembers] = useState<any[]>([]);
+  const [allFields, setAllFields] = useState<any[]>([]);
+  const [cardValues, setCardValues] = useState<Record<string, Record<string, any>>>({});
   const [loading, setLoading] = useState(true);
 
   // Modal states
@@ -49,7 +51,7 @@ function PipeKanbanContent() {
     if (!pipeId || !activeOrgId) return;
     setLoading(true);
 
-    const [pipeRes, phasesRes, cardsRes, membersRes] = await Promise.all([
+    const [pipeRes, phasesRes, cardsRes, membersRes, fieldsRes] = await Promise.all([
       supabase.from("bpm_pipes").select("*").eq("id", pipeId).single(),
       supabase.from("bpm_phases").select("*").eq("pipe_id", pipeId).order("position"),
       supabase.from("bpm_cards").select("*").eq("pipe_id", pipeId).eq("is_archived", false).order("created_at"),
@@ -57,6 +59,7 @@ function PipeKanbanContent() {
         .from("org_members")
         .select("user_id, profiles:user_id(id, full_name, email, avatar_url)")
         .eq("org_id", activeOrgId),
+      supabase.from("bpm_fields").select("*").order("position"),
     ]);
 
     if (pipeRes.data) setPipe(pipeRes.data);
@@ -72,6 +75,28 @@ function PipeKanbanContent() {
         }))
       );
     }
+
+    // Load fields for all phases in this pipe
+    const pipePhaseIds = (phasesRes.data || []).map((p: any) => p.id);
+    const pipeFields = (fieldsRes.data || []).filter((f: any) => pipePhaseIds.includes(f.phase_id));
+    setAllFields(pipeFields);
+
+    // Load card values for all cards
+    const cardIds = (cardsRes.data || []).map((c: any) => c.id);
+    if (cardIds.length > 0) {
+      const { data: values } = await supabase
+        .from("bpm_card_values")
+        .select("card_id, field_id, value")
+        .in("card_id", cardIds);
+
+      const valMap: Record<string, Record<string, any>> = {};
+      (values || []).forEach((v: any) => {
+        if (!valMap[v.card_id]) valMap[v.card_id] = {};
+        valMap[v.card_id][v.field_id] = v.value;
+      });
+      setCardValues(valMap);
+    }
+
     setLoading(false);
   }, [pipeId, activeOrgId, supabase]);
 
@@ -305,6 +330,9 @@ function PipeKanbanContent() {
             phases={phases}
             cards={cards}
             members={members}
+            fields={allFields}
+            cardValues={cardValues}
+            previewFieldIds={(pipe?.card_preview_fields as string[]) || []}
             onMoveCard={handleMoveCard}
             onCardClick={(card) => setSelectedCard(card)}
             onCreateCard={() => setShowCreate(true)}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   Plus, Clock, User, AlertTriangle, CheckCircle2, Loader2, Filter, X, ChevronDown,
+  Calendar, Mail, Phone, AtSign, FileText,
 } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 import {
@@ -36,10 +37,24 @@ interface OrgMember {
   avatar_url: string | null;
 }
 
+interface BpmField {
+  id: string;
+  phase_id: string;
+  field_key: string;
+  field_type: string;
+  label: string;
+  is_required: boolean;
+  options: any;
+  position: number;
+}
+
 interface Props {
   phases: Phase[];
   cards: BpmCard[];
   members: OrgMember[];
+  fields?: BpmField[];
+  cardValues?: Record<string, Record<string, any>>;
+  previewFieldIds?: string[];
   onMoveCard: (cardId: string, fromPhaseId: string, toPhaseId: string) => Promise<boolean>;
   onCardClick: (card: BpmCard) => void;
   onCreateCard: () => void;
@@ -85,12 +100,39 @@ const PRIORITY_COLORS: Record<string, string> = {
   none: "bg-gray-400",
 };
 
-export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick, onCreateCard, canEdit }: Props) {
+const FIELD_ICONS: Record<string, any> = {
+  email: Mail,
+  phone: Phone,
+  date: Calendar,
+  text: FileText,
+  textarea: FileText,
+  select: ChevronDown,
+};
+
+function formatFieldValue(value: any, fieldType: string): string {
+  if (value === null || value === undefined || value === "") return "";
+  if (fieldType === "date") {
+    const d = new Date(value);
+    return d.toLocaleDateString("pt-BR");
+  }
+  if (fieldType === "currency") {
+    const num = typeof value === "number" ? value : parseFloat(value);
+    if (isNaN(num)) return String(value);
+    return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
+  if (fieldType === "checkbox") return value ? "Sim" : "Não";
+  if (Array.isArray(value)) return value.join(", ");
+  return String(value);
+}
+
+export function ProcessKanban({ phases, cards, members, fields = [], cardValues = {}, previewFieldIds = [], onMoveCard, onCardClick, onCreateCard, canEdit }: Props) {
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [filterAssignee, setFilterAssignee] = useState<string>("all");
   const [filterPriority, setFilterPriority] = useState<string>("all");
   const [filterSla, setFilterSla] = useState<string>("all");
+  // Per-column date filters: phaseId -> "all" | "today" | "week" | "month" | "overdue"
+  const [columnDateFilters, setColumnDateFilters] = useState<Record<string, string>>({});
 
   const hasActiveFilters = filterAssignee !== "all" || filterPriority !== "all" || filterSla !== "all";
 
@@ -98,6 +140,7 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
     setFilterAssignee("all");
     setFilterPriority("all");
     setFilterSla("all");
+    setColumnDateFilters({});
   }
 
   function getMember(userId: string | null) {
@@ -105,7 +148,62 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
     return members.find((m) => m.user_id === userId) || null;
   }
 
+  // Get fields that should show on card preview
+  function getPreviewFields(cardId: string): { label: string; value: string; type: string; icon: any }[] {
+    const values = cardValues[cardId];
+    if (!values || fields.length === 0) return [];
+
+    // If previewFieldIds configured, use those; otherwise show first 3 filled fields
+    let fieldsToShow: BpmField[];
+    if (previewFieldIds.length > 0) {
+      fieldsToShow = previewFieldIds
+        .map((fid) => fields.find((f) => f.id === fid))
+        .filter(Boolean) as BpmField[];
+    } else {
+      fieldsToShow = fields
+        .filter((f) => values[f.id] !== undefined && values[f.id] !== null && values[f.id] !== "")
+        .slice(0, 3);
+    }
+
+    return fieldsToShow
+      .map((f) => {
+        const val = values[f.id];
+        const formatted = formatFieldValue(val, f.field_type);
+        if (!formatted) return null;
+        return {
+          label: f.label,
+          value: formatted,
+          type: f.field_type,
+          icon: FIELD_ICONS[f.field_type] || FileText,
+        };
+      })
+      .filter(Boolean) as any[];
+  }
+
+  function matchesDateFilter(card: BpmCard, filterValue: string): boolean {
+    if (filterValue === "all") return true;
+    const deadline = card.sla_deadline;
+    if (!deadline) return filterValue === "no-date";
+
+    const now = new Date();
+    const dl = new Date(deadline);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(today.getTime() + 86400000);
+    const weekEnd = new Date(today.getTime() + 7 * 86400000);
+    const monthEnd = new Date(today.getTime() + 30 * 86400000);
+
+    switch (filterValue) {
+      case "overdue": return dl < now;
+      case "today": return dl >= today && dl < todayEnd;
+      case "week": return dl >= today && dl < weekEnd;
+      case "month": return dl >= today && dl < monthEnd;
+      case "no-date": return false;
+      default: return true;
+    }
+  }
+
   function getPhaseCards(phaseId: string) {
+    const dateFilter = columnDateFilters[phaseId] || "all";
     return cards
       .filter((c) => c.current_phase_id === phaseId && !c.is_archived)
       .filter((c) => {
@@ -125,6 +223,8 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
           if (filterSla === "ok" && status !== "ok") return false;
           if (filterSla === "none" && status !== "none") return false;
         }
+        // Per-column date filter
+        if (!matchesDateFilter(c, dateFilter)) return false;
         return true;
       });
   }
@@ -140,6 +240,8 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
     await onMoveCard(cardId, fromPhaseId, toPhaseId);
     setMovingCardId(null);
   }
+
+  const hasColumnDateFilters = Object.values(columnDateFilters).some((v) => v !== "all");
 
   return (
     <div>
@@ -163,7 +265,7 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
           )}
         </button>
 
-        {hasActiveFilters && (
+        {(hasActiveFilters || hasColumnDateFilters) && (
           <button
             onClick={clearFilters}
             className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
@@ -224,15 +326,37 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
       <div className="flex gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-200px)]">
         {phases.map((phase) => {
           const phaseCards = getPhaseCards(phase.id);
+          const dateFilter = columnDateFilters[phase.id] || "all";
           return (
             <div key={phase.id} className="flex-shrink-0 w-72">
               {/* Column header */}
-              <div className="flex items-center gap-2 mb-3 px-1">
+              <div className="flex items-center gap-2 mb-2 px-1">
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: phase.color }} />
                 <h3 className="text-sm font-semibold text-foreground truncate flex-1">{phase.name}</h3>
                 <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
                   {phaseCards.length}
                 </span>
+              </div>
+
+              {/* Per-column date filter */}
+              <div className="mb-2 px-1">
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setColumnDateFilters((prev) => ({ ...prev, [phase.id]: e.target.value }))}
+                  className={cn(
+                    "w-full px-2 py-1 text-[11px] rounded-md border transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/30",
+                    dateFilter !== "all"
+                      ? "bg-primary/5 border-primary/30 text-primary font-medium"
+                      : "bg-muted/50 border-transparent text-muted-foreground hover:border-border"
+                  )}
+                >
+                  <option value="all">Vencimento: Todos</option>
+                  <option value="overdue">Atrasados</option>
+                  <option value="today">Vence hoje</option>
+                  <option value="week">Próximos 7 dias</option>
+                  <option value="month">Próximos 30 dias</option>
+                  <option value="no-date">Sem data</option>
+                </select>
               </div>
 
               {/* Droppable column */}
@@ -250,6 +374,7 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
                       const assignee = getMember(card.assignee_id);
                       const slaStatus = getSlaStatus(card.sla_deadline);
                       const slaText = formatSla(card.sla_deadline);
+                      const previewFields = getPreviewFields(card.id);
 
                       return (
                         <Draggable
@@ -275,6 +400,24 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
 
                               {/* Title */}
                               <p className="text-sm font-medium text-foreground mb-2 line-clamp-2">{card.title}</p>
+
+                              {/* Dynamic field preview (Pipefy-style) */}
+                              {previewFields.length > 0 && (
+                                <div className="space-y-1 mb-2">
+                                  {previewFields.map((pf, i) => {
+                                    const Icon = pf.icon;
+                                    return (
+                                      <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                                        <Icon className="w-3 h-3 shrink-0 mt-0.5" />
+                                        <span className="truncate">
+                                          <span className="font-medium text-foreground/70">{pf.label}:</span>{" "}
+                                          {pf.value}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
 
                               {/* SLA */}
                               {slaStatus !== "none" && (
