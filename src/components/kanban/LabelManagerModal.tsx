@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils/helpers";
 import { X, Pencil, Trash2, Plus, Check } from "lucide-react";
@@ -69,8 +70,8 @@ export function LabelManagerModal({ boardId, labels, onClose, onLabelsChanged }:
     onLabelsChanged();
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       <div className="relative bg-card border border-border rounded-xl w-full max-w-md max-h-[80vh] overflow-y-auto shadow-2xl">
@@ -234,6 +235,7 @@ export function LabelManagerModal({ boardId, labels, onClose, onLabelsChanged }:
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

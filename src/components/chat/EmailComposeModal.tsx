@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Mail, Send, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 
@@ -64,8 +65,8 @@ export function EmailComposeModal({ defaultBody, senderName, onClose }: Props) {
     onClose();
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
@@ -163,6 +164,7 @@ export function EmailComposeModal({ defaultBody, senderName, onClose }: Props) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

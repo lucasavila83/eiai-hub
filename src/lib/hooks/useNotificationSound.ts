@@ -4,15 +4,33 @@ import { useRef, useCallback, useEffect } from "react";
 
 export function useNotificationSound() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const unlockedRef = useRef(false);
 
   useEffect(() => {
-    // Preload audio
-    if (typeof window !== "undefined") {
-      audioRef.current = new Audio("/sounds/notification.wav");
-      audioRef.current.volume = 0.5;
-      audioRef.current.preload = "auto";
+    if (typeof window === "undefined") return;
+
+    audioRef.current = new Audio("/sounds/notification.wav");
+    audioRef.current.volume = 0.5;
+    audioRef.current.preload = "auto";
+
+    // Unlock audio on first user interaction (required by browsers)
+    function unlockAudio() {
+      if (unlockedRef.current) return;
+      if (audioRef.current) {
+        audioRef.current.play().then(() => {
+          audioRef.current!.pause();
+          audioRef.current!.currentTime = 0;
+          unlockedRef.current = true;
+        }).catch(() => {});
+      }
     }
+
+    document.addEventListener("click", unlockAudio, { once: true });
+    document.addEventListener("keydown", unlockAudio, { once: true });
+
     return () => {
+      document.removeEventListener("click", unlockAudio);
+      document.removeEventListener("keydown", unlockAudio);
       audioRef.current = null;
     };
   }, []);
@@ -21,11 +39,11 @@ export function useNotificationSound() {
     const enabled = localStorage.getItem("notification-sound") !== "false";
     if (!enabled || !audioRef.current) return;
 
-    // Clone and play to allow overlapping sounds
     const audio = audioRef.current.cloneNode(true) as HTMLAudioElement;
     audio.volume = 0.5;
     audio.play().catch(() => {
-      // Autoplay blocked — ignore silently
+      // Autoplay still blocked — try again on next interaction
+      unlockedRef.current = false;
     });
   }, []);
 

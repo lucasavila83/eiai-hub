@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import {
   X, Loader2, ListTodo, Calendar, Users,
@@ -267,18 +268,19 @@ export function CreateTaskModal({
   const selectedAssignee = members.find((m: any) => m.user_id === selectedAssigneeId);
 
   if (loadingData) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
+    return createPortal(
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center">
         <div className="absolute inset-0 bg-black/50" />
         <div className="relative bg-card border border-border rounded-xl p-8">
           <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
@@ -436,6 +438,7 @@ export function CreateTaskModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

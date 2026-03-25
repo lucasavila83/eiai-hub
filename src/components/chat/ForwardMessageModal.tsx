@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import {
   X,
@@ -117,8 +118,8 @@ export function ForwardMessageModal({
     return <Hash className="w-4 h-4 text-muted-foreground shrink-0" />;
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
@@ -197,6 +198,7 @@ export function ForwardMessageModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

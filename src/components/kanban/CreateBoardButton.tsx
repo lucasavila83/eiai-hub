@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, X, Loader2 } from "lucide-react";
@@ -78,8 +79,8 @@ export function CreateBoardButton({ orgId }: Props) {
         Novo Board
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {open && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
           <div className="relative bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl">
             <div className="flex items-center justify-between mb-4">
@@ -137,7 +138,8 @@ export function CreateBoardButton({ orgId }: Props) {
               Colunas padrão: A Fazer, Em Progresso, Concluído
             </p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

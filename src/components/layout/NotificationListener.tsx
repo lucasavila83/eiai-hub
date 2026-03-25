@@ -22,6 +22,7 @@ export function NotificationListener() {
   const pathname = usePathname();
   const activeChannelId = useChatStore((s) => s.activeChannelId);
   const addNotification = useNotificationStore((s) => s.addNotification);
+  const addToast = useNotificationStore((s) => s.addToast);
   const loadPreferences = useNotificationStore((s) => s.loadPreferences);
 
   const { playSound } = useNotificationSound();
@@ -31,6 +32,14 @@ export function NotificationListener() {
   const [permissionAsked, setPermissionAsked] = useState(false);
   const initializedRef = useRef(false);
   const profileCacheRef = useRef<Record<string, string>>({});
+  const activeChannelIdRef = useRef(activeChannelId);
+  const pathnameRef = useRef(pathname);
+  const channelPrefsRef = useRef(channelPrefs);
+
+  // Keep refs in sync to avoid stale closures in realtime callbacks
+  useEffect(() => { activeChannelIdRef.current = activeChannelId; }, [activeChannelId]);
+  useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
+  useEffect(() => { channelPrefsRef.current = channelPrefs; }, [channelPrefs]);
 
   // Load preferences on mount
   useEffect(() => {
@@ -110,7 +119,7 @@ export function NotificationListener() {
     return () => clearTimeout(timer);
   }, [permissionAsked, requestPermission]);
 
-  // Subscribe to new messages (for sound + desktop notification)
+  // Subscribe to new messages (for sound + desktop + in-app toast)
   useEffect(() => {
     if (!user?.id || initializedRef.current) return;
     initializedRef.current = true;
@@ -132,11 +141,11 @@ export function NotificationListener() {
           // Skip own messages
           if (msg.user_id === user!.id) return;
 
-          // Skip if viewing that channel
-          if (activeChannelId === msg.channel_id && pathname?.includes("/chat")) return;
+          // Skip if viewing that channel (use refs to avoid stale closure)
+          if (activeChannelIdRef.current === msg.channel_id && pathnameRef.current?.includes("/chat")) return;
 
-          // Check channel preference
-          const pref = channelPrefs[msg.channel_id] || "all";
+          // Check channel preference (use ref)
+          const pref = channelPrefsRef.current[msg.channel_id] || "all";
           if (pref === "none") return;
           if (pref === "mentions") {
             const isMentioned = msg.mentions?.includes(user!.id);
@@ -159,10 +168,17 @@ export function NotificationListener() {
           // Play sound
           playSound();
 
-          // Show desktop notification
+          // Show in-app toast popup
+          addToast({
+            title: senderName,
+            body,
+            link: `/chat/${msg.channel_id}`,
+          });
+
+          // Show desktop notification (when tab not focused)
           showNotification(senderName, {
             body,
-            link: `/chat`,
+            link: `/chat/${msg.channel_id}`,
             tag: `msg-${msg.channel_id}`,
           });
         }
@@ -187,6 +203,13 @@ export function NotificationListener() {
           // Play sound
           playSound();
 
+          // Show in-app toast popup
+          addToast({
+            title: notif.title,
+            body: notif.body,
+            link: notif.link || "/notifications",
+          });
+
           // Desktop notification
           showNotification(notif.title, {
             body: notif.body,
@@ -201,7 +224,8 @@ export function NotificationListener() {
       supabase.removeChannel(channel);
       initializedRef.current = false;
     };
-  }, [user?.id, activeChannelId, pathname, channelPrefs, playSound, showNotification, addNotification, supabase]);
+    // Only re-subscribe when user changes — refs handle the rest
+  }, [user?.id, supabase, playSound, showNotification, addNotification, addToast]);
 
   return null; // This is a logic-only component
 }

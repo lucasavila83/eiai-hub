@@ -10,9 +10,18 @@ export interface NotificationItem {
   created_at: string;
 }
 
+export interface ToastItem {
+  id: string;
+  title: string;
+  body: string;
+  link?: string;
+  timestamp: number;
+}
+
 interface NotificationState {
   unreadCount: number;
   recentNotifications: NotificationItem[];
+  toasts: ToastItem[];
   soundEnabled: boolean;
   desktopEnabled: boolean;
   dropdownOpen: boolean;
@@ -22,15 +31,20 @@ interface NotificationState {
   resetUnread: () => void;
   addNotification: (item: NotificationItem) => void;
   setRecentNotifications: (items: NotificationItem[]) => void;
+  addToast: (toast: Omit<ToastItem, "id" | "timestamp">) => void;
+  removeToast: (id: string) => void;
   setSoundEnabled: (enabled: boolean) => void;
   setDesktopEnabled: (enabled: boolean) => void;
   setDropdownOpen: (open: boolean) => void;
   loadPreferences: () => void;
 }
 
+let toastCounter = 0;
+
 export const useNotificationStore = create<NotificationState>((set) => ({
   unreadCount: 0,
   recentNotifications: [],
+  toasts: [],
   soundEnabled: true,
   desktopEnabled: true,
   dropdownOpen: false,
@@ -46,6 +60,17 @@ export const useNotificationStore = create<NotificationState>((set) => ({
     })),
 
   setRecentNotifications: (items) => set({ recentNotifications: items }),
+
+  addToast: (toast) => {
+    const id = `toast-${++toastCounter}-${Date.now()}`;
+    const item: ToastItem = { ...toast, id, timestamp: Date.now() };
+    set((s) => ({ toasts: [...s.toasts, item].slice(-5) }));
+    // Auto-remove after 6 seconds
+    setTimeout(() => {
+      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+    }, 6000);
+  },
+  removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   setSoundEnabled: (enabled) => {
     localStorage.setItem("notification-sound", String(enabled));
