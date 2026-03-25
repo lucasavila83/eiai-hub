@@ -90,6 +90,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
 
   // Load initial data
   useEffect(() => {
+    isInitialLoad.current = true;
     setMessages(channel.id, initialMessages as any);
 
     // Pre-cache own profile from initial messages if available
@@ -138,10 +139,18 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     markAsRead(channel.id);
   }, [channel.id]);
 
-  // Scroll to bottom
+  // Scroll to bottom — instant on initial load, smooth on new messages
+  const isInitialLoad = useRef(true);
   useEffect(() => {
     if (activeTab === "chat") {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      if (isInitialLoad.current) {
+        // Instant scroll on first render
+        bottomRef.current?.scrollIntoView({ behavior: "instant" });
+        isInitialLoad.current = false;
+      } else if (!loadingMore) {
+        // Smooth scroll only for new messages (not when loading older ones)
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
     }
   }, [channelMessages.length, activeTab]);
 
