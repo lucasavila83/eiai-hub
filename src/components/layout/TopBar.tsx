@@ -54,21 +54,20 @@ export function TopBar({ profile }: TopBarProps) {
       setIsLoading(true);
 
       try {
-        const { data, error } = await supabase.rpc("search_chat_messages", {
-          p_query: searchQuery.trim(),
-          p_org_id: activeOrgId,
-          p_limit: 10,
+        const res = await fetch("/api/chat/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: searchQuery.trim(), orgId: activeOrgId }),
         });
 
-        if (error) {
-          console.error("Erro na busca:", error);
-          setResults({ exact: [], approximate: [] });
-        } else {
-          const rows = (data || []) as ChatSearchResult[];
+        if (res.ok) {
+          const data = await res.json();
           setResults({
-            exact: rows.filter((r) => r.match_type === "exact"),
-            approximate: rows.filter((r) => r.match_type === "approximate"),
+            exact: data.exact || [],
+            approximate: data.approximate || [],
           });
+        } else {
+          setResults({ exact: [], approximate: [] });
         }
       } catch (err) {
         console.error("Erro na busca:", err);
@@ -77,7 +76,7 @@ export function TopBar({ profile }: TopBarProps) {
         setIsLoading(false);
       }
     },
-    [supabase, activeOrgId]
+    [activeOrgId]
   );
 
   // Debounced search
