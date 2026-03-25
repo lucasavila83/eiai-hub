@@ -117,6 +117,46 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     return () => { supabase.removeChannel(sub); };
   }, [activeOrg, profile, pathname]);
 
+  // Subscribe to org changes (new members, new channels, new DMs) for auto-refresh
+  useEffect(() => {
+    if (!activeOrg || !profile) return;
+
+    const orgSub = supabase
+      .channel("sidebar-live-updates")
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "org_members",
+        filter: `org_id=eq.${activeOrg.id}`,
+      }, () => {
+        loadOrgMembers(activeOrg.id);
+      })
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "channels",
+        filter: `org_id=eq.${activeOrg.id}`,
+      }, () => {
+        loadChannels(activeOrg.id);
+        loadDMs(activeOrg.id);
+      })
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "channel_members",
+      }, (payload: any) => {
+        const cm = payload.new;
+        if (cm.user_id === profile.id) {
+          // I was added to a channel — reload DMs and channels
+          loadChannels(activeOrg.id);
+          loadDMs(activeOrg.id);
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(orgSub); };
+  }, [activeOrg, profile]);
+
   async function loadChannels(orgId: string) {
     const { data } = await supabase
       .from("channels")

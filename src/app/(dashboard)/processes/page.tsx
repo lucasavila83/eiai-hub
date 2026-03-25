@@ -77,6 +77,18 @@ function ProcessesContent() {
     if (activeOrgId) loadPipes();
   }, [activeOrgId]);
 
+  // Realtime: auto-refresh when pipes change
+  useEffect(() => {
+    if (!activeOrgId) return;
+    const sub = supabase
+      .channel("pipes-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bpm_pipes", filter: `org_id=eq.${activeOrgId}` }, () => {
+        loadPipes();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(sub); };
+  }, [activeOrgId]);
+
   // Close menu on outside click
   useEffect(() => {
     if (!openMenuId) return;

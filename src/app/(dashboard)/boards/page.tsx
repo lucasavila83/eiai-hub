@@ -26,88 +26,84 @@ export default function BoardsPage() {
   const { orgId, supabase, user } = useAuth();
   const permissions = usePermissions();
 
-  useEffect(() => {
+  async function loadBoards() {
     if (!orgId || !user?.id || permissions.loading) return;
 
-    (async () => {
-      // Load all boards
-      const { data: allBoards } = await supabase
-        .from("boards")
-        .select("*")
-        .eq("org_id", orgId)
-        .eq("is_archived", false)
-        .order("created_at", { ascending: false });
+    const { data: allBoards } = await supabase
+      .from("boards")
+      .select("*")
+      .eq("org_id", orgId)
+      .eq("is_archived", false)
+      .order("created_at", { ascending: false });
 
-      if (!allBoards) {
-        setBoards([]);
-        setLoading(false);
-        return;
-      }
-
-      // Admins/owners see everything
-      if (permissions.isAdmin) {
-        setBoards(allBoards);
-        setLoading(false);
-        return;
-      }
-
-      // Get user's team IDs
-      const { data: teamMemberships } = await supabase
-        .from("team_members")
-        .select("team_id")
-        .eq("user_id", user.id);
-      const userTeamIds = new Set((teamMemberships || []).map((t) => t.team_id));
-
-      // Get boards where user is explicitly a board_member
-      const { data: boardMemberships } = await supabase
-        .from("board_members")
-        .select("board_id")
-        .eq("user_id", user.id);
-      const userBoardIds = new Set((boardMemberships || []).map((b) => b.board_id));
-
-      // Filter boards based on visibility
-      const filteredBoards = allBoards.filter((board) => {
-        // User is explicit board member → always visible
-        if (userBoardIds.has(board.id)) return true;
-
-        // Board is public → visible to all org members
-        if (board.visibility === "public") return true;
-
-        // Board belongs to user's team → visible
-        if (board.visibility === "team" && board.team_id && userTeamIds.has(board.team_id)) return true;
-
-        // Board was created by user → always visible
-        if (board.created_by === user.id) return true;
-
-        // Private board: only visible if user is board_member (already checked above)
-        return false;
-      });
-
-      // Further filter by boardVisibility permission
-      const vis = permissions.boardVisibility;
-      let finalBoards = filteredBoards;
-
-      if (vis === "own") {
-        // Only boards created by user or where user is member
-        finalBoards = filteredBoards.filter(
-          (b) => b.created_by === user.id || userBoardIds.has(b.id)
-        );
-      } else if (vis === "team") {
-        // Boards from user's teams + own boards
-        finalBoards = filteredBoards.filter(
-          (b) =>
-            b.created_by === user.id ||
-            userBoardIds.has(b.id) ||
-            (b.team_id && userTeamIds.has(b.team_id)) ||
-            b.visibility === "public"
-        );
-      }
-      // vis === "all" → use filteredBoards as-is
-
-      setBoards(finalBoards);
+    if (!allBoards) {
+      setBoards([]);
       setLoading(false);
-    })();
+      return;
+    }
+
+    if (permissions.isAdmin) {
+      setBoards(allBoards);
+      setLoading(false);
+      return;
+    }
+
+    const { data: teamMemberships } = await supabase
+      .from("team_members")
+      .select("team_id")
+      .eq("user_id", user.id);
+    const userTeamIds = new Set((teamMemberships || []).map((t: any) => t.team_id));
+
+    const { data: boardMemberships } = await supabase
+      .from("board_members")
+      .select("board_id")
+      .eq("user_id", user.id);
+    const userBoardIds = new Set((boardMemberships || []).map((b: any) => b.board_id));
+
+    const filteredBoards = allBoards.filter((board: any) => {
+      if (userBoardIds.has(board.id)) return true;
+      if (board.visibility === "public") return true;
+      if (board.visibility === "team" && board.team_id && userTeamIds.has(board.team_id)) return true;
+      if (board.created_by === user.id) return true;
+      return false;
+    });
+
+    const vis = permissions.boardVisibility;
+    let finalBoards = filteredBoards;
+
+    if (vis === "own") {
+      finalBoards = filteredBoards.filter(
+        (b: any) => b.created_by === user.id || userBoardIds.has(b.id)
+      );
+    } else if (vis === "team") {
+      finalBoards = filteredBoards.filter(
+        (b: any) =>
+          b.created_by === user.id ||
+          userBoardIds.has(b.id) ||
+          (b.team_id && userTeamIds.has(b.team_id)) ||
+          b.visibility === "public"
+      );
+    }
+
+    setBoards(finalBoards);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadBoards();
   }, [orgId, user?.id, permissions.loading, permissions.isAdmin, permissions.boardVisibility]);
+
+  // Realtime: auto-refresh when boards change
+  useEffect(() => {
+    if (!orgId) return;
+    const sub = supabase
+      .channel("boards-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "boards", filter: `org_id=eq.${orgId}` }, () => {
+        loadBoards();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(sub); };
+  }, [orgId, user?.id, permissions.loading]);
 
   if (loading || permissions.loading) {
     return (
