@@ -30,6 +30,7 @@ export function NotificationListener() {
   const [channelPrefs, setChannelPrefs] = useState<Record<string, string>>({});
   const [permissionAsked, setPermissionAsked] = useState(false);
   const initializedRef = useRef(false);
+  const profileCacheRef = useRef<Record<string, string>>({});
 
   // Load preferences on mount
   useEffect(() => {
@@ -142,14 +143,17 @@ export function NotificationListener() {
             if (!isMentioned) return;
           }
 
-          // Get sender name
-          const { data: sender } = await supabase
-            .from("profiles")
-            .select("full_name")
-            .eq("id", msg.user_id)
-            .single();
-
-          const senderName = sender?.full_name || "Alguém";
+          // Get sender name (cached)
+          let senderName = profileCacheRef.current[msg.user_id];
+          if (!senderName) {
+            const { data: sender } = await supabase
+              .from("profiles")
+              .select("full_name")
+              .eq("id", msg.user_id)
+              .single();
+            senderName = sender?.full_name || "Alguém";
+            profileCacheRef.current[msg.user_id] = senderName;
+          }
           const body = msg.content?.substring(0, 100) || "Nova mensagem";
 
           // Play sound

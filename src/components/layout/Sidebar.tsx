@@ -68,7 +68,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }
   }, [activeOrg]);
 
-  // Load unread counts
+  // Load unread counts (batched — all channels in parallel)
   const loadUnreadCounts = useCallback(async () => {
     if (!profile) return;
     const { data: memberships } = await supabase
@@ -76,27 +76,33 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
       .select("channel_id, last_read_at")
       .eq("user_id", profile.id);
 
-    if (!memberships) return;
-    for (const m of memberships) {
-      const { count } = await supabase
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .eq("channel_id", m.channel_id)
-        .gt("created_at", m.last_read_at)
-        .neq("user_id", profile.id);
-      setUnreadCount(m.channel_id, count || 0);
-    }
+    if (!memberships || memberships.length === 0) return;
+
+    const results = await Promise.all(
+      memberships.map((m: any) =>
+        supabase
+          .from("messages")
+          .select("*", { count: "exact", head: true })
+          .eq("channel_id", m.channel_id)
+          .gt("created_at", m.last_read_at)
+          .neq("user_id", profile.id)
+          .then((res) => ({ channelId: m.channel_id, count: res.count || 0 }))
+      )
+    );
+
+    results.forEach(({ channelId, count }) => setUnreadCount(channelId, count));
   }, [profile]);
 
   useEffect(() => {
     loadUnreadCounts();
   }, [loadUnreadCounts]);
 
-  // Subscribe to new messages for unread badges
+  // Single consolidated realtime subscription for sidebar
   useEffect(() => {
     if (!activeOrg || !profile) return;
+
     const sub = supabase
-      .channel("unread-tracker")
+      .channel("sidebar-realtime")
       .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
@@ -112,17 +118,6 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
           }
         }
       })
-      .subscribe();
-
-    return () => { supabase.removeChannel(sub); };
-  }, [activeOrg, profile, pathname]);
-
-  // Subscribe to org changes (new members, new channels, new DMs) for auto-refresh
-  useEffect(() => {
-    if (!activeOrg || !profile) return;
-
-    const orgSub = supabase
-      .channel("sidebar-live-updates")
       .on("postgres_changes", {
         event: "*",
         schema: "public",
@@ -147,15 +142,14 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
       }, (payload: any) => {
         const cm = payload.new;
         if (cm.user_id === profile.id) {
-          // I was added to a channel — reload DMs and channels
           loadChannels(activeOrg.id);
           loadDMs(activeOrg.id);
         }
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(orgSub); };
-  }, [activeOrg, profile]);
+    return () => { supabase.removeChannel(sub); };
+  }, [activeOrg, profile, pathname]);
 
   async function loadChannels(orgId: string) {
     const { data } = await supabase

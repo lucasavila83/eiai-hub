@@ -165,12 +165,14 @@ export function usePermissions(): Permissions {
         return;
       }
 
-      // Load org-level permissions (role-based defaults)
-      const { data: orgPerms } = await supabase
-        .from("org_permissions")
-        .select("*")
-        .eq("org_id", activeOrgId!)
-        .single();
+      // Load org perms, team memberships, and user perms in PARALLEL
+      const [orgPermsRes, teamMembershipsRes, userPermsRes] = await Promise.all([
+        supabase.from("org_permissions").select("*").eq("org_id", activeOrgId!).single(),
+        supabase.from("team_members").select("team_id").eq("user_id", user!.id),
+        supabase.from("user_permissions").select("*").eq("org_id", activeOrgId!).eq("user_id", user!.id).single(),
+      ]);
+
+      const orgPerms = orgPermsRes.data;
 
       // Start with role-based defaults
       let perms: Permissions;
@@ -239,10 +241,7 @@ export function usePermissions(): Permissions {
       }
 
       // Layer 2: Team-level overrides
-      const { data: teamMemberships } = await supabase
-        .from("team_members")
-        .select("team_id")
-        .eq("user_id", user!.id);
+      const teamMemberships = teamMembershipsRes.data;
 
       if (teamMemberships && teamMemberships.length > 0) {
         const teamIds = teamMemberships.map((t) => t.team_id);
@@ -273,12 +272,7 @@ export function usePermissions(): Permissions {
       }
 
       // Layer 3: User-level overrides (highest priority)
-      const { data: userPerms } = await supabase
-        .from("user_permissions")
-        .select("*")
-        .eq("org_id", activeOrgId!)
-        .eq("user_id", user!.id)
-        .single();
+      const userPerms = userPermsRes.data;
 
       if (userPerms) {
         perms.dashboard = applyModuleOverride(perms.dashboard, userPerms.can_view_dashboard_view ?? userPerms.can_view_dashboard ?? null, userPerms.can_view_dashboard_edit ?? null);
