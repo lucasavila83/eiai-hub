@@ -62,6 +62,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   const { messages, setMessages, addMessage, markAsRead } = useChatStore();
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isInitialLoad = useRef(true);
   const [hasMore, setHasMore] = useState(initialHasMore || false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [activeTab, setActiveTab] = useState<"chat" | "tasks">("chat");
@@ -140,17 +141,19 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   }, [channel.id]);
 
   // Scroll to bottom — instant on initial load, smooth on new messages
-  const isInitialLoad = useRef(true);
   useEffect(() => {
-    if (activeTab === "chat") {
-      if (isInitialLoad.current) {
-        // Instant scroll on first render
+    if (activeTab !== "chat") return;
+
+    if (isInitialLoad.current) {
+      // Wait for DOM to render messages, then scroll instantly
+      const timer = setTimeout(() => {
         bottomRef.current?.scrollIntoView({ behavior: "instant" });
         isInitialLoad.current = false;
-      } else if (!loadingMore) {
-        // Smooth scroll only for new messages (not when loading older ones)
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      }
+      }, 50);
+      return () => clearTimeout(timer);
+    } else if (!loadingMore) {
+      // Smooth scroll only for new messages (not when loading older ones)
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [channelMessages.length, activeTab]);
 
