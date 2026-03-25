@@ -12,7 +12,7 @@ import { useChatStore } from "@/lib/stores/chat-store";
 import {
   Hash, Lock, MessageSquare, ListTodo,
   Kanban, CheckCircle2, Clock, AlertCircle,
-  CheckSquare, Square, X, Mail,
+  CheckSquare, Square, X, Mail, Loader2,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils/helpers";
 import type { Channel, Message } from "@/lib/types/database";
@@ -20,6 +20,7 @@ import type { Channel, Message } from "@/lib/types/database";
 interface Props {
   channel: Channel;
   initialMessages: (Message & { profiles: any })[];
+  initialHasMore?: boolean;
   currentUserId: string;
 }
 
@@ -55,11 +56,14 @@ const priorityConfig: Record<string, { color: string; icon: any; label: string }
   none: { color: "text-muted-foreground", icon: Clock, label: "Sem prioridade" },
 };
 
-export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
+export function ChatWindow({ channel, initialMessages, initialHasMore, currentUserId }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const { messages, setMessages, addMessage, markAsRead } = useChatStore();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [hasMore, setHasMore] = useState(initialHasMore || false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [activeTab, setActiveTab] = useState<"chat" | "tasks">("chat");
   const [tasks, setTasks] = useState<any[]>([]);
   const [lastReadAt, setLastReadAt] = useState<string | null>(null);
@@ -140,6 +144,60 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [channelMessages.length, activeTab]);
+
+  // Load older messages when scrolling up
+  async function loadOlderMessages() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+
+    const currentMsgs = useChatStore.getState().messages[channel.id] || [];
+    const oldestMsg = currentMsgs[0];
+    if (!oldestMsg) { setLoadingMore(false); return; }
+
+    const res = await fetch("/api/chat/load-channel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channelId: channel.id, before: oldestMsg.created_at }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const olderMsgs = (data.messages || []) as any[];
+      if (olderMsgs.length > 0) {
+        // Preserve scroll position
+        const container = scrollContainerRef.current;
+        const prevHeight = container?.scrollHeight || 0;
+
+        setMessages(channel.id, [...olderMsgs, ...currentMsgs]);
+
+        // Restore scroll position after render
+        requestAnimationFrame(() => {
+          if (container) {
+            const newHeight = container.scrollHeight;
+            container.scrollTop = newHeight - prevHeight;
+          }
+        });
+      }
+      setHasMore(data.hasMore || false);
+    }
+
+    setLoadingMore(false);
+  }
+
+  // Detect scroll to top
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || activeTab !== "chat") return;
+
+    function handleScroll() {
+      if (container!.scrollTop < 80 && hasMore && !loadingMore) {
+        loadOlderMessages();
+      }
+    }
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [hasMore, loadingMore, activeTab, channel.id]);
 
   // Profile cache for realtime messages
   const profileCacheRef = useRef<Record<string, any>>({});
@@ -544,7 +602,24 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
       {activeTab === "chat" ? (
         <>
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-1">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-1">
+            {/* Load more indicator */}
+            {loadingMore && (
+              <div className="flex items-center justify-center py-3">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-xs text-muted-foreground">Carregando mensagens anteriores...</span>
+              </div>
+            )}
+            {hasMore && !loadingMore && channelMessages.length > 0 && (
+              <div className="flex items-center justify-center py-2">
+                <button
+                  onClick={loadOlderMessages}
+                  className="text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer"
+                >
+                  Carregar mensagens anteriores
+                </button>
+              </div>
+            )}
             {channelMessages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 {channel.type === "dm" ? (

@@ -10,6 +10,7 @@ export default function ChannelPage() {
   const { channelId } = useParams<{ channelId: string }>();
   const [channel, setChannel] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const router = useRouter();
@@ -38,6 +39,7 @@ export default function ChannelPage() {
       const data = await res.json();
       setChannel(data.channel);
       setMessages(data.messages || []);
+      setHasMore(data.hasMore || false);
       setLoading(false);
     })();
   }, [channelId]);
@@ -68,5 +70,5 @@ export default function ChannelPage() {
     );
   }
 
-  return <ChatWindow channel={channel} initialMessages={messages} currentUserId={user.id} />;
+  return <ChatWindow channel={channel} initialMessages={messages} initialHasMore={hasMore} currentUserId={user.id} />;
 }

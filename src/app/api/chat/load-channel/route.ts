@@ -26,9 +26,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
     }
 
-    const { channelId } = await req.json();
+    const { channelId, before } = await req.json();
 
-    // Run all independent queries in parallel
+    // If `before` cursor is provided, this is a pagination request (load older messages)
+    if (before) {
+      // Just check membership exists (lightweight)
+      const { data: mem } = await adminClient
+        .from("channel_members")
+        .select("id")
+        .eq("channel_id", channelId)
+        .eq("user_id", userId)
+        .single();
+
+      if (!mem) {
+        return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+      }
+
+      const { data: olderMsgs } = await adminClient
+        .from("messages")
+        .select("*, profiles:user_id(id, full_name, avatar_url, email, is_ai_agent)")
+        .eq("channel_id", channelId)
+        .is("deleted_at", null)
+        .lt("created_at", before)
+        .order("created_at", { ascending: false })
+        .limit(30);
+
+      const messages = (olderMsgs || []).reverse();
+      return NextResponse.json({ messages, hasMore: messages.length >= 30 });
+    }
+
+    // Initial load — run all independent queries in parallel
     const [channelRes, membershipRes, messagesRes] = await Promise.all([
       adminClient
         .from("channels")
@@ -46,8 +73,8 @@ export async function POST(req: NextRequest) {
         .select("*, profiles:user_id(id, full_name, avatar_url, email, is_ai_agent)")
         .eq("channel_id", channelId)
         .is("deleted_at", null)
-        .order("created_at", { ascending: true })
-        .limit(50),
+        .order("created_at", { ascending: false })
+        .limit(30),
     ]);
 
     const channel = channelRes.data;
@@ -81,7 +108,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
     }
 
-    return NextResponse.json({ channel, messages: messagesRes.data || [] });
+    // Messages were fetched in descending order for limit — reverse to ascending for display
+    const messages = (messagesRes.data || []).reverse();
+    const hasMore = messages.length >= 30;
+
+    return NextResponse.json({ channel, messages, hasMore });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

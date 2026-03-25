@@ -5,12 +5,12 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import {
   X, Loader2, ListTodo, Calendar, Users,
-  Kanban, ChevronDown,
+  Kanban, ChevronDown, Paperclip, FileText,
 } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 
-// Detect file attachment in message content
-const FILE_URL_REGEX = /^📎\s*(?:Arquivo:\s*)?\*\*(.+?)\*\*\n(https?:\/\/.+)$/s;
+// Detect file attachment in message content (also works inside forwarded messages)
+const FILE_URL_REGEX = /📎\s*(?:Arquivo:\s*)?\*\*(.+?)\*\*\s*\n?(https?:\/\/\S+)/s;
 
 function guessFileType(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
@@ -308,6 +308,18 @@ export function CreateTaskModal({
             />
           </div>
 
+          {/* Attachment preview */}
+          {attachmentFile && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg">
+              <Paperclip className="w-4 h-4 text-primary shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{attachmentFile.name}</p>
+                <p className="text-xs text-muted-foreground">Será anexado automaticamente à tarefa</p>
+              </div>
+              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+            </div>
+          )}
+
           {/* Board */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
@@ -400,12 +412,20 @@ export function CreateTaskModal({
                         : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
                     )}
                   >
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: generateColor(memberName) }}
-                    >
-                      {getInitials(memberName)}
-                    </div>
+                    {p?.avatar_url ? (
+                      <img
+                        src={p.avatar_url}
+                        alt={memberName}
+                        className="w-6 h-6 rounded-full object-cover shrink-0"
+                      />
+                    ) : (
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                        style={{ backgroundColor: generateColor(memberName) }}
+                      >
+                        {getInitials(memberName)}
+                      </div>
+                    )}
                     <span className="truncate">{memberName}</span>
                   </button>
                 );
