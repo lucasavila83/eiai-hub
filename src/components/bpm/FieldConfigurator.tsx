@@ -42,12 +42,13 @@ function getFieldLabel(type: string) {
 interface Props {
   fields: FieldDef[];
   phaseName: string;
+  members?: { user_id: string; full_name: string | null; email: string }[];
   onSave: (fields: FieldDef[]) => Promise<void>;
   onAdd: (field: Omit<FieldDef, "id" | "phase_id">) => Promise<void>;
   onDelete: (fieldId: string) => Promise<void>;
 }
 
-export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }: Props) {
+export function FieldConfigurator({ fields, phaseName, members = [], onSave, onAdd, onDelete }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -62,6 +63,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
   const [addRequired, setAddRequired] = useState(false);
   const [addOptions, setAddOptions] = useState("");
   const [addRequiredItems, setAddRequiredItems] = useState<string[]>([]);
+  const [addAssignee, setAddAssignee] = useState("");
 
   // Edit form
   const [editLabel, setEditLabel] = useState("");
@@ -70,6 +72,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
   const [editRequired, setEditRequired] = useState(false);
   const [editOptions, setEditOptions] = useState("");
   const [editRequiredItems, setEditRequiredItems] = useState<string[]>([]);
+  const [editAssignee, setEditAssignee] = useState("");
 
   function generateKey(label: string): string {
     return label
@@ -91,6 +94,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
     setEditRequiredItems(
       (field.options || []).filter((o: any) => o.required).map((o) => o.label)
     );
+    setEditAssignee(field.assignee_id || "");
   }
 
   async function saveEdit(field: FieldDef) {
@@ -114,6 +118,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
             help_text: editHelp.trim() || null,
             is_required: editRequired,
             options: opts,
+            assignee_id: editAssignee || null,
           }
         : f
     );
@@ -149,6 +154,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
       default_value: null,
       position: fields.length,
       validations: {},
+      assignee_id: addAssignee || null,
     });
 
     setAddType("text");
@@ -159,6 +165,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
     setAddRequired(false);
     setAddOptions("");
     setAddRequiredItems([]);
+    setAddAssignee("");
     setShowAdd(false);
     setSaving(false);
   }
@@ -262,6 +269,21 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
                               <input type="checkbox" checked={editRequired} onChange={(e) => setEditRequired(e.target.checked)} className="accent-primary" />
                               Obrigatório
                             </label>
+                            {members.length > 0 && (
+                              <div>
+                                <label className="text-[10px] font-medium text-muted-foreground mb-0.5 block">Responsável pelo campo (opcional)</label>
+                                <select
+                                  value={editAssignee}
+                                  onChange={(e) => setEditAssignee(e.target.value)}
+                                  className="w-full px-2 py-1 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                                >
+                                  <option value="">Usar responsável da fase</option>
+                                  {members.map((m) => (
+                                    <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="flex items-center gap-2.5 px-3 py-2.5">
@@ -274,7 +296,17 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
                                 <span className="text-sm text-foreground truncate">{field.label}</span>
                                 {field.is_required && <span className="text-destructive text-xs">*</span>}
                               </div>
-                              <span className="text-[10px] text-muted-foreground">{getFieldLabel(field.field_type)}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-muted-foreground">{getFieldLabel(field.field_type)}</span>
+                                {field.assignee_id && (() => {
+                                  const m = members.find((m) => m.user_id === field.assignee_id);
+                                  return m ? (
+                                    <span className="text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                                      {m.full_name || m.email}
+                                    </span>
+                                  ) : null;
+                                })()}
+                              </div>
                             </div>
                             <button onClick={() => startEdit(field)} className="p-1 rounded-md hover:bg-accent transition-colors cursor-pointer">
                               <Pencil className="w-3 h-3 text-muted-foreground" />
@@ -390,6 +422,24 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
               onChange={setAddOptions}
               onRequiredChange={setAddRequiredItems}
             />
+          )}
+
+          {/* Assignee */}
+          {members.length > 0 && (
+            <div>
+              <label className="text-xs font-medium text-foreground mb-1 block">Responsável pelo campo (opcional)</label>
+              <select
+                value={addAssignee}
+                onChange={(e) => setAddAssignee(e.target.value)}
+                className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
+              >
+                <option value="">Usar responsável da fase</option>
+                {members.map((m) => (
+                  <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Se definido, cria uma tarefa separada no Board para essa pessoa</p>
+            </div>
           )}
 
           {/* Required checkbox */}

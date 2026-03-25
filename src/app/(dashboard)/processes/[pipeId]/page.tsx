@@ -193,48 +193,64 @@ function PipeKanbanContent() {
     // Deactivate previous board task links
     await deactivatePreviousTaskLinks(supabase, cardId);
 
-    // Create board task for the phase's assignee
+    // Create board tasks — group fields by assignee
     if (targetPhase?.default_assignee_id && !isEnd) {
       const { data: phaseFields } = await supabase
         .from("bpm_fields")
-        .select("id, label, field_type, is_required, options")
+        .select("id, label, field_type, is_required, options, assignee_id")
         .eq("phase_id", toPhaseId)
         .order("position");
 
-      const allFields = phaseFields || [];
-      const reqFields = allFields.filter((f) => f.is_required);
-      const checklistFields = allFields.filter((f) => f.field_type === "checklist");
+      const allPhaseFields = phaseFields || [];
+      const checklistFieldIds = allPhaseFields.filter((f) => f.field_type === "checklist").map((f) => f.id);
 
       // Get current checklist values for mirroring
       let checklistValues: Record<string, any> = {};
-      if (checklistFields.length > 0) {
+      if (checklistFieldIds.length > 0) {
         const { data: vals } = await supabase
           .from("bpm_card_values")
           .select("field_id, value")
           .eq("card_id", cardId)
-          .in("field_id", checklistFields.map((f) => f.id));
+          .in("field_id", checklistFieldIds);
         for (const v of vals || []) checklistValues[v.field_id] = v.value;
       }
 
+      // Group fields by assignee: field.assignee_id || phase default
+      const defaultAssignee = targetPhase.default_assignee_id;
+      const grouped: Record<string, typeof allPhaseFields> = {};
+      for (const f of allPhaseFields) {
+        const key = f.assignee_id || defaultAssignee;
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(f);
+      }
+
       const movedCard = cards.find((c) => c.id === cardId);
-      await createBoardTaskFromBpm(supabase, {
-        bpmCardId: cardId,
-        bpmCardTitle: movedCard?.title || "Card BPM",
-        pipeId: pipeId,
-        pipeName: pipe?.name || "Processo",
-        phaseName: targetPhase.name,
-        phaseId: toPhaseId,
-        assigneeId: targetPhase.default_assignee_id,
-        orgId: activeOrgId!,
-        slaDeadline,
-        requiredFields: reqFields.map((f) => ({ label: f.label })),
-        checklistFields: checklistFields.map((f) => ({
-          label: f.label,
-          items: Array.isArray(checklistValues[f.id])
-            ? checklistValues[f.id]
-            : (f.options || []).map((o: any) => ({ label: o.label, checked: false })),
-        })),
-      });
+
+      // Create one board task per assignee group
+      for (const [assigneeId, groupFields] of Object.entries(grouped)) {
+        const reqFields = groupFields.filter((f) => f.is_required);
+        const checklistFields = groupFields.filter((f) => f.field_type === "checklist");
+        const nonChecklistFields = groupFields.filter((f) => f.field_type !== "checklist");
+
+        await createBoardTaskFromBpm(supabase, {
+          bpmCardId: cardId,
+          bpmCardTitle: movedCard?.title || "Card BPM",
+          pipeId: pipeId,
+          pipeName: pipe?.name || "Processo",
+          phaseName: targetPhase.name,
+          phaseId: toPhaseId,
+          assigneeId: assigneeId,
+          orgId: activeOrgId!,
+          slaDeadline,
+          requiredFields: nonChecklistFields.map((f) => ({ label: f.label })),
+          checklistFields: checklistFields.map((f) => ({
+            label: f.label,
+            items: Array.isArray(checklistValues[f.id])
+              ? checklistValues[f.id]
+              : (f.options || []).map((o: any) => ({ label: o.label, checked: false })),
+          })),
+        });
+      }
     }
 
     // Update local state
