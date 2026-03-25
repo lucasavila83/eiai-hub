@@ -1,7 +1,7 @@
 {
-  "name": "EIAI Hub",
-  "short_name": "EIAI Hub",
-  "description": "Plataforma de comunicação e gestão de tarefas com IA",
+  "name": "Lesco-Hub",
+  "short_name": "Lesco-Hub",
+  "description": "Plataforma de gestão integrada",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",
