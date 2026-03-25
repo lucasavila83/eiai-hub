@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Bell, Menu, Search, Loader2, MessageSquare, CheckSquare, User, Check, ExternalLink } from "lucide-react";
+import { Bell, Menu, Search, Loader2, MessageSquare, Check, ExternalLink } from "lucide-react";
 import { useNotificationStore, type NotificationItem } from "@/lib/stores/notification-store";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { getInitials, generateColor } from "@/lib/utils/helpers";
@@ -14,33 +14,18 @@ interface TopBarProps {
   profile: Profile | null;
 }
 
-interface MessageResult {
+interface ChatSearchResult {
   id: string;
   content: string;
   channel_id: string;
   created_at: string;
-  profiles: { full_name: string | null } | null;
-}
-
-interface CardResult {
-  id: string;
-  title: string;
-  board_id: string;
-  priority: string | null;
-  due_date: string | null;
-}
-
-interface MemberResult {
-  id: string;
-  full_name: string | null;
-  email: string;
-  avatar_url: string | null;
+  sender_name: string;
+  match_type: string;
 }
 
 interface SearchResults {
-  messages: MessageResult[];
-  cards: CardResult[];
-  members: MemberResult[];
+  exact: ChatSearchResult[];
+  approximate: ChatSearchResult[];
 }
 
 export function TopBar({ profile }: TopBarProps) {
@@ -49,19 +34,19 @@ export function TopBar({ profile }: TopBarProps) {
   const supabase = createClient();
 
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResults>({ messages: [], cards: [], members: [] });
+  const [results, setResults] = useState<SearchResults>({ exact: [], approximate: [] });
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const hasResults = results.messages.length > 0 || results.cards.length > 0 || results.members.length > 0;
+  const hasResults = results.exact.length > 0 || results.approximate.length > 0;
 
   const performSearch = useCallback(
     async (searchQuery: string) => {
-      if (!searchQuery.trim() || searchQuery.trim().length < 2) {
-        setResults({ messages: [], cards: [], members: [] });
+      if (!searchQuery.trim() || searchQuery.trim().length < 2 || !activeOrgId) {
+        setResults({ exact: [], approximate: [] });
         setIsLoading(false);
         return;
       }
@@ -69,40 +54,30 @@ export function TopBar({ profile }: TopBarProps) {
       setIsLoading(true);
 
       try {
-        const pattern = `%${searchQuery.trim()}%`;
-
-        const [messagesRes, cardsRes, membersRes] = await Promise.all([
-          supabase
-            .from("messages")
-            .select("id, content, channel_id, created_at, profiles:user_id(full_name)")
-            .ilike("content", pattern)
-            .limit(5),
-          supabase
-            .from("cards")
-            .select("id, title, board_id, priority, due_date")
-            .ilike("title", pattern)
-            .eq("is_archived", false)
-            .limit(5),
-          supabase
-            .from("profiles")
-            .select("id, full_name, email, avatar_url")
-            .or(`full_name.ilike.${pattern},email.ilike.${pattern}`)
-            .limit(5),
-        ]);
-
-        setResults({
-          messages: (messagesRes.data as MessageResult[]) || [],
-          cards: (cardsRes.data as CardResult[]) || [],
-          members: (membersRes.data as MemberResult[]) || [],
+        const { data, error } = await supabase.rpc("search_chat_messages", {
+          p_query: searchQuery.trim(),
+          p_org_id: activeOrgId,
+          p_limit: 10,
         });
+
+        if (error) {
+          console.error("Erro na busca:", error);
+          setResults({ exact: [], approximate: [] });
+        } else {
+          const rows = (data || []) as ChatSearchResult[];
+          setResults({
+            exact: rows.filter((r) => r.match_type === "exact"),
+            approximate: rows.filter((r) => r.match_type === "approximate"),
+          });
+        }
       } catch (err) {
-        console.error("Erro na busca global:", err);
-        setResults({ messages: [], cards: [], members: [] });
+        console.error("Erro na busca:", err);
+        setResults({ exact: [], approximate: [] });
       } finally {
         setIsLoading(false);
       }
     },
-    [supabase]
+    [supabase, activeOrgId]
   );
 
   // Debounced search
@@ -112,7 +87,7 @@ export function TopBar({ profile }: TopBarProps) {
     }
 
     if (!query.trim()) {
-      setResults({ messages: [], cards: [], members: [] });
+      setResults({ exact: [], approximate: [] });
       setIsLoading(false);
       return;
     }
@@ -156,68 +131,6 @@ export function TopBar({ profile }: TopBarProps) {
     setIsOpen(false);
     setQuery("");
     router.push(`/chat/${channelId}`);
-  }
-
-  function handleNavigateCard(boardId: string) {
-    setIsOpen(false);
-    setQuery("");
-    router.push(`/boards/${boardId}`);
-  }
-
-  async function handleNavigateMember(memberId: string) {
-    if (!activeOrgId || !profile?.id) return;
-
-    setIsOpen(false);
-    setQuery("");
-
-    // Check if a DM channel already exists with this member
-    const { data: existingChannels } = await supabase
-      .from("channel_members")
-      .select("channel_id, channels!inner(id, type)")
-      .eq("user_id", memberId)
-      .eq("channels.type", "dm");
-
-    if (existingChannels && existingChannels.length > 0) {
-      // Find a DM channel where the current user is also a member
-      for (const ch of existingChannels) {
-        const { data: myMembership } = await supabase
-          .from("channel_members")
-          .select("channel_id")
-          .eq("channel_id", ch.channel_id)
-          .eq("user_id", profile.id)
-          .single();
-
-        if (myMembership) {
-          router.push(`/chat/${ch.channel_id}`);
-          return;
-        }
-      }
-    }
-
-    // Create new DM channel
-    const targetMember = results.members.find((m) => m.id === memberId);
-    const dmName = targetMember?.full_name || targetMember?.email || "DM";
-
-    const { data: channel } = await supabase
-      .from("channels")
-      .insert({
-        org_id: activeOrgId,
-        name: dmName,
-        type: "dm",
-        created_by: profile.id,
-        is_archived: false,
-      })
-      .select()
-      .single();
-
-    if (channel) {
-      const now = new Date().toISOString();
-      await supabase.from("channel_members").insert([
-        { channel_id: channel.id, user_id: profile.id, last_read_at: now, notifications: "all" },
-        { channel_id: channel.id, user_id: memberId, last_read_at: now, notifications: "all" },
-      ]);
-      router.push(`/chat/${channel.id}`);
-    }
   }
 
   function truncate(text: string, maxLen: number) {
@@ -270,14 +183,14 @@ export function TopBar({ profile }: TopBarProps) {
 
               {!isLoading && hasResults && (
                 <div>
-                  {/* Messages */}
-                  {results.messages.length > 0 && (
+                  {/* Exact matches */}
+                  {results.exact.length > 0 && (
                     <div>
                       <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted border-b border-border/50 flex items-center gap-1.5">
                         <MessageSquare className="w-3.5 h-3.5" />
-                        Mensagens
+                        Correspondências exatas
                       </div>
-                      {results.messages.map((msg) => (
+                      {results.exact.map((msg) => (
                         <button
                           key={msg.id}
                           onClick={() => handleNavigateMessage(msg.channel_id)}
@@ -287,83 +200,43 @@ export function TopBar({ profile }: TopBarProps) {
                             {truncate(msg.content, 80)}
                           </p>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {msg.profiles?.full_name || "Desconhecido"}
+                            {msg.sender_name} &middot; {new Date(msg.created_at).toLocaleDateString("pt-BR")}
                           </p>
                         </button>
                       ))}
                     </div>
                   )}
 
-                  {/* Cards/Tasks */}
-                  {results.cards.length > 0 && (
+                  {/* Divider between exact and approximate */}
+                  {results.exact.length > 0 && results.approximate.length > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/50">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Aproximados</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                  )}
+
+                  {/* Approximate matches */}
+                  {results.approximate.length > 0 && (
                     <div>
-                      <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted border-b border-border/50 flex items-center gap-1.5">
-                        <CheckSquare className="w-3.5 h-3.5" />
-                        Tarefas
-                      </div>
-                      {results.cards.map((card) => (
+                      {results.exact.length === 0 && (
+                        <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted border-b border-border/50 flex items-center gap-1.5">
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          Correspondências aproximadas
+                        </div>
+                      )}
+                      {results.approximate.map((msg) => (
                         <button
-                          key={card.id}
-                          onClick={() => handleNavigateCard(card.board_id)}
+                          key={msg.id}
+                          onClick={() => handleNavigateMessage(msg.channel_id)}
                           className="w-full text-left px-3 py-2 hover:bg-accent transition-colors border-b border-gray-50 last:border-b-0"
                         >
-                          <p className="text-sm text-foreground truncate">
-                            {truncate(card.title, 80)}
+                          <p className="text-sm text-foreground/70 truncate">
+                            {truncate(msg.content, 80)}
                           </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {card.priority && (
-                              <span className="text-xs text-muted-foreground capitalize">{card.priority}</span>
-                            )}
-                            {card.due_date && (
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(card.due_date).toLocaleDateString("pt-BR")}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Members */}
-                  {results.members.length > 0 && (
-                    <div>
-                      <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted border-b border-border/50 flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5" />
-                        Membros
-                      </div>
-                      {results.members.map((member) => (
-                        <button
-                          key={member.id}
-                          onClick={() => handleNavigateMember(member.id)}
-                          className="w-full text-left px-3 py-2 hover:bg-accent transition-colors border-b border-gray-50 last:border-b-0 flex items-center gap-2"
-                        >
-                          {member.avatar_url ? (
-                            <img
-                              src={member.avatar_url}
-                              alt=""
-                              className="w-6 h-6 rounded-full object-cover shrink-0"
-                            />
-                          ) : (
-                            <div
-                              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                              style={{
-                                backgroundColor: generateColor(
-                                  member.full_name || member.email || "U"
-                                ),
-                              }}
-                            >
-                              {getInitials(member.full_name || member.email || "U")}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="text-sm text-foreground truncate">
-                              {member.full_name || member.email}
-                            </p>
-                            {member.full_name && (
-                              <p className="text-xs text-muted-foreground truncate">{member.email}</p>
-                            )}
-                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {msg.sender_name} &middot; {new Date(msg.created_at).toLocaleDateString("pt-BR")}
+                          </p>
                         </button>
                       ))}
                     </div>
