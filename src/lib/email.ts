@@ -9,7 +9,7 @@ function getResend() {
   return _resend;
 }
 
-const FROM = process.env.EMAIL_FROM || "Lesco-Hub <onboarding@resend.dev>";
+const FROM = process.env.EMAIL_FROM || "Lesco-Hub <noreply@lesco.com.br>";
 
 export function inviteEmailHtml(inviteUrl: string, orgName: string, inviterName: string, isReminder = false) {
   const actionText = isReminder
