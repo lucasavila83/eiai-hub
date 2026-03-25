@@ -1,29 +1,81 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-/**
- * Cria uma tarefa no board do responsável quando um card BPM entra numa fase.
- * Retorna o ID do card criado no board, ou null se não foi possível.
- */
+/* ─────────────────────────────────────────────
+ * Label BPM — uma label roxa por processo
+ * ───────────────────────────────────────────── */
+
+export async function ensureBpmLabel(
+  supabase: SupabaseClient,
+  boardId: string,
+  pipeId: string,
+  pipeName: string,
+): Promise<string | null> {
+  // Check if label already exists for this pipe
+  const { data: existing } = await supabase
+    .from("labels")
+    .select("id")
+    .eq("board_id", boardId)
+    .contains("metadata", { pipe_id: pipeId })
+    .limit(1);
+
+  if (existing && existing.length > 0) return existing[0].id;
+
+  // Create new label
+  const { data: label } = await supabase
+    .from("labels")
+    .insert({
+      board_id: boardId,
+      name: pipeName,
+      color: "#8b5cf6",
+      metadata: { is_bpm: true, pipe_id: pipeId },
+    })
+    .select("id")
+    .single();
+
+  return label?.id ?? null;
+}
+
+/* ─────────────────────────────────────────────
+ * Criar tarefa no Board a partir do BPM
+ * ───────────────────────────────────────────── */
+
+export interface BpmChecklistField {
+  label: string;
+  items: { label: string; checked: boolean }[];
+}
+
+export interface BpmBoardTaskParams {
+  bpmCardId: string;
+  bpmCardTitle: string;
+  pipeId: string;
+  pipeName: string;
+  phaseName: string;
+  phaseId: string;
+  assigneeId: string;
+  orgId: string;
+  slaDeadline: string | null;
+  requiredFields: { label: string }[];
+  checklistFields?: BpmChecklistField[];
+}
+
 export async function createBoardTaskFromBpm(
   supabase: SupabaseClient,
-  params: {
-    bpmCardId: string;
-    bpmCardTitle: string;
-    pipeName: string;
-    phaseName: string;
-    phaseId: string;
-    assigneeId: string;
-    orgId: string;
-    slaDeadline: string | null;
-    requiredFields: { label: string }[];
-  }
+  params: BpmBoardTaskParams,
 ): Promise<string | null> {
   const {
-    bpmCardId, bpmCardTitle, pipeName, phaseName, phaseId,
-    assigneeId, orgId, slaDeadline, requiredFields,
+    bpmCardId, bpmCardTitle, pipeId, pipeName, phaseName, phaseId,
+    assigneeId, orgId, slaDeadline, requiredFields, checklistFields,
   } = params;
 
-  // Find a board where the assignee has access (prefer team board or first available)
+  // Find a board where the assignee is a member (prefer their board)
+  const { data: memberBoards } = await supabase
+    .from("board_members")
+    .select("board_id")
+    .eq("user_id", assigneeId);
+
+  const memberBoardIds = (memberBoards || []).map((m) => m.board_id);
+
+  // Get non-archived boards from the org
   const { data: boards } = await supabase
     .from("boards")
     .select("id, name")
@@ -34,10 +86,11 @@ export async function createBoardTaskFromBpm(
 
   if (!boards || boards.length === 0) return null;
 
-  // Use first board (could be improved to find assignee's team board)
-  const targetBoard = boards[0];
+  // Prefer a board where assignee is member, else first available
+  const targetBoard =
+    boards.find((b) => memberBoardIds.includes(b.id)) || boards[0];
 
-  // Find the first column (usually "A Fazer" or similar)
+  // Find the first non-done column
   const { data: columns } = await supabase
     .from("columns")
     .select("id, name, is_done_column")
@@ -47,10 +100,9 @@ export async function createBoardTaskFromBpm(
 
   if (!columns || columns.length === 0) return null;
 
-  // Pick first non-done column
   const targetColumn = columns.find((c) => !c.is_done_column) || columns[0];
 
-  // Build description with process context
+  // Build description
   const description = [
     `**Processo:** ${pipeName}`,
     `**Fase:** ${phaseName}`,
@@ -63,7 +115,6 @@ export async function createBoardTaskFromBpm(
     `_Tarefa gerada automaticamente pelo processo BPM._`,
   ].filter(Boolean).join("\n");
 
-  // Calculate due date from SLA
   const dueDate = slaDeadline ? slaDeadline.split("T")[0] : null;
 
   // Create the board card
@@ -96,7 +147,16 @@ export async function createBoardTaskFromBpm(
     user_id: assigneeId,
   });
 
-  // Create checklist with required fields if any
+  // Apply BPM label
+  const labelId = await ensureBpmLabel(supabase, targetBoard.id, pipeId, pipeName);
+  if (labelId) {
+    await supabase.from("card_labels").insert({
+      card_id: boardCard.id,
+      label_id: labelId,
+    });
+  }
+
+  // Create checklists — required fields checklist
   if (requiredFields.length > 0) {
     const { data: checklist } = await supabase
       .from("checklists")
@@ -119,6 +179,32 @@ export async function createBoardTaskFromBpm(
     }
   }
 
+  // Mirror BPM checklist fields as board checklists
+  if (checklistFields && checklistFields.length > 0) {
+    for (let ci = 0; ci < checklistFields.length; ci++) {
+      const cf = checklistFields[ci];
+      const { data: checklist } = await supabase
+        .from("checklists")
+        .insert({
+          card_id: boardCard.id,
+          name: cf.label,
+          position: (requiredFields.length > 0 ? 1 : 0) + ci,
+        })
+        .select("id")
+        .single();
+
+      if (checklist) {
+        const items = cf.items.map((item, i) => ({
+          checklist_id: checklist.id,
+          title: item.label,
+          is_completed: item.checked,
+          position: i,
+        }));
+        await supabase.from("checklist_items").insert(items);
+      }
+    }
+  }
+
   // Create bpm_task_link
   await supabase.from("bpm_task_links").insert({
     bpm_card_id: bpmCardId,
@@ -130,9 +216,10 @@ export async function createBoardTaskFromBpm(
   return boardCard.id;
 }
 
-/**
- * Desativa links de tarefas anteriores quando o card BPM avança de fase.
- */
+/* ─────────────────────────────────────────────
+ * Helpers
+ * ───────────────────────────────────────────── */
+
 export async function deactivatePreviousTaskLinks(
   supabase: SupabaseClient,
   bpmCardId: string,
@@ -144,16 +231,10 @@ export async function deactivatePreviousTaskLinks(
     .eq("is_active", true);
 }
 
-/**
- * Verifica se um card do board é uma tarefa BPM e retorna os dados.
- */
 export function isBpmTask(metadata: any): boolean {
   return metadata?.is_bpm_task === true;
 }
 
-/**
- * Extrai o bpm_card_id do metadata de um card do board.
- */
 export function getBpmCardId(metadata: any): string | null {
   return metadata?.bpm_card_id || null;
 }

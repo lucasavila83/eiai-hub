@@ -41,8 +41,12 @@ import {
   CalendarDays,
   User,
   Sparkles,
+  Workflow,
 } from "lucide-react";
 import { AIAssistant } from "./AIAssistant";
+import { useUIStore } from "@/lib/stores/ui-store";
+import { DynamicField, type FieldDef } from "@/components/bpm/DynamicField";
+import { isBpmTask } from "@/lib/bpm/task-sync";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -278,9 +282,90 @@ export function CardDetailModal({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Start Process (BPM)
+  const { activeOrgId } = useUIStore();
+  const [showProcessDropdown, setShowProcessDropdown] = useState(false);
+  const [availablePipes, setAvailablePipes] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [loadingPipes, setLoadingPipes] = useState(false);
+  const [selectedPipe, setSelectedPipe] = useState<{ id: string; name: string } | null>(null);
+  const [pipeFields, setPipeFields] = useState<FieldDef[]>([]);
+  const [pipeFieldValues, setPipeFieldValues] = useState<Record<string, any>>({});
+  const [startingProcess, setStartingProcess] = useState(false);
+  const processDropdownRef = useRef<HTMLDivElement>(null);
+
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const activityEndRef = useRef<HTMLDivElement>(null);
+
+  // ─── BPM Process helpers ─────────────────────────────────────────────────
+
+  const cardIsBpmTask = isBpmTask(card.metadata);
+  const cardLinkedToBpm = !!(card.metadata as any)?.linked_to_bpm;
+
+  async function loadAvailablePipes() {
+    if (!activeOrgId || loadingPipes) return;
+    setLoadingPipes(true);
+    const { data } = await supabase
+      .from("bpm_pipes")
+      .select("id, name, color")
+      .eq("org_id", activeOrgId)
+      .eq("is_active", true)
+      .order("name");
+    setAvailablePipes(data || []);
+    setLoadingPipes(false);
+  }
+
+  async function handleSelectPipe(pipe: { id: string; name: string }) {
+    setSelectedPipe(pipe);
+    setShowProcessDropdown(false);
+    setPipeFieldValues({});
+
+    // Load start phase fields
+    const { data: phases } = await supabase
+      .from("bpm_phases")
+      .select("id, is_start")
+      .eq("pipe_id", pipe.id)
+      .order("position");
+
+    const startPhase = phases?.find((p) => p.is_start) || phases?.[0];
+    if (!startPhase) { setPipeFields([]); return; }
+
+    const { data: fields } = await supabase
+      .from("bpm_fields")
+      .select("*")
+      .eq("phase_id", startPhase.id)
+      .order("position");
+
+    setPipeFields((fields || []).map((f: any) => ({ ...f, options: f.options || [], validations: f.validations || {} })));
+  }
+
+  async function handleStartProcess() {
+    if (!selectedPipe || startingProcess) return;
+    setStartingProcess(true);
+    try {
+      const res = await fetch("/api/bpm/start-from-board", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pipeId: selectedPipe.id,
+          title: title,
+          values: pipeFieldValues,
+          boardCardId: card.id,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Update local card metadata
+        onUpdated({ ...card, metadata: { ...(card.metadata as any || {}), linked_to_bpm: true, bpm_card_id: data.cardId, bpm_pipe_name: selectedPipe.name } });
+        setSelectedPipe(null);
+        setPipeFields([]);
+        setPipeFieldValues({});
+      }
+    } catch {
+      // silently fail
+    }
+    setStartingProcess(false);
+  }
 
   // ─── Data loading ────────────────────────────────────────────────────────
 
@@ -1852,7 +1937,85 @@ export function CardDetailModal({
                   <ClipboardList className="w-3.5 h-3.5" />
                   5W2H
                 </button>
+
+                {/* Start BPM Process — hidden for BPM tasks and already-linked cards */}
+                {!cardIsBpmTask && !cardLinkedToBpm && (
+                  <div className="relative" ref={processDropdownRef}>
+                    <button
+                      onClick={() => { if (!showProcessDropdown) loadAvailablePipes(); setShowProcessDropdown(!showProcessDropdown); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-violet-500 hover:text-violet-400 bg-violet-500/5 hover:bg-violet-500/10 border border-violet-500/20 rounded-md transition-colors"
+                    >
+                      <Workflow className="w-3.5 h-3.5" />
+                      Iniciar Processo
+                    </button>
+                    {showProcessDropdown && (
+                      <div className="absolute top-full left-0 mt-1 w-56 bg-card border border-border rounded-lg shadow-xl z-50 py-1 max-h-48 overflow-y-auto">
+                        {loadingPipes ? (
+                          <div className="flex items-center justify-center py-3">
+                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                          </div>
+                        ) : availablePipes.length === 0 ? (
+                          <p className="text-xs text-muted-foreground px-3 py-2">Nenhum processo disponível</p>
+                        ) : (
+                          availablePipes.map((p) => (
+                            <button
+                              key={p.id}
+                              onClick={() => handleSelectPipe(p)}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left cursor-pointer"
+                            >
+                              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                              {p.name}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* BPM link indicator */}
+                {cardLinkedToBpm && !cardIsBpmTask && (
+                  <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-violet-500 bg-violet-500/10 rounded-md">
+                    <Workflow className="w-3 h-3" />
+                    {(card.metadata as any)?.bpm_pipe_name || "Processo vinculado"}
+                  </span>
+                )}
               </div>
+
+              {/* Inline form for starting process */}
+              {selectedPipe && (
+                <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                      <Workflow className="w-4 h-4 text-violet-500" />
+                      {selectedPipe.name}
+                    </h4>
+                    <button onClick={() => { setSelectedPipe(null); setPipeFields([]); }} className="p-1 hover:bg-accent rounded cursor-pointer">
+                      <X className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </div>
+                  {pipeFields.length > 0 && (
+                    <div className="space-y-2.5">
+                      {pipeFields.map((field) => (
+                        <DynamicField
+                          key={field.id}
+                          field={field}
+                          value={pipeFieldValues[field.id]}
+                          onChange={(val) => setPipeFieldValues((prev) => ({ ...prev, [field.id]: val }))}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={handleStartProcess}
+                    disabled={startingProcess}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-violet-500 text-white rounded-lg text-sm font-medium hover:bg-violet-600 disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    {startingProcess ? <Loader2 className="w-4 h-4 animate-spin" /> : <Workflow className="w-4 h-4" />}
+                    Iniciar Processo
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Divider */}

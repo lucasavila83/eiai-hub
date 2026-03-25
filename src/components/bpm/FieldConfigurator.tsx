@@ -39,15 +39,22 @@ function getFieldLabel(type: string) {
   return FIELD_TYPES.find((t) => t.value === type)?.label || type;
 }
 
+interface OrgMember {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+}
+
 interface Props {
   fields: FieldDef[];
   phaseName: string;
+  members?: OrgMember[];
   onSave: (fields: FieldDef[]) => Promise<void>;
   onAdd: (field: Omit<FieldDef, "id" | "phase_id">) => Promise<void>;
   onDelete: (fieldId: string) => Promise<void>;
 }
 
-export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }: Props) {
+export function FieldConfigurator({ fields, phaseName, members = [], onSave, onAdd, onDelete }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -62,6 +69,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
   const [addRequired, setAddRequired] = useState(false);
   const [addOptions, setAddOptions] = useState("");
   const [addRequiredItems, setAddRequiredItems] = useState<string[]>([]);
+  const [addAssigneeId, setAddAssigneeId] = useState<string>("");
 
   // Edit form
   const [editLabel, setEditLabel] = useState("");
@@ -70,6 +78,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
   const [editRequired, setEditRequired] = useState(false);
   const [editOptions, setEditOptions] = useState("");
   const [editRequiredItems, setEditRequiredItems] = useState<string[]>([]);
+  const [editAssigneeId, setEditAssigneeId] = useState<string>("");
 
   function generateKey(label: string): string {
     return label
@@ -91,6 +100,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
     setEditRequiredItems(
       (field.options || []).filter((o: any) => o.required).map((o) => o.label)
     );
+    setEditAssigneeId(field.assignee_id || "");
   }
 
   async function saveEdit(field: FieldDef) {
@@ -114,6 +124,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
             help_text: editHelp.trim() || null,
             is_required: editRequired,
             options: opts,
+            assignee_id: editAssigneeId || null,
           }
         : f
     );
@@ -149,6 +160,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
       default_value: null,
       position: fields.length,
       validations: {},
+      assignee_id: addAssigneeId || null,
     });
 
     setAddType("text");
@@ -159,6 +171,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
     setAddRequired(false);
     setAddOptions("");
     setAddRequiredItems([]);
+    setAddAssigneeId("");
     setShowAdd(false);
     setSaving(false);
   }
@@ -258,10 +271,27 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
                                 onRequiredChange={setEditRequiredItems}
                               />
                             )}
-                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-                              <input type="checkbox" checked={editRequired} onChange={(e) => setEditRequired(e.target.checked)} className="accent-primary" />
-                              Obrigatório
-                            </label>
+                            <div className="flex items-center gap-3">
+                              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                                <input type="checkbox" checked={editRequired} onChange={(e) => setEditRequired(e.target.checked)} className="accent-primary" />
+                                Obrigatório
+                              </label>
+                              {members.length > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                  <User className="w-3 h-3 text-muted-foreground" />
+                                  <select
+                                    value={editAssigneeId}
+                                    onChange={(e) => setEditAssigneeId(e.target.value)}
+                                    className="px-2 py-0.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                                  >
+                                    <option value="">Responsável da fase</option>
+                                    {members.map((m) => (
+                                      <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2.5 px-3 py-2.5">
@@ -273,6 +303,11 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
                               <div className="flex items-center gap-1.5">
                                 <span className="text-sm text-foreground truncate">{field.label}</span>
                                 {field.is_required && <span className="text-destructive text-xs">*</span>}
+                                {field.assignee_id && (
+                                  <span className="text-[9px] bg-violet-500/10 text-violet-500 px-1.5 py-0.5 rounded-full font-medium truncate max-w-[120px]">
+                                    {members.find((m) => m.user_id === field.assignee_id)?.full_name?.split(" ")[0] || "Responsável"}
+                                  </span>
+                                )}
                               </div>
                               <span className="text-[10px] text-muted-foreground">{getFieldLabel(field.field_type)}</span>
                             </div>
@@ -392,16 +427,33 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
             />
           )}
 
-          {/* Required checkbox */}
-          <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={addRequired}
-              onChange={(e) => setAddRequired(e.target.checked)}
-              className="accent-primary w-4 h-4 cursor-pointer"
-            />
-            Campo obrigatório
-          </label>
+          {/* Required + Assignee */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={addRequired}
+                onChange={(e) => setAddRequired(e.target.checked)}
+                className="accent-primary w-4 h-4 cursor-pointer"
+              />
+              Campo obrigatório
+            </label>
+            {members.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-muted-foreground" />
+                <select
+                  value={addAssigneeId}
+                  onChange={(e) => setAddAssigneeId(e.target.value)}
+                  className="px-2 py-1 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                >
+                  <option value="">Responsável da fase (padrão)</option>
+                  {members.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
 
           {/* Buttons */}
           <div className="flex justify-end gap-2">
