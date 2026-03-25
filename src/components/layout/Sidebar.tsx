@@ -68,7 +68,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }
   }, [activeOrg]);
 
-  // Load unread counts (batched — all channels in parallel)
+  // Load unread counts (batched — all channels in parallel, max 10 concurrent)
   const loadUnreadCounts = useCallback(async () => {
     if (!profile) return;
     const { data: memberships } = await supabase
@@ -78,19 +78,23 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
     if (!memberships || memberships.length === 0) return;
 
-    const results = await Promise.all(
-      memberships.map((m: any) =>
-        supabase
-          .from("messages")
-          .select("*", { count: "exact", head: true })
-          .eq("channel_id", m.channel_id)
-          .gt("created_at", m.last_read_at)
-          .neq("user_id", profile.id)
-          .then((res) => ({ channelId: m.channel_id, count: res.count || 0 }))
-      )
-    );
-
-    results.forEach(({ channelId, count }) => setUnreadCount(channelId, count));
+    // Batch in groups of 10 to avoid overwhelming the server
+    const batchSize = 10;
+    for (let i = 0; i < memberships.length; i += batchSize) {
+      const batch = memberships.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map((m: any) =>
+          supabase
+            .from("messages")
+            .select("*", { count: "exact", head: true })
+            .eq("channel_id", m.channel_id)
+            .gt("created_at", m.last_read_at)
+            .neq("user_id", profile.id)
+            .then((res) => ({ channelId: m.channel_id, count: res.count || 0 }))
+        )
+      );
+      results.forEach(({ channelId, count }) => setUnreadCount(channelId, count));
+    }
   }, [profile]);
 
   useEffect(() => {
@@ -149,10 +153,26 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
           loadDMs(activeOrg.id);
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          // Retry subscription after a brief delay
+          setTimeout(() => {
+            sub.subscribe();
+          }, 3000);
+        }
+      });
 
     return () => { supabase.removeChannel(sub); };
   }, [activeOrg, profile]);
+
+  // Polling fallback: refresh unread counts every 10s (realtime may miss events)
+  useEffect(() => {
+    if (!profile) return;
+    const interval = setInterval(() => {
+      loadUnreadCounts();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [profile, loadUnreadCounts]);
 
   async function loadChannels(orgId: string) {
     const { data } = await supabase

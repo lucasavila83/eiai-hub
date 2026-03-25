@@ -79,6 +79,8 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   const [emailSender, setEmailSender] = useState("");
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Read receipts: track other members' last_read_at
+  const [othersLastRead, setOthersLastRead] = useState<string | null>(null);
 
   const channelMessages = messages[channel.id] || [];
 
@@ -128,12 +130,9 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
         // Update last_read_at after reading it
         supabase
           .from("channel_members")
-          .upsert({
-            channel_id: channel.id,
-            user_id: currentUserId,
-            last_read_at: new Date().toISOString(),
-            notifications: "all",
-          }, { onConflict: "channel_id,user_id" })
+          .update({ last_read_at: new Date().toISOString() })
+          .eq("channel_id", channel.id)
+          .eq("user_id", currentUserId)
           .then();
       });
 
@@ -249,6 +248,13 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
           if (existing.some((m: any) => m.id === raw.id)) return;
           const enriched = await enrichMessage(raw);
           addMessage(channel.id, enriched as any);
+          // Update last_read_at so Sidebar polling doesn't count this as unread
+          supabase
+            .from("channel_members")
+            .update({ last_read_at: new Date().toISOString() })
+            .eq("channel_id", channel.id)
+            .eq("user_id", currentUserId)
+            .then();
         }
       )
       .subscribe();
@@ -289,6 +295,13 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
 
         if (changed) {
           setMessages(channel.id, updated);
+          // Update last_read_at so Sidebar polling doesn't count these as unread
+          supabase
+            .from("channel_members")
+            .update({ last_read_at: new Date().toISOString() })
+            .eq("channel_id", channel.id)
+            .eq("user_id", currentUserId)
+            .then();
         }
       }
     }, 15000);
