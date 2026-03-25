@@ -434,6 +434,14 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       content,
       mentions: [],
     });
+
+    // Sending a message means user has read everything — update last_read_at
+    supabase
+      .from("channel_members")
+      .update({ last_read_at: new Date().toISOString() })
+      .eq("channel_id", channel.id)
+      .eq("user_id", currentUserId)
+      .then();
   }
 
   // Create task from chat command
