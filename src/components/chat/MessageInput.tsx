@@ -207,6 +207,47 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
     setCreatingTask(false);
   }
 
+  // Handle paste — detect images from clipboard and upload
+  async function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items;
+    if (!items || !channelId) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) return;
+
+        // Max 10MB
+        if (file.size > 10 * 1024 * 1024) return;
+
+        setSending(true);
+        try {
+          const supabase = createClient();
+          const timestamp = Date.now();
+          const ext = file.type.split("/")[1] || "png";
+          const fileName = `screenshot_${timestamp}.${ext}`;
+          const path = `${channelId}/${timestamp}_${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("chat-files")
+            .upload(path, file, { contentType: file.type, upsert: false });
+
+          if (uploadError) throw uploadError;
+
+          const { data: { publicUrl } } = supabase.storage.from("chat-files").getPublicUrl(path);
+          await onSend(`📎 **${fileName}**\n${publicUrl}`);
+        } catch (err) {
+          console.error("Erro ao colar imagem:", err);
+        } finally {
+          setSending(false);
+        }
+        return;
+      }
+    }
+  }
+
   function handleCommandSelect(cmd: string) {
     setShowCommands(false);
     if (cmd === "tarefa") {
@@ -420,6 +461,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
               onChange={handleContentChange}
               onKeyDown={handleKeyDown}
               onInput={handleInput}
+              onPaste={handlePaste}
               placeholder={isDM ? `Escreva para ${channelName}...` : `Mensagem em #${channelName}`}
               rows={1}
               className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none max-h-48 py-1"
