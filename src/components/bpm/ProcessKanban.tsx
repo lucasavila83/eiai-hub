@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  Plus, Clock, User, AlertTriangle, CheckCircle2, Loader2,
+  Plus, Clock, User, AlertTriangle, CheckCircle2, Loader2, Filter, X, ChevronDown,
 } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 import {
@@ -87,6 +87,18 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick, onCreateCard, canEdit }: Props) {
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterAssignee, setFilterAssignee] = useState<string>("all");
+  const [filterPriority, setFilterPriority] = useState<string>("all");
+  const [filterSla, setFilterSla] = useState<string>("all");
+
+  const hasActiveFilters = filterAssignee !== "all" || filterPriority !== "all" || filterSla !== "all";
+
+  function clearFilters() {
+    setFilterAssignee("all");
+    setFilterPriority("all");
+    setFilterSla("all");
+  }
 
   function getMember(userId: string | null) {
     if (!userId) return null;
@@ -94,7 +106,27 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
   }
 
   function getPhaseCards(phaseId: string) {
-    return cards.filter((c) => c.current_phase_id === phaseId && !c.is_archived);
+    return cards
+      .filter((c) => c.current_phase_id === phaseId && !c.is_archived)
+      .filter((c) => {
+        // Assignee filter
+        if (filterAssignee !== "all") {
+          if (filterAssignee === "unassigned") {
+            if (c.assignee_id) return false;
+          } else if (c.assignee_id !== filterAssignee) return false;
+        }
+        // Priority filter
+        if (filterPriority !== "all" && c.priority !== filterPriority) return false;
+        // SLA filter
+        if (filterSla !== "all") {
+          const status = getSlaStatus(c.sla_deadline);
+          if (filterSla === "expired" && status !== "expired") return false;
+          if (filterSla === "warning" && status !== "warning") return false;
+          if (filterSla === "ok" && status !== "ok") return false;
+          if (filterSla === "none" && status !== "none") return false;
+        }
+        return true;
+      });
   }
 
   async function handleDragEnd(result: DropResult) {
@@ -110,6 +142,84 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
   }
 
   return (
+    <div>
+      {/* Filter bar */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer",
+            hasActiveFilters
+              ? "bg-primary/10 border-primary/30 text-primary"
+              : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+          )}
+        >
+          <Filter className="w-3.5 h-3.5" />
+          Filtros
+          {hasActiveFilters && (
+            <span className="bg-primary text-primary-foreground text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+              {[filterAssignee !== "all", filterPriority !== "all", filterSla !== "all"].filter(Boolean).length}
+            </span>
+          )}
+        </button>
+
+        {hasActiveFilters && (
+          <button
+            onClick={clearFilters}
+            className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <X className="w-3 h-3" />
+            Limpar
+          </button>
+        )}
+
+        {showFilters && (
+          <>
+            {/* Responsável */}
+            <select
+              value={filterAssignee}
+              onChange={(e) => setFilterAssignee(e.target.value)}
+              className="px-2 py-1.5 text-xs bg-card border border-border rounded-lg text-foreground cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="all">Responsável: Todos</option>
+              <option value="unassigned">Sem responsável</option>
+              {members.map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {m.full_name || m.email}
+                </option>
+              ))}
+            </select>
+
+            {/* Prioridade */}
+            <select
+              value={filterPriority}
+              onChange={(e) => setFilterPriority(e.target.value)}
+              className="px-2 py-1.5 text-xs bg-card border border-border rounded-lg text-foreground cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="all">Prioridade: Todas</option>
+              <option value="urgent">Urgente</option>
+              <option value="high">Alta</option>
+              <option value="medium">Média</option>
+              <option value="low">Baixa</option>
+              <option value="none">Sem prioridade</option>
+            </select>
+
+            {/* SLA */}
+            <select
+              value={filterSla}
+              onChange={(e) => setFilterSla(e.target.value)}
+              className="px-2 py-1.5 text-xs bg-card border border-border rounded-lg text-foreground cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="all">SLA: Todos</option>
+              <option value="expired">Atrasado</option>
+              <option value="warning">Vence em breve</option>
+              <option value="ok">No prazo</option>
+              <option value="none">Sem SLA</option>
+            </select>
+          </>
+        )}
+      </div>
+
     <DragDropContext onDragEnd={handleDragEnd}>
       <div className="flex gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-200px)]">
         {phases.map((phase) => {
@@ -224,5 +334,6 @@ export function ProcessKanban({ phases, cards, members, onMoveCard, onCardClick,
         })}
       </div>
     </DragDropContext>
+    </div>
   );
 }

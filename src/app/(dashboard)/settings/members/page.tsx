@@ -8,7 +8,7 @@ import {
   Users, Mail, Copy, Check, Loader2, Trash2,
   Crown, Shield, User, UserX, Link2, ArrowLeft,
   ChevronDown, MoreHorizontal, UserMinus, ShieldCheck,
-  ShieldOff, UsersRound,
+  ShieldOff, UsersRound, UserCheck, Ban,
 } from "lucide-react";
 import { cn, getInitials, generateColor, formatDate } from "@/lib/utils/helpers";
 import Link from "next/link";
@@ -217,6 +217,30 @@ export default function MembersPage() {
       setError(json.error || "Erro ao remover convite");
     }
     setDeletingId(null);
+  }
+
+  async function toggleMemberActive(memberId: string, memberName: string, currentlyActive: boolean) {
+    const action = currentlyActive ? "inativar" : "reativar";
+    if (!confirm(`Tem certeza que deseja ${action} ${memberName}?`)) return;
+    setOpenMenuId(null);
+    setError(null);
+    setSuccess(null);
+
+    const newActive = !currentlyActive;
+    const { error: err } = await supabase
+      .from("org_members")
+      .update({
+        is_active: newActive,
+        deactivated_at: newActive ? null : new Date().toISOString(),
+      })
+      .eq("id", memberId);
+
+    if (err) {
+      setError(err.message);
+    } else {
+      setSuccess(`${memberName} foi ${newActive ? "reativado(a)" : "inativado(a)"} com sucesso.`);
+      loadMembers();
+    }
   }
 
   async function removeMember(memberId: string, memberName: string) {
@@ -493,7 +517,7 @@ export default function MembersPage() {
       {/* Members List */}
       <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
         <Users className="w-4 h-4" />
-        Membros ativos ({members.length})
+        Membros ({members.length})
       </h2>
       <div className="space-y-2">
         {members.map((m) => {
@@ -501,6 +525,7 @@ export default function MembersPage() {
           const name = p?.full_name || p?.email || "?";
           const RoleIcon = roleIcons[m.role] || User;
           const isOnline = p?.status === "online";
+          const isInactive = m.is_active === false;
           const memberTeams = getMemberTeams(m.user_id);
           const isSelf = m.user_id === currentUserId;
           const isOwner = m.role === "owner";
@@ -534,9 +559,14 @@ export default function MembersPage() {
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-foreground truncate">{name}</p>
+                    <p className={cn("text-sm font-medium truncate", isInactive ? "text-muted-foreground line-through" : "text-foreground")}>{name}</p>
                     {isSelf && (
                       <span className="text-xs text-muted-foreground">(Você)</span>
+                    )}
+                    {isInactive && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/10 text-yellow-600 border border-yellow-500/20">
+                        Inativo
+                      </span>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">{p?.email}</p>
@@ -618,6 +648,29 @@ export default function MembersPage() {
                             Gerenciar equipes
                           </button>
                         )}
+
+                        {/* Inativar / Reativar */}
+                        <button
+                          onClick={() => toggleMemberActive(m.id, name, m.is_active !== false)}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors",
+                            m.is_active === false
+                              ? "text-green-600 hover:bg-green-500/10"
+                              : "text-yellow-600 hover:bg-yellow-500/10"
+                          )}
+                        >
+                          {m.is_active === false ? (
+                            <>
+                              <UserCheck className="w-4 h-4" />
+                              Reativar membro
+                            </>
+                          ) : (
+                            <>
+                              <Ban className="w-4 h-4" />
+                              Inativar membro
+                            </>
+                          )}
+                        </button>
 
                         <div className="border-t border-border my-1" />
 
