@@ -61,6 +61,14 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
   const currentPhase = phases.find((p) => p.id === card.current_phase_id);
 
   useEffect(() => {
+    // Reset state when card changes to avoid stale data
+    setFields([]);
+    setValues({});
+    setHistory([]);
+    setComments([]);
+    setFieldErrors({});
+    setNewComment("");
+    setActiveSection("fields");
     loadCardData();
   }, [card.id]);
 
@@ -253,17 +261,36 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
               {fields.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">Nenhum campo configurado para esta fase.</p>
               ) : (
-                fields.map((field) => (
-                  <DynamicField
-                    key={field.id}
-                    field={field}
-                    value={values[field.id] ?? null}
-                    onChange={(val) => saveFieldValue(field.id, val)}
-                    members={members}
-                    disabled={!canEdit}
-                    error={fieldErrors[field.id] || null}
-                  />
-                ))
+                <>
+                  {fields.map((field) => (
+                    <DynamicField
+                      key={field.id}
+                      field={field}
+                      value={values[field.id] ?? null}
+                      onChange={(val) => saveFieldValue(field.id, val)}
+                      members={members}
+                      disabled={!canEdit}
+                      error={fieldErrors[field.id] || null}
+                    />
+                  ))}
+                  {canEdit && (
+                    <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
+                      {saving && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+                      <button
+                        onClick={() => {
+                          if (validateRequiredFields()) {
+                            onUpdate();
+                            onClose();
+                          }
+                        }}
+                        className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Salvar e fechar
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

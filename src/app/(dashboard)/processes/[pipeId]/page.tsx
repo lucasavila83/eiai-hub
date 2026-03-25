@@ -251,6 +251,8 @@ function PipeKanbanContent() {
       setCards((prev) => [...prev, newCard]);
       setCreateTitle("");
       setShowCreate(false);
+      // Open the card modal immediately so user can fill fields
+      setSelectedCard(newCard);
     }
     setCreating(false);
   }
