@@ -26,7 +26,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  const { channels, setChannels, unreadCounts, setUnreadCount } = useChatStore();
+  const { channels, setChannels, unreadCounts, setUnreadCount, incrementUnread } = useChatStore();
   const { sidebarOpen, setSidebarOpen, toggleSidebar, setActiveOrgId } = useUIStore();
   const [activeOrg, setActiveOrg] = useState<Organization | null>(
     organizations[0] || null
@@ -97,6 +97,10 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     loadUnreadCounts();
   }, [loadUnreadCounts]);
 
+  // Refs to avoid stale closures in realtime callbacks
+  const pathnameRef = useRef(pathname);
+  useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
+
   // Single consolidated realtime subscription for sidebar
   useEffect(() => {
     if (!activeOrg || !profile) return;
@@ -110,11 +114,10 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
       }, (payload: any) => {
         const msg = payload.new;
         if (msg.user_id !== profile.id) {
-          if (!pathname.includes(msg.channel_id)) {
-            setUnreadCount(
-              msg.channel_id,
-              (unreadCounts[msg.channel_id] || 0) + 1
-            );
+          // Use ref to get current pathname (not stale closure)
+          if (!pathnameRef.current.includes(msg.channel_id)) {
+            // Use incrementUnread which reads from store state directly
+            incrementUnread(msg.channel_id);
           }
         }
       })
@@ -149,7 +152,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
       .subscribe();
 
     return () => { supabase.removeChannel(sub); };
-  }, [activeOrg, profile, pathname]);
+  }, [activeOrg, profile]);
 
   async function loadChannels(orgId: string) {
     const { data } = await supabase
