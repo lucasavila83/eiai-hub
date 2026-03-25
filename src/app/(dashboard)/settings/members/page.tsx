@@ -285,11 +285,21 @@ export default function MembersPage() {
   async function toggleTeamMembership(userId: string, teamId: string) {
     const existing = teamMembers.find((tm) => tm.user_id === userId && tm.team_id === teamId);
     if (existing) {
-      await supabase.from("team_members").delete().eq("id", existing.id);
+      const { error: err } = await supabase.from("team_members").delete().eq("id", existing.id);
+      if (err) {
+        setError(`Erro ao remover da equipe: ${err.message}`);
+        return;
+      }
+      setSuccess("Membro removido da equipe.");
     } else {
-      await supabase.from("team_members").insert({ team_id: teamId, user_id: userId, role: "member" });
+      const { error: err } = await supabase.from("team_members").insert({ team_id: teamId, user_id: userId, role: "member" });
+      if (err) {
+        setError(`Erro ao adicionar na equipe: ${err.message}`);
+        return;
+      }
+      setSuccess("Membro adicionado à equipe.");
     }
-    loadTeams();
+    await loadTeams();
   }
 
   return (
@@ -732,22 +742,30 @@ export default function MembersPage() {
                   return (
                     <button
                       key={team.id}
-                      onClick={() => toggleTeamMembership(teamModalMember.user_id, team.id)}
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleTeamMembership(teamModalMember.user_id, team.id);
+                      }}
                       className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-left",
+                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left cursor-pointer",
                         isMember
-                          ? "border-primary/30 bg-primary/5"
-                          : "border-border hover:bg-accent"
+                          ? "border-primary/30 bg-primary/5 hover:bg-primary/10"
+                          : "border-border hover:bg-accent hover:border-primary/20"
                       )}
                     >
+                      <div className={cn(
+                        "w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
+                        isMember ? "bg-primary border-primary" : "border-muted-foreground/30"
+                      )}>
+                        {isMember && <Check className="w-3 h-3 text-white" />}
+                      </div>
                       <div
                         className="w-3 h-3 rounded-full shrink-0"
                         style={{ backgroundColor: team.color || "#6366f1" }}
                       />
                       <span className="text-sm font-medium text-foreground flex-1">{team.name}</span>
-                      {isMember && (
-                        <Check className="w-4 h-4 text-primary shrink-0" />
-                      )}
                     </button>
                   );
                 })}
