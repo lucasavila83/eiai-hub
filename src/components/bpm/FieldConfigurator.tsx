@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   Plus, X, GripVertical, Loader2, Trash2, Pencil, Check,
   Type, AlignLeft, Hash, DollarSign, CalendarDays, List,
-  ListChecks, ToggleLeft, Mail, Phone, Paperclip, User,
+  ListChecks, ToggleLeft, Mail, Phone, Paperclip, User, ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import {
@@ -28,6 +28,7 @@ const FIELD_TYPES = [
   { value: "phone", label: "Telefone", icon: Phone },
   { value: "file", label: "Arquivo", icon: Paperclip },
   { value: "user", label: "Pessoa", icon: User },
+  { value: "checklist", label: "Checklist", icon: ClipboardCheck },
 ] as const;
 
 function getFieldIcon(type: string) {
@@ -168,7 +169,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
     await onSave(withPositions);
   }
 
-  const needsOptions = addType === "select" || addType === "multiselect";
+  const needsOptions = addType === "select" || addType === "multiselect" || addType === "checklist";
 
   return (
     <div className="space-y-3">
@@ -226,7 +227,7 @@ export function FieldConfigurator({ fields, phaseName, onSave, onAdd, onDelete }
                               placeholder="Texto de ajuda (opcional)"
                               className="w-full px-2 py-1 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                             />
-                            {(field.field_type === "select" || field.field_type === "multiselect") && (
+                            {(field.field_type === "select" || field.field_type === "multiselect" || field.field_type === "checklist") && (
                               <textarea
                                 value={editOptions}
                                 onChange={(e) => setEditOptions(e.target.value)}

@@ -230,6 +230,65 @@ export function DynamicField({ field, value, onChange, members = [], disabled = 
           </div>
         );
 
+      case "checklist": {
+        // Value is stored as array of {label: string, checked: boolean}
+        // Options define the checklist items; value tracks checked state
+        const items: { label: string; checked: boolean }[] = Array.isArray(value)
+          ? value
+          : (field.options || []).map((opt) => ({ label: opt.label, checked: false }));
+
+        // Initialize value if empty
+        if (!Array.isArray(value) && field.options?.length) {
+          onChange(items);
+        }
+
+        const allChecked = items.length > 0 && items.every((i) => i.checked);
+        const checkedCount = items.filter((i) => i.checked).length;
+
+        return (
+          <div className="space-y-1">
+            {items.length > 1 && (
+              <label className="flex items-center gap-2 cursor-pointer py-1 border-b border-border mb-1">
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={() => {
+                    if (disabled) return;
+                    const newState = !allChecked;
+                    onChange(items.map((i) => ({ ...i, checked: newState })));
+                  }}
+                  className="accent-primary w-4 h-4 cursor-pointer"
+                  disabled={disabled}
+                />
+                <span className="text-xs font-medium text-muted-foreground">
+                  {allChecked ? "Desmarcar todos" : "Marcar todos"}
+                </span>
+                <span className="text-xs text-muted-foreground ml-auto">{checkedCount}/{items.length}</span>
+              </label>
+            )}
+            {items.map((item, idx) => (
+              <label key={idx} className="flex items-center gap-2 cursor-pointer py-1">
+                <input
+                  type="checkbox"
+                  checked={item.checked}
+                  onChange={() => {
+                    if (disabled) return;
+                    const updated = [...items];
+                    updated[idx] = { ...updated[idx], checked: !updated[idx].checked };
+                    onChange(updated);
+                  }}
+                  className="accent-primary w-4 h-4 cursor-pointer"
+                  disabled={disabled}
+                />
+                <span className={cn("text-sm", item.checked ? "text-muted-foreground line-through" : "text-foreground")}>
+                  {item.label}
+                </span>
+              </label>
+            ))}
+          </div>
+        );
+      }
+
       case "user":
         return (
           <select

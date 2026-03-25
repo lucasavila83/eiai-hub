@@ -14,7 +14,9 @@ import type { Phase } from "@/components/bpm/PhaseEditor";
 import { createBoardTaskFromBpm, deactivatePreviousTaskLinks } from "@/lib/bpm/task-sync";
 import {
   ArrowLeft, Loader2, Workflow, Settings2, Plus, X,
+  Link2, Copy, Check, Globe, Lock, Users, ExternalLink,
 } from "lucide-react";
+import { cn } from "@/lib/utils/helpers";
 
 export default function PipeKanbanPage() {
   return (
@@ -46,6 +48,8 @@ function PipeKanbanContent() {
   const [createTitle, setCreateTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!pipeId || !activeOrgId) return;
@@ -296,6 +300,13 @@ function PipeKanbanContent() {
             {cards.filter((c) => !c.completed_at).length} cards ativos · {phases.length} fases
           </p>
         </div>
+        <button
+          onClick={() => setShowShareModal(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors cursor-pointer"
+        >
+          <Link2 className="w-3.5 h-3.5" />
+          Compartilhar formulário
+        </button>
         <Link
           href={`/processes/${pipeId}/settings`}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors"
@@ -395,6 +406,201 @@ function PipeKanbanContent() {
           onUpdate={loadData}
         />
       )}
+
+      {/* Share form modal */}
+      {showShareModal && (
+        <ShareFormModal
+          pipe={pipe}
+          members={members}
+          supabase={supabase}
+          onClose={() => setShowShareModal(false)}
+          onUpdate={loadData}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Share Form Modal ─── */
+function ShareFormModal({
+  pipe,
+  members,
+  supabase,
+  onClose,
+  onUpdate,
+}: {
+  pipe: any;
+  members: any[];
+  supabase: any;
+  onClose: () => void;
+  onUpdate: () => void;
+}) {
+  const [enabled, setEnabled] = useState(pipe.public_form_enabled || false);
+  const [accessType, setAccessType] = useState(pipe.form_access_type || "restricted");
+  const [allowedUsers, setAllowedUsers] = useState<string[]>(pipe.form_allowed_users || []);
+  const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const slug = pipe.public_form_slug;
+
+  const formUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/form/${slug}`
+    : `/form/${slug}`;
+
+  async function toggleEnabled() {
+    const newVal = !enabled;
+    setSaving(true);
+    // Generate slug if missing
+    let updates: any = { public_form_enabled: newVal };
+    if (newVal && !slug) {
+      const newSlug = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      updates.public_form_slug = newSlug;
+    }
+    await supabase.from("bpm_pipes").update(updates).eq("id", pipe.id);
+    setEnabled(newVal);
+    setSaving(false);
+    onUpdate();
+  }
+
+  async function updateAccessType(type: string) {
+    setAccessType(type);
+    await supabase.from("bpm_pipes").update({ form_access_type: type }).eq("id", pipe.id);
+  }
+
+  async function toggleUser(userId: string) {
+    const updated = allowedUsers.includes(userId)
+      ? allowedUsers.filter((u) => u !== userId)
+      : [...allowedUsers, userId];
+    setAllowedUsers(updated);
+    await supabase.from("bpm_pipes").update({ form_allowed_users: updated }).eq("id", pipe.id);
+  }
+
+  function copyUrl() {
+    navigator.clipboard.writeText(formUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-lg font-semibold text-foreground">Compartilhar formulário</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent transition-colors cursor-pointer">
+            <X className="w-5 h-5 text-muted-foreground" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+          <p className="text-sm text-muted-foreground">
+            Compartilhe este formulário com um link para que pessoas externas possam criar cards neste processo.
+          </p>
+
+          {/* Toggle enabled */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Globe className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-foreground">Formulário online</span>
+            </div>
+            <button
+              onClick={toggleEnabled}
+              disabled={saving}
+              className={cn(
+                "relative w-11 h-6 rounded-full transition-colors cursor-pointer",
+                enabled ? "bg-primary" : "bg-muted"
+              )}
+            >
+              <div className={cn(
+                "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow-sm",
+                enabled && "translate-x-5"
+              )} />
+            </button>
+          </div>
+
+          {enabled && slug && (
+            <>
+              {/* Form URL */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2.5">
+                  <input
+                    value={formUrl}
+                    readOnly
+                    className="flex-1 bg-transparent text-sm text-foreground truncate focus:outline-none"
+                  />
+                  <button onClick={copyUrl} className="p-1.5 rounded-md hover:bg-accent transition-colors cursor-pointer" title="Copiar link">
+                    {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
+                  </button>
+                  <a href={formUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-md hover:bg-accent transition-colors" title="Abrir formulário">
+                    <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                  </a>
+                </div>
+              </div>
+
+              {/* Access type */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-foreground">Acesso</h3>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => updateAccessType("public")}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors cursor-pointer text-left",
+                      accessType === "public" ? "border-primary bg-primary/5" : "border-border hover:bg-accent"
+                    )}
+                  >
+                    <Globe className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Público</p>
+                      <p className="text-xs text-muted-foreground">Qualquer pessoa com o link pode enviar</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => updateAccessType("restricted")}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors cursor-pointer text-left",
+                      accessType === "restricted" ? "border-primary bg-primary/5" : "border-border hover:bg-accent"
+                    )}
+                  >
+                    <Lock className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Restrito a pessoas selecionadas</p>
+                      <p className="text-xs text-muted-foreground">Apenas membros autorizados podem enviar</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Members list (when restricted) */}
+              {accessType === "restricted" && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    Pessoas com acesso
+                  </h3>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {members.map((m) => (
+                      <label key={m.user_id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={allowedUsers.includes(m.user_id)}
+                          onChange={() => toggleUser(m.user_id)}
+                          className="accent-primary w-4 h-4"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{m.full_name || "Sem nome"}</p>
+                          <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
