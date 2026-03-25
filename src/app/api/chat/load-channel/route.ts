@@ -28,20 +28,30 @@ export async function POST(req: NextRequest) {
 
     const { channelId } = await req.json();
 
-    // Check membership
-    const { data: membership } = await adminClient
-      .from("channel_members")
-      .select("id")
-      .eq("channel_id", channelId)
-      .eq("user_id", userId)
-      .single();
+    // Run all independent queries in parallel
+    const [channelRes, membershipRes, messagesRes] = await Promise.all([
+      adminClient
+        .from("channels")
+        .select("*")
+        .eq("id", channelId)
+        .single(),
+      adminClient
+        .from("channel_members")
+        .select("id")
+        .eq("channel_id", channelId)
+        .eq("user_id", userId)
+        .single(),
+      adminClient
+        .from("messages")
+        .select("*, profiles:user_id(id, full_name, avatar_url, email, is_ai_agent)")
+        .eq("channel_id", channelId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true })
+        .limit(50),
+    ]);
 
-    // Load channel info (using admin to bypass RLS)
-    const { data: channel } = await adminClient
-      .from("channels")
-      .select("*")
-      .eq("id", channelId)
-      .single();
+    const channel = channelRes.data;
+    const membership = membershipRes.data;
 
     if (!channel) {
       return NextResponse.json({ error: "Canal não encontrado" }, { status: 404 });
@@ -71,16 +81,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
     }
 
-    // Load messages (using admin to bypass RLS)
-    const { data: messages } = await adminClient
-      .from("messages")
-      .select("*, profiles:user_id(id, full_name, avatar_url, email, is_ai_agent)")
-      .eq("channel_id", channelId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: true })
-      .limit(50);
-
-    return NextResponse.json({ channel, messages: messages || [] });
+    return NextResponse.json({ channel, messages: messagesRes.data || [] });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

@@ -88,19 +88,29 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
   useEffect(() => {
     setMessages(channel.id, initialMessages as any);
 
-    // Pre-cache own profile for optimistic updates
-    if (!profileCacheRef.current[currentUserId]) {
-      supabase
-        .from("profiles")
-        .select("id, full_name, avatar_url, email, is_ai_agent")
-        .eq("id", currentUserId)
-        .single()
-        .then(({ data }) => {
-          if (data) profileCacheRef.current[currentUserId] = data;
-        });
+    // Pre-cache own profile from initial messages if available
+    const ownMsg = initialMessages.find((m: any) => m.user_id === currentUserId && m.profiles);
+    if (ownMsg?.profiles) {
+      profileCacheRef.current[currentUserId] = ownMsg.profiles;
     }
 
-    // Get last_read_at before updating it (for "Novo" marker)
+    // Run profile fetch + last_read_at fetch in parallel
+    const promises: Promise<any>[] = [];
+
+    if (!profileCacheRef.current[currentUserId]) {
+      promises.push(
+        supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url, email, is_ai_agent")
+          .eq("id", currentUserId)
+          .single()
+          .then(({ data }) => {
+            if (data) profileCacheRef.current[currentUserId] = data;
+          })
+      );
+    }
+
+    // Get last_read_at before updating it (for "Novo" marker), then immediately update
     supabase
       .from("channel_members")
       .select("last_read_at")
@@ -109,20 +119,19 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
       .single()
       .then(({ data }) => {
         if (data) setLastReadAt(data.last_read_at);
+        // Update last_read_at after reading it
+        supabase
+          .from("channel_members")
+          .upsert({
+            channel_id: channel.id,
+            user_id: currentUserId,
+            last_read_at: new Date().toISOString(),
+            notifications: "all",
+          }, { onConflict: "channel_id,user_id" })
+          .then();
       });
 
     markAsRead(channel.id);
-
-    // Update last_read_at
-    supabase
-      .from("channel_members")
-      .upsert({
-        channel_id: channel.id,
-        user_id: currentUserId,
-        last_read_at: new Date().toISOString(),
-        notifications: "all",
-      }, { onConflict: "channel_id,user_id" })
-      .then();
   }, [channel.id]);
 
   // Scroll to bottom
@@ -174,7 +183,7 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
       )
       .subscribe();
 
-    // Polling fallback every 3s for messages that realtime might miss
+    // Polling fallback every 15s for messages that realtime might miss
     const pollInterval = setInterval(async () => {
       const currentMsgs = useChatStore.getState().messages[channel.id] || [];
       const lastMsg = currentMsgs.filter((m: any) => !m._optimistic).pop();
@@ -212,7 +221,7 @@ export function ChatWindow({ channel, initialMessages, currentUserId }: Props) {
           setMessages(channel.id, updated);
         }
       }
-    }, 3000);
+    }, 15000);
 
     return () => {
       supabase.removeChannel(sub);
