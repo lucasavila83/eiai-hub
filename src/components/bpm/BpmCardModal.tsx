@@ -58,6 +58,7 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
   const [sendingComment, setSendingComment] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editingTitle, setEditingTitle] = useState(false);
+  const [displayTitle, setDisplayTitle] = useState(card.title);
   const [titleDraft, setTitleDraft] = useState(card.title);
   const [savingTitle, setSavingTitle] = useState(false);
   const [movingTo, setMovingTo] = useState<string | null>(null);
@@ -76,6 +77,7 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
     setFieldErrors({});
     setNewComment("");
     setEditingTitle(false);
+    setDisplayTitle(card.title);
     setTitleDraft(card.title);
     loadCardData();
   }, [card.id]);
@@ -124,13 +126,14 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
 
   async function handleSaveTitle() {
     const trimmed = titleDraft.trim();
-    if (!trimmed || trimmed === card.title) {
-      setTitleDraft(card.title);
+    if (!trimmed || trimmed === displayTitle) {
+      setTitleDraft(displayTitle);
       setEditingTitle(false);
       return;
     }
     setSavingTitle(true);
     await supabase.from("bpm_cards").update({ title: trimmed }).eq("id", card.id);
+    setDisplayTitle(trimmed);
     setSavingTitle(false);
     setEditingTitle(false);
     onUpdate();
@@ -223,7 +226,7 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
                   onChange={(e) => setTitleDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleSaveTitle();
-                    if (e.key === "Escape") { setTitleDraft(card.title); setEditingTitle(false); }
+                    if (e.key === "Escape") { setTitleDraft(displayTitle); setEditingTitle(false); }
                   }}
                   className="flex-1 text-xl font-bold text-foreground bg-background border border-input rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ring"
                   autoFocus
@@ -236,10 +239,10 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
             ) : (
               <h1
                 className={cn("text-xl font-bold text-foreground", canEdit && "cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors")}
-                onDoubleClick={() => { if (canEdit) { setTitleDraft(card.title); setEditingTitle(true); } }}
+                onDoubleClick={() => { if (canEdit) { setTitleDraft(displayTitle); setEditingTitle(true); } }}
                 title={canEdit ? "Duplo clique para editar" : undefined}
               >
-                {card.title}
+                {displayTitle}
               </h1>
             )}
             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
