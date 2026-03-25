@@ -36,17 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    (async () => {
-      // getSession uses cached JWT — instant, no network call
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session?.user) {
-        router.replace("/login");
-        return;
-      }
-
-      const userId = session.user.id;
-
+    async function loadUser(userId: string, userEmail?: string) {
       // Fetch profile + orgs in parallel — single round trip
       const [profileRes, orgsRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", userId).single(),
@@ -58,8 +48,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const orgs = orgsRes.data?.map((o: any) => o.organizations).filter(Boolean) ?? [];
 
       if (orgs.length === 0) {
-        // Check if user has a pending invite via server API (bypasses RLS)
-        const userEmail = session.user.email;
         if (userEmail) {
           try {
             const res = await fetch(`/api/invite/check?email=${encodeURIComponent(userEmail)}`);
@@ -72,21 +60,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           } catch {}
         }
-
         router.replace("/register");
         return;
       }
 
-      setState({
-        user: session.user,
-        profile: profileRes.data,
-        organizations: orgs,
-        orgId: orgsRes.data?.[0]?.org_id || "",
-      });
+      return { profile: profileRes.data, organizations: orgs, orgId: orgsRes.data?.[0]?.org_id || "" };
+    }
+
+    // Initial session check
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        router.replace("/login");
+        return;
+      }
+
+      const result = await loadUser(session.user.id, session.user.email);
+      if (!mounted || !result) return;
+
+      setState({ user: session.user, ...result });
       setLoading(false);
     })();
 
-    return () => { mounted = false; };
+    // Listen for auth state changes (token refresh failures, sign out, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+
+      if (event === "SIGNED_OUT" || (!session && event === "TOKEN_REFRESHED")) {
+        // Session lost — redirect to login to stop reconnection loops
+        router.replace("/login");
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const refreshProfile = useCallback(async () => {

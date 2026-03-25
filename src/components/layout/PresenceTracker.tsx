@@ -46,25 +46,24 @@ export function PresenceTracker({ userId, currentStatus }: Props) {
 
     // Set offline when page closes
     function handleBeforeUnload() {
-      // Use sendBeacon for reliability on page close
+      // Use fetch with keepalive and the user's actual session token
+      const session = supabase.realtime?.accessToken;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
       const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`;
-      const headers = {
-        "Content-Type": "application/json",
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-        Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
-        Prefer: "return=minimal",
-      };
-      // sendBeacon doesn't support custom headers in all browsers,
-      // so we also try a regular fetch with keepalive
       try {
         fetch(url, {
           method: "PATCH",
-          headers,
+          headers: {
+            "Content-Type": "application/json",
+            apikey: anonKey,
+            Authorization: `Bearer ${session || anonKey}`,
+            Prefer: "return=minimal",
+          },
           body: JSON.stringify({ status: "offline", last_seen_at: new Date().toISOString() }),
           keepalive: true,
         });
       } catch {
-        // Fallback: at least try
+        // Best-effort on page close
       }
     }
 
