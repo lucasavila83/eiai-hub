@@ -15,7 +15,6 @@ export interface FieldDef {
   default_value: any;
   position: number;
   validations: Record<string, any>;
-  assignee_id?: string | null;
 }
 
 interface Props {

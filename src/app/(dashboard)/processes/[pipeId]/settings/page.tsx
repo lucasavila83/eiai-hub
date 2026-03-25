@@ -120,7 +120,6 @@ function PipeSettingsContent() {
           is_required: field.is_required,
           options: field.options,
           position: field.position,
-          assignee_id: field.assignee_id || null,
         })
         .eq("id", field.id);
     }
@@ -337,7 +336,6 @@ function PipeSettingsContent() {
                   <FieldConfigurator
                     fields={fields}
                     phaseName={phases.find((p) => p.id === selectedPhaseId)?.name || ""}
-                    members={members}
                     onSave={handleSaveFields}
                     onAdd={handleAddField}
                     onDelete={handleDeleteField}

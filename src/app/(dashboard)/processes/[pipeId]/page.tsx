@@ -193,71 +193,48 @@ function PipeKanbanContent() {
     // Deactivate previous board task links
     await deactivatePreviousTaskLinks(supabase, cardId);
 
-    // Create board tasks grouped by assignee
-    if (!isEnd) {
+    // Create board task for the phase's assignee
+    if (targetPhase?.default_assignee_id && !isEnd) {
       const { data: phaseFields } = await supabase
         .from("bpm_fields")
-        .select("id, label, field_type, is_required, options, assignee_id")
+        .select("id, label, field_type, is_required, options")
         .eq("phase_id", toPhaseId)
         .order("position");
 
-      const allPhaseFields = phaseFields || [];
-      const defaultAssignee = targetPhase?.default_assignee_id;
-
-      // Group fields by assignee
-      const byAssignee = new Map<string, typeof allPhaseFields>();
-      for (const f of allPhaseFields) {
-        const assignee = f.assignee_id || defaultAssignee;
-        if (!assignee) continue;
-        if (!byAssignee.has(assignee)) byAssignee.set(assignee, []);
-        byAssignee.get(assignee)!.push(f);
-      }
-
-      // Also create a task for the default assignee if they have no fields but phase has them
-      if (defaultAssignee && !byAssignee.has(defaultAssignee) && allPhaseFields.length === 0) {
-        byAssignee.set(defaultAssignee, []);
-      }
-
-      const movedCard = cards.find((c) => c.id === cardId);
-      const cardTitle = movedCard?.title || "Card BPM";
+      const allFields = phaseFields || [];
+      const reqFields = allFields.filter((f) => f.is_required);
+      const checklistFields = allFields.filter((f) => f.field_type === "checklist");
 
       // Get current checklist values for mirroring
-      const checklistFieldIds = allPhaseFields.filter((f) => f.field_type === "checklist").map((f) => f.id);
       let checklistValues: Record<string, any> = {};
-      if (checklistFieldIds.length > 0) {
+      if (checklistFields.length > 0) {
         const { data: vals } = await supabase
           .from("bpm_card_values")
           .select("field_id, value")
           .eq("card_id", cardId)
-          .in("field_id", checklistFieldIds);
+          .in("field_id", checklistFields.map((f) => f.id));
         for (const v of vals || []) checklistValues[v.field_id] = v.value;
       }
 
-      for (const [assigneeId, assigneeFields] of byAssignee) {
-        const reqFields = assigneeFields.filter((f) => f.is_required);
-        const checklists = assigneeFields
-          .filter((f) => f.field_type === "checklist")
-          .map((f) => ({
-            label: f.label,
-            items: Array.isArray(checklistValues[f.id])
-              ? checklistValues[f.id]
-              : (f.options || []).map((o: any) => ({ label: o.label, checked: false })),
-          }));
-
-        await createBoardTaskFromBpm(supabase, {
-          bpmCardId: cardId,
-          bpmCardTitle: cardTitle,
-          pipeId: pipeId,
-          pipeName: pipe?.name || "Processo",
-          phaseName: targetPhase!.name,
-          phaseId: toPhaseId,
-          assigneeId,
-          orgId: activeOrgId!,
-          slaDeadline,
-          requiredFields: reqFields.map((f) => ({ label: f.label })),
-          checklistFields: checklists,
-        });
-      }
+      const movedCard = cards.find((c) => c.id === cardId);
+      await createBoardTaskFromBpm(supabase, {
+        bpmCardId: cardId,
+        bpmCardTitle: movedCard?.title || "Card BPM",
+        pipeId: pipeId,
+        pipeName: pipe?.name || "Processo",
+        phaseName: targetPhase.name,
+        phaseId: toPhaseId,
+        assigneeId: targetPhase.default_assignee_id,
+        orgId: activeOrgId!,
+        slaDeadline,
+        requiredFields: reqFields.map((f) => ({ label: f.label })),
+        checklistFields: checklistFields.map((f) => ({
+          label: f.label,
+          items: Array.isArray(checklistValues[f.id])
+            ? checklistValues[f.id]
+            : (f.options || []).map((o: any) => ({ label: o.label, checked: false })),
+        })),
+      });
     }
 
     // Update local state
