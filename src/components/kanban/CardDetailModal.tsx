@@ -2015,6 +2015,7 @@ export function CardDetailModal({
                           field={field}
                           value={pipeFieldValues[field.id]}
                           onChange={(val) => setPipeFieldValues((prev) => ({ ...prev, [field.id]: val }))}
+                          members={orgMembers.map((m) => ({ user_id: m.user_id, full_name: m.profiles.full_name, email: m.profiles.email }))}
                         />
                       ))}
                     </div>
