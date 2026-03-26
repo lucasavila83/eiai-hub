@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { createClient, sendChatBroadcast } from "@/lib/supabase/client";
+import { createClient, sendChatBroadcast, onChatBroadcast } from "@/lib/supabase/client";
 import { MessageBubble } from "./MessageBubble";
 import { MessageInput } from "./MessageInput";
 import { CreateTaskModal } from "./CreateTaskModal";
@@ -351,6 +351,29 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     };
   }, [channel.id]);
 
+  // Instant broadcast listener — receives messages from other tabs/devices without CDC delay
+  useEffect(() => {
+    const unsub = onChatBroadcast(async (msg: any) => {
+      // Only handle messages for this channel
+      if (msg.channel_id !== channel.id) return;
+      // Skip own messages (already shown via optimistic update)
+      if (msg.user_id === currentUserId) return;
+      // Avoid duplicates
+      const existing = useChatStore.getState().messages[channel.id] || [];
+      if (existing.some((m: any) => m.id === msg.id)) return;
+      const enriched = await enrichMessage(msg);
+      addMessage(channel.id, enriched as any);
+      // Update last_read_at
+      supabase
+        .from("channel_members")
+        .update({ last_read_at: new Date().toISOString() })
+        .eq("channel_id", channel.id)
+        .eq("user_id", currentUserId)
+        .then();
+    });
+    return unsub;
+  }, [channel.id]);
+
   // Load tasks when tasks tab is active (for DMs: tasks assigned to that person)
   useEffect(() => {
     if (activeTab === "tasks") {
@@ -404,7 +427,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   }
 
   async function sendMessage(content: string) {
-    // Optimistic update — show message instantly
+    // Optimistic update — show message instantly (non-blocking)
     const optimisticMsg = {
       id: `opt_${Date.now()}`,
       channel_id: channel.id,
@@ -417,33 +440,37 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     };
     addMessage(channel.id, optimisticMsg as any);
 
-    // Cache own profile if not cached yet
-    if (!profileCacheRef.current[currentUserId]) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("id, full_name, avatar_url, email, is_ai_agent")
-        .eq("id", currentUserId)
-        .single();
-      if (profile) profileCacheRef.current[currentUserId] = profile;
-    }
+    // Fire-and-forget: DB insert + broadcast + profile cache
+    // Don't await — let the UI unlock immediately
+    (async () => {
+      // Cache own profile if not cached yet
+      if (!profileCacheRef.current[currentUserId]) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url, email, is_ai_agent")
+          .eq("id", currentUserId)
+          .single();
+        if (profile) profileCacheRef.current[currentUserId] = profile;
+      }
 
-    // Insert into database
-    const { data: insertedMsg } = await (supabase.from("messages").insert({
-      channel_id: channel.id,
-      user_id: currentUserId,
-      content,
-      mentions: [],
-    } as any).select("id").single() as any);
+      // Insert into database
+      const { data: insertedMsg } = await (supabase.from("messages").insert({
+        channel_id: channel.id,
+        user_id: currentUserId,
+        content,
+        mentions: [],
+      } as any).select("id").single() as any);
 
-    // Broadcast for instant notification (bypasses CDC latency)
-    sendChatBroadcast({
-      id: insertedMsg?.id || optimisticMsg.id,
-      channel_id: channel.id,
-      user_id: currentUserId,
-      content,
-      mentions: [],
-      created_at: new Date().toISOString(),
-    });
+      // Broadcast for instant notification (bypasses CDC latency)
+      sendChatBroadcast({
+        id: insertedMsg?.id || optimisticMsg.id,
+        channel_id: channel.id,
+        user_id: currentUserId,
+        content,
+        mentions: [],
+        created_at: new Date().toISOString(),
+      });
+    })().catch(() => {});
 
     // Sending a message means user has read everything — update last_read_at
     supabase

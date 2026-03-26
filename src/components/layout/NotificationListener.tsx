@@ -176,17 +176,16 @@ export function NotificationListener() {
       senderAvatar: sender.avatar,
     });
 
-    // 3. Show desktop/OS notification (when tab not focused)
+    // 3. Show desktop/OS push notification (always, even when tab focused)
     if (
       typeof window !== "undefined" &&
       "Notification" in window &&
-      Notification.permission === "granted" &&
-      !document.hasFocus()
+      Notification.permission === "granted"
     ) {
       const notif = new Notification(sender.name, {
         body,
         icon: sender.avatar || "/lesco-icon.png",
-        tag: `msg-${msg.channel_id}`,
+        tag: `msg-${msg.channel_id}-${msg.id}`,
         silent: true,
       });
       notif.onclick = () => {

@@ -81,7 +81,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
     setSending(true);
     setContent("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-    await onSend(trimmed);
+    onSend(trimmed);
     setSending(false);
     textareaRef.current?.focus();
   }
