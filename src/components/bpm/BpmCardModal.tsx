@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   X, Loader2, Clock, User, MessageSquare, History,
   Send, ChevronRight, AlertTriangle, CheckCircle2, Check,
-  ArrowRight, ArrowLeft,
+  ArrowRight, ArrowLeft, Trash2,
 } from "lucide-react";
 import { cn, getInitials, generateColor, formatDateTime } from "@/lib/utils/helpers";
 import { DynamicField, type FieldDef } from "./DynamicField";
@@ -45,9 +45,10 @@ interface Props {
   onClose: () => void;
   onUpdate: () => void;
   onMoveCard?: (cardId: string, fromPhaseId: string, toPhaseId: string) => Promise<boolean>;
+  onDelete?: (cardId: string) => Promise<void>;
 }
 
-export function BpmCardModal({ card, phases, members, currentUserId, canEdit, onClose, onUpdate, onMoveCard }: Props) {
+export function BpmCardModal({ card, phases, members, currentUserId, canEdit, onClose, onUpdate, onMoveCard, onDelete }: Props) {
   const supabase = createClient();
   const [allPhaseFields, setAllPhaseFields] = useState<Record<string, FieldDef[]>>({});
   const [values, setValues] = useState<Record<string, any>>({});
@@ -62,6 +63,8 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
   const [titleDraft, setTitleDraft] = useState(card.title);
   const [savingTitle, setSavingTitle] = useState(false);
   const [movingTo, setMovingTo] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const currentPhase = phases.find((p) => p.id === card.current_phase_id);
   const currentPhaseIdx = phases.findIndex((p) => p.id === card.current_phase_id);
@@ -261,6 +264,38 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
               )}
             </div>
           </div>
+          {canEdit && onDelete && (
+            confirmDelete ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-destructive font-medium">Excluir?</span>
+                <button
+                  onClick={async () => {
+                    setDeleting(true);
+                    await onDelete(card.id);
+                    setDeleting(false);
+                  }}
+                  disabled={deleting}
+                  className="px-2 py-1 text-xs font-medium rounded-md bg-destructive text-white hover:bg-destructive/90 transition-colors cursor-pointer"
+                >
+                  {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : "Sim"}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-2 py-1 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:bg-accent transition-colors cursor-pointer"
+                >
+                  Não
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="p-2 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+                title="Excluir card"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )
+          )}
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-accent transition-colors cursor-pointer">
             <X className="w-5 h-5 text-muted-foreground" />
           </button>

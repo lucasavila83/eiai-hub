@@ -313,6 +313,19 @@ function PipeKanbanContent() {
     return true;
   }
 
+  async function handleDeleteCard(cardId: string) {
+    // Delete related data: values, history, comments, task links
+    await Promise.all([
+      supabase.from("bpm_card_values").delete().eq("card_id", cardId),
+      supabase.from("bpm_card_history").delete().eq("card_id", cardId),
+      supabase.from("bpm_card_comments").delete().eq("card_id", cardId),
+      supabase.from("bpm_task_links").delete().eq("bpm_card_id", cardId),
+    ]);
+    await supabase.from("bpm_cards").delete().eq("id", cardId);
+    setCards((prev) => prev.filter((c) => c.id !== cardId));
+    setSelectedCard(null);
+  }
+
   async function handleCreateCard(e: React.FormEvent) {
     e.preventDefault();
     if (!createTitle.trim() || !activeOrgId) return;
@@ -546,6 +559,7 @@ function PipeKanbanContent() {
           onClose={() => setSelectedCard(null)}
           onUpdate={loadData}
           onMoveCard={handleMoveCard}
+          onDelete={handleDeleteCard}
         />
       )}
 
