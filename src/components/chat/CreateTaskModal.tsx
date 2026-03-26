@@ -51,7 +51,7 @@ export function CreateTaskModal({
   const [dueDate, setDueDate] = useState("");
   const [selectedBoardId, setSelectedBoardId] = useState("");
   const [selectedColumnId, setSelectedColumnId] = useState("");
-  const [selectedAssigneeId, setSelectedAssigneeId] = useState(defaultAssigneeId || "");
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>(defaultAssigneeId ? [defaultAssigneeId] : []);
   const [boards, setBoards] = useState<any[]>([]);
   const [columns, setColumns] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
@@ -173,19 +173,25 @@ export function CreateTaskModal({
 
     let assigneeName: string | undefined;
 
-    // Assign to selected member
-    if (selectedAssigneeId) {
-      await supabase.from("card_assignees").insert({
-        card_id: card.id,
-        user_id: selectedAssigneeId,
-      });
+    // Assign to selected members
+    if (selectedAssigneeIds.length > 0) {
+      await supabase.from("card_assignees").insert(
+        selectedAssigneeIds.map((uid) => ({ card_id: card.id, user_id: uid }))
+      );
 
-      // Get assignee name
-      const member = members.find((m: any) => m.user_id === selectedAssigneeId);
-      assigneeName = member?.profiles?.full_name || member?.profiles?.email;
+      // Get first assignee name for display
+      const firstMember = members.find((m: any) => m.user_id === selectedAssigneeIds[0]);
+      assigneeName = firstMember?.profiles?.full_name || firstMember?.profiles?.email;
+      if (selectedAssigneeIds.length > 1) {
+        assigneeName = `${assigneeName} +${selectedAssigneeIds.length - 1}`;
+      }
 
-      // Send DM notification to assignee
-      await sendTaskNotification(card, assigneeName || "");
+      // Send DM notification to each assignee
+      for (const uid of selectedAssigneeIds) {
+        const member = members.find((m: any) => m.user_id === uid);
+        const name = member?.profiles?.full_name || member?.profiles?.email || "";
+        await sendTaskNotification(card, name, uid);
+      }
     }
 
     const board = boards.find((b) => b.id === selectedBoardId);
@@ -198,8 +204,8 @@ export function CreateTaskModal({
     });
   }
 
-  async function sendTaskNotification(card: any, assigneeName: string) {
-    if (!selectedAssigneeId || selectedAssigneeId === currentUserId) return;
+  async function sendTaskNotification(card: any, assigneeName: string, assigneeId: string) {
+    if (!assigneeId || assigneeId === currentUserId) return;
 
     // Find or create DM channel with assignee
     const { data: existingDMs } = await supabase
@@ -213,7 +219,7 @@ export function CreateTaskModal({
     if (existingDMs) {
       for (const ch of existingDMs) {
         const memberIds = (ch as any).channel_members?.map((m: any) => m.user_id) || [];
-        if (memberIds.includes(currentUserId) && memberIds.includes(selectedAssigneeId)) {
+        if (memberIds.includes(currentUserId) && memberIds.includes(assigneeId)) {
           dmChannelId = ch.id;
           break;
         }
@@ -239,7 +245,7 @@ export function CreateTaskModal({
         const now = new Date().toISOString();
         await supabase.from("channel_members").insert([
           { channel_id: newDM.id, user_id: currentUserId, last_read_at: now, notifications: "all" },
-          { channel_id: newDM.id, user_id: selectedAssigneeId, last_read_at: now, notifications: "all" },
+          { channel_id: newDM.id, user_id: assigneeId, last_read_at: now, notifications: "all" },
         ]);
       }
     }
@@ -261,11 +267,15 @@ export function CreateTaskModal({
       channel_id: dmChannelId,
       user_id: currentUserId,
       content: msg,
-      mentions: [selectedAssigneeId],
+      mentions: [assigneeId],
     });
   }
 
-  const selectedAssignee = members.find((m: any) => m.user_id === selectedAssigneeId);
+  const toggleAssignee = (uid: string) => {
+    setSelectedAssigneeIds((prev) =>
+      prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid]
+    );
+  };
 
   if (loadingData) {
     return createPortal(
@@ -397,14 +407,12 @@ export function CreateTaskModal({
               {members.map((m: any) => {
                 const p = m.profiles;
                 const memberName = p?.full_name || p?.email || "?";
-                const isSelected = selectedAssigneeId === m.user_id;
+                const isSelected = selectedAssigneeIds.includes(m.user_id);
                 return (
                   <button
                     key={m.user_id}
                     type="button"
-                    onClick={() =>
-                      setSelectedAssigneeId(isSelected ? "" : m.user_id)
-                    }
+                    onClick={() => toggleAssignee(m.user_id)}
                     className={cn(
                       "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm border transition-all text-left",
                       isSelected
@@ -431,9 +439,9 @@ export function CreateTaskModal({
                 );
               })}
             </div>
-            {selectedAssigneeId && selectedAssigneeId !== currentUserId && (
+            {selectedAssigneeIds.length > 0 && selectedAssigneeIds.some((id) => id !== currentUserId) && (
               <p className="text-xs text-primary">
-                Uma mensagem automática será enviada no DM com o resumo da tarefa
+                Uma mensagem automática será enviada no DM de cada responsável
               </p>
             )}
           </div>
