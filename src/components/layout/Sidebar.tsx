@@ -10,7 +10,7 @@ import {
   Plus, LogOut, X, Loader2, Users, MessageCircle, Check,
   MoreHorizontal, Trash2, EyeOff, UserCog,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, onChatBroadcast } from "@/lib/supabase/client";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { useUIStore } from "@/lib/stores/ui-store";
@@ -117,25 +117,27 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const profileId = profile?.id;
   const orgId = activeOrg?.id;
 
-  // Single consolidated realtime subscription for sidebar
+  // Instant broadcast listener for unread badges (no CDC latency)
+  useEffect(() => {
+    if (!profileId) return;
+
+    const unsub = onChatBroadcast((msg) => {
+      if (msg.user_id === profileRef.current?.id) return;
+      const isViewingChannel = pathnameRef.current.includes(msg.channel_id);
+      if (!isViewingChannel) {
+        incrementUnread(msg.channel_id);
+      }
+    });
+
+    return unsub;
+  }, [profileId]);
+
+  // Consolidated realtime subscription for sidebar (org data changes)
   useEffect(() => {
     if (!orgId || !profileId) return;
 
     const sub = supabase
       .channel(`sidebar-rt-${orgId}`)
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "messages",
-      }, (payload: any) => {
-        const msg = payload.new;
-        if (msg.user_id !== profileRef.current?.id) {
-          const isViewingChannel = pathnameRef.current.includes(msg.channel_id);
-          if (!isViewingChannel) {
-            incrementUnread(msg.channel_id);
-          }
-        }
-      })
       .on("postgres_changes", {
         event: "*",
         schema: "public",

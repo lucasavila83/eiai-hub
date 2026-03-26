@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, sendChatBroadcast } from "@/lib/supabase/client";
 import { MessageBubble } from "./MessageBubble";
 import { MessageInput } from "./MessageInput";
 import { CreateTaskModal } from "./CreateTaskModal";
@@ -428,11 +428,21 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     }
 
     // Insert into database
-    await supabase.from("messages").insert({
+    const { data: insertedMsg } = await (supabase.from("messages").insert({
       channel_id: channel.id,
       user_id: currentUserId,
       content,
       mentions: [],
+    } as any).select("id").single() as any);
+
+    // Broadcast for instant notification (bypasses CDC latency)
+    sendChatBroadcast({
+      id: insertedMsg?.id || optimisticMsg.id,
+      channel_id: channel.id,
+      user_id: currentUserId,
+      content,
+      mentions: [],
+      created_at: new Date().toISOString(),
     });
 
     // Sending a message means user has read everything — update last_read_at

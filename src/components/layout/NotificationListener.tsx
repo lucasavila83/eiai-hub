@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, onChatBroadcast } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useChatStore } from "@/lib/stores/chat-store";
@@ -110,7 +110,102 @@ export function NotificationListener() {
 
   const channelPrefsRef = useRef<Record<string, string>>({});
 
-  // Single realtime subscription — stable deps (only user.id)
+  // Dedupe: track recently notified message IDs to avoid double-notify from broadcast + CDC
+  const notifiedMsgIds = useRef(new Set<string>());
+
+  async function handleNewMessage(msg: {
+    id: string;
+    channel_id: string;
+    user_id: string;
+    content: string;
+    mentions: string[] | null;
+  }) {
+    // Dedupe
+    if (notifiedMsgIds.current.has(msg.id)) return;
+    notifiedMsgIds.current.add(msg.id);
+    // Limit set size
+    if (notifiedMsgIds.current.size > 200) {
+      const arr = Array.from(notifiedMsgIds.current);
+      notifiedMsgIds.current = new Set(arr.slice(-100));
+    }
+
+    // Skip own messages
+    if (msg.user_id === userRef.current?.id) return;
+
+    // Skip if viewing that channel
+    const viewingChannel =
+      activeChannelIdRef.current === msg.channel_id &&
+      pathnameRef.current?.includes("/chat");
+    if (viewingChannel) return;
+
+    // Check channel preference
+    const pref = channelPrefsRef.current[msg.channel_id] || "all";
+    if (pref === "none") return;
+    if (pref === "mentions") {
+      if (!msg.mentions?.includes(userRef.current!.id)) return;
+    }
+
+    // Get sender profile (cached)
+    let sender = profileCache[msg.user_id];
+    if (!sender) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url")
+        .eq("id", msg.user_id)
+        .single();
+      sender = {
+        name: profile?.full_name || "Alguém",
+        avatar: profile?.avatar_url || null,
+      };
+      profileCache[msg.user_id] = sender;
+    }
+
+    const body = (msg.content || "Nova mensagem")
+      .replace(/\*\*/g, "")
+      .replace(/\n/g, " ")
+      .substring(0, 100);
+
+    // 1. Play sound
+    playNotificationSound();
+
+    // 2. Show in-app toast popup
+    useNotificationStore.getState().addToast({
+      title: sender.name,
+      body,
+      link: `/chat/${msg.channel_id}`,
+      senderAvatar: sender.avatar,
+    });
+
+    // 3. Show desktop/OS notification (when tab not focused)
+    if (
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      Notification.permission === "granted" &&
+      !document.hasFocus()
+    ) {
+      const notif = new Notification(sender.name, {
+        body,
+        icon: sender.avatar || "/lesco-icon.png",
+        tag: `msg-${msg.channel_id}`,
+        silent: true,
+      });
+      notif.onclick = () => {
+        window.focus();
+        window.location.href = `/chat/${msg.channel_id}`;
+        notif.close();
+      };
+      setTimeout(() => notif.close(), 6000);
+    }
+  }
+
+  // Instant broadcast listener (bypasses CDC latency — ~0ms)
+  useEffect(() => {
+    if (!user?.id) return;
+    const unsub = onChatBroadcast((msg) => handleNewMessage(msg));
+    return unsub;
+  }, [user?.id]);
+
+  // Fallback: postgres_changes for messages not sent via broadcast (API, etc.)
   useEffect(() => {
     if (!user?.id) return;
 
@@ -119,7 +214,7 @@ export function NotificationListener() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
-        async (payload) => {
+        (payload) => {
           const msg = payload.new as {
             id: string;
             channel_id: string;
@@ -127,74 +222,7 @@ export function NotificationListener() {
             content: string;
             mentions: string[] | null;
           };
-
-          // Skip own messages
-          if (msg.user_id === userRef.current?.id) return;
-
-          // Skip if viewing that channel
-          const viewingChannel =
-            activeChannelIdRef.current === msg.channel_id &&
-            pathnameRef.current?.includes("/chat");
-          if (viewingChannel) return;
-
-          // Check channel preference
-          const pref = channelPrefsRef.current[msg.channel_id] || "all";
-          if (pref === "none") return;
-          if (pref === "mentions") {
-            if (!msg.mentions?.includes(userRef.current!.id)) return;
-          }
-
-          // Get sender profile (cached)
-          let sender = profileCache[msg.user_id];
-          if (!sender) {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("full_name, avatar_url")
-              .eq("id", msg.user_id)
-              .single();
-            sender = {
-              name: profile?.full_name || "Alguém",
-              avatar: profile?.avatar_url || null,
-            };
-            profileCache[msg.user_id] = sender;
-          }
-
-          const body = (msg.content || "Nova mensagem")
-            .replace(/\*\*/g, "")
-            .replace(/\n/g, " ")
-            .substring(0, 100);
-
-          // 1. Play sound
-          playNotificationSound();
-
-          // 2. Show in-app toast popup
-          useNotificationStore.getState().addToast({
-            title: sender.name,
-            body,
-            link: `/chat/${msg.channel_id}`,
-            senderAvatar: sender.avatar,
-          });
-
-          // 3. Show desktop/OS notification (when tab not focused)
-          if (
-            typeof window !== "undefined" &&
-            "Notification" in window &&
-            Notification.permission === "granted" &&
-            !document.hasFocus()
-          ) {
-            const notif = new Notification(sender.name, {
-              body,
-              icon: sender.avatar || "/lesco-icon.png",
-              tag: `msg-${msg.channel_id}`,
-              silent: true,
-            });
-            notif.onclick = () => {
-              window.focus();
-              window.location.href = `/chat/${msg.channel_id}`;
-              notif.close();
-            };
-            setTimeout(() => notif.close(), 6000);
-          }
+          handleNewMessage(msg);
         }
       )
       .on(
