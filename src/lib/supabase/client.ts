@@ -20,29 +20,28 @@ export function createClient() {
 }
 
 // Global broadcast for instant chat notifications
+// Uses native BroadcastChannel API (instant, same-origin) + Supabase broadcast (cross-device)
 type MessageCallback = (msg: any) => void;
 const broadcastListeners: Set<MessageCallback> = new Set();
-let broadcastReady = false;
+let nativeBc: BroadcastChannel | null = null;
+let supabaseBroadcastReady = false;
 
-export function onChatBroadcast(cb: MessageCallback) {
-  broadcastListeners.add(cb);
-  ensureBroadcastChannel();
-  return () => { broadcastListeners.delete(cb); };
+function ensureNativeBroadcast() {
+  if (nativeBc || typeof window === "undefined") return;
+  try {
+    nativeBc = new BroadcastChannel("chat-notifications");
+    nativeBc.onmessage = (event) => {
+      const msg = event.data;
+      if (msg) broadcastListeners.forEach((cb) => cb(msg));
+    };
+  } catch (_) {
+    // BroadcastChannel not supported — fall back to Supabase only
+  }
 }
 
-export function sendChatBroadcast(payload: any) {
-  ensureBroadcastChannel();
-  const supabase = createClient();
-  supabase.channel("chat-broadcast").send({
-    type: "broadcast",
-    event: "new-message",
-    payload,
-  });
-}
-
-function ensureBroadcastChannel() {
-  if (broadcastReady) return;
-  broadcastReady = true;
+function ensureSupabaseBroadcast() {
+  if (supabaseBroadcastReady) return;
+  supabaseBroadcastReady = true;
   const supabase = createClient();
   supabase
     .channel("chat-broadcast")
@@ -51,4 +50,27 @@ function ensureBroadcastChannel() {
       if (msg) broadcastListeners.forEach((cb) => cb(msg));
     })
     .subscribe();
+}
+
+export function onChatBroadcast(cb: MessageCallback) {
+  broadcastListeners.add(cb);
+  ensureNativeBroadcast();
+  ensureSupabaseBroadcast();
+  return () => { broadcastListeners.delete(cb); };
+}
+
+export function sendChatBroadcast(payload: any) {
+  // 0. Notify listeners in THIS tab immediately (instant, no network)
+  broadcastListeners.forEach((cb) => cb(payload));
+
+  // 1. Native BroadcastChannel — instant, other tabs in same browser
+  ensureNativeBroadcast();
+  try { nativeBc?.postMessage(payload); } catch (_) {}
+
+  // 2. Supabase broadcast — for other devices/browsers
+  ensureSupabaseBroadcast();
+  const supabase = createClient();
+  const ch = supabase.channel("chat-broadcast");
+  // Send regardless of state — Supabase queues if not yet joined
+  ch.send({ type: "broadcast", event: "new-message", payload }).catch(() => {});
 }
