@@ -1,19 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { useNotificationStore } from "@/lib/stores/notification-store";
-import { useNotificationSound } from "@/lib/hooks/useNotificationSound";
-import { useDesktopNotifications } from "@/lib/hooks/useDesktopNotifications";
+import { playNotificationSound, unlockAudio } from "@/lib/utils/notification-sound";
 
-interface ChannelPref {
-  channel_id: string;
-  notifications: string;
-}
+// Cache sender profiles to avoid repeated DB queries
+const profileCache: Record<string, { name: string; avatar: string | null }> = {};
 
 export function NotificationListener() {
   const supabase = createClient();
@@ -21,111 +18,104 @@ export function NotificationListener() {
   const { activeOrgId } = useUIStore();
   const pathname = usePathname();
   const activeChannelId = useChatStore((s) => s.activeChannelId);
-  const addNotification = useNotificationStore((s) => s.addNotification);
-  const addToast = useNotificationStore((s) => s.addToast);
-  const loadPreferences = useNotificationStore((s) => s.loadPreferences);
 
-  const { playSound } = useNotificationSound();
-  const { permission, requestPermission, showNotification } = useDesktopNotifications();
-
-  const [channelPrefs, setChannelPrefs] = useState<Record<string, string>>({});
-  const [permissionAsked, setPermissionAsked] = useState(false);
-  const initializedRef = useRef(false);
-  const profileCacheRef = useRef<Record<string, string>>({});
+  // Use refs for everything accessed inside realtime callbacks (avoid stale closures)
+  const userRef = useRef(user);
   const activeChannelIdRef = useRef(activeChannelId);
   const pathnameRef = useRef(pathname);
-  const channelPrefsRef = useRef(channelPrefs);
+  const activeOrgIdRef = useRef(activeOrgId);
 
-  // Keep refs in sync to avoid stale closures in realtime callbacks
+  useEffect(() => { userRef.current = user; }, [user]);
   useEffect(() => { activeChannelIdRef.current = activeChannelId; }, [activeChannelId]);
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
-  useEffect(() => { channelPrefsRef.current = channelPrefs; }, [channelPrefs]);
+  useEffect(() => { activeOrgIdRef.current = activeOrgId; }, [activeOrgId]);
 
   // Load preferences on mount
   useEffect(() => {
-    loadPreferences();
-  }, [loadPreferences]);
+    useNotificationStore.getState().loadPreferences();
+  }, []);
+
+  // Request notification permission immediately on mount
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Unlock audio on first user interaction
+  useEffect(() => {
+    const handleInteraction = () => {
+      unlockAudio();
+      window.removeEventListener("click", handleInteraction);
+      window.removeEventListener("keydown", handleInteraction);
+    };
+    window.addEventListener("click", handleInteraction);
+    window.addEventListener("keydown", handleInteraction);
+    return () => {
+      window.removeEventListener("click", handleInteraction);
+      window.removeEventListener("keydown", handleInteraction);
+    };
+  }, []);
 
   // Load initial unread notification count
   useEffect(() => {
     if (!user?.id || !activeOrgId) return;
 
-    async function loadUnreadCount() {
+    (async () => {
       const { count } = await supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", user!.id)
-        .eq("org_id", activeOrgId!)
+        .eq("user_id", user.id)
+        .eq("org_id", activeOrgId)
         .eq("is_read", false);
 
       if (count !== null) {
         useNotificationStore.getState().setUnreadCount(count);
       }
-    }
 
-    async function loadRecent() {
       const { data } = await supabase
         .from("notifications")
         .select("id, type, title, body, link, is_read, created_at")
-        .eq("user_id", user!.id)
-        .eq("org_id", activeOrgId!)
+        .eq("user_id", user.id)
+        .eq("org_id", activeOrgId)
         .order("created_at", { ascending: false })
         .limit(15);
 
       if (data) {
         useNotificationStore.getState().setRecentNotifications(data);
       }
-    }
-
-    loadUnreadCount();
-    loadRecent();
-  }, [user?.id, activeOrgId, supabase]);
+    })();
+  }, [user?.id, activeOrgId]);
 
   // Load channel notification preferences
   useEffect(() => {
     if (!user?.id) return;
 
-    async function loadChannelPrefs() {
+    (async () => {
       const { data } = await supabase
         .from("channel_members")
         .select("channel_id, notifications")
-        .eq("user_id", user!.id);
+        .eq("user_id", user.id);
 
       if (data) {
         const prefs: Record<string, string> = {};
-        data.forEach((d: ChannelPref) => {
+        data.forEach((d: any) => {
           prefs[d.channel_id] = d.notifications || "all";
         });
-        setChannelPrefs(prefs);
+        channelPrefsRef.current = prefs;
       }
-    }
+    })();
+  }, [user?.id]);
 
-    loadChannelPrefs();
-  }, [user?.id, supabase]);
+  const channelPrefsRef = useRef<Record<string, string>>({});
 
-  // Ask for notification permission (once, subtly)
+  // Single realtime subscription — stable deps (only user.id)
   useEffect(() => {
-    if (permissionAsked) return;
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission !== "default") return;
-    if (localStorage.getItem("notification-permission-requested") === "true") return;
-
-    // Wait a bit before asking
-    const timer = setTimeout(() => {
-      requestPermission();
-      setPermissionAsked(true);
-    }, 5000);
-
-    return () => clearTimeout(timer);
-  }, [permissionAsked, requestPermission]);
-
-  // Subscribe to new messages (for sound + desktop + in-app toast)
-  useEffect(() => {
-    if (!user?.id || initializedRef.current) return;
-    initializedRef.current = true;
+    if (!user?.id) return;
 
     const channel = supabase
-      .channel("notification-listener")
+      .channel("notification-listener-v2")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
@@ -139,53 +129,77 @@ export function NotificationListener() {
           };
 
           // Skip own messages
-          if (msg.user_id === user!.id) return;
+          if (msg.user_id === userRef.current?.id) return;
 
-          // Skip if viewing that channel (use refs to avoid stale closure)
-          if (activeChannelIdRef.current === msg.channel_id && pathnameRef.current?.includes("/chat")) return;
+          // Skip if viewing that channel
+          const viewingChannel =
+            activeChannelIdRef.current === msg.channel_id &&
+            pathnameRef.current?.includes("/chat");
+          if (viewingChannel) return;
 
-          // Check channel preference (use ref)
+          // Check channel preference
           const pref = channelPrefsRef.current[msg.channel_id] || "all";
           if (pref === "none") return;
           if (pref === "mentions") {
-            const isMentioned = msg.mentions?.includes(user!.id);
-            if (!isMentioned) return;
+            if (!msg.mentions?.includes(userRef.current!.id)) return;
           }
 
-          // Get sender name (cached)
-          let senderName = profileCacheRef.current[msg.user_id];
-          if (!senderName) {
-            const { data: sender } = await supabase
+          // Get sender profile (cached)
+          let sender = profileCache[msg.user_id];
+          if (!sender) {
+            const { data: profile } = await supabase
               .from("profiles")
-              .select("full_name")
+              .select("full_name, avatar_url")
               .eq("id", msg.user_id)
               .single();
-            senderName = sender?.full_name || "Alguém";
-            profileCacheRef.current[msg.user_id] = senderName;
+            sender = {
+              name: profile?.full_name || "Alguém",
+              avatar: profile?.avatar_url || null,
+            };
+            profileCache[msg.user_id] = sender;
           }
-          const body = msg.content?.substring(0, 100) || "Nova mensagem";
 
-          // Play sound
-          playSound();
+          const body = (msg.content || "Nova mensagem")
+            .replace(/\*\*/g, "")
+            .replace(/\n/g, " ")
+            .substring(0, 100);
 
-          // Show in-app toast popup
-          addToast({
-            title: senderName,
+          // 1. Play sound
+          playNotificationSound();
+
+          // 2. Show in-app toast popup
+          useNotificationStore.getState().addToast({
+            title: sender.name,
             body,
             link: `/chat/${msg.channel_id}`,
+            senderAvatar: sender.avatar,
           });
 
-          // Show desktop notification (when tab not focused)
-          showNotification(senderName, {
-            body,
-            link: `/chat/${msg.channel_id}`,
-            tag: `msg-${msg.channel_id}`,
-          });
+          // 3. Show desktop/OS notification (when tab not focused)
+          if (
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted" &&
+            !document.hasFocus()
+          ) {
+            const notif = new Notification(sender.name, {
+              body,
+              icon: sender.avatar || "/lesco-icon.png",
+              tag: `msg-${msg.channel_id}`,
+              silent: true,
+            });
+            notif.onclick = () => {
+              window.focus();
+              window.location.href = `/chat/${msg.channel_id}`;
+              notif.close();
+            };
+            setTimeout(() => notif.close(), 6000);
+          }
         }
       )
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user!.id}` },
+        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
         (payload) => {
           const notif = payload.new as {
             id: string;
@@ -197,35 +211,45 @@ export function NotificationListener() {
             created_at: string;
           };
 
-          // Add to store
-          addNotification(notif);
-
-          // Play sound
-          playSound();
-
-          // Show in-app toast popup
-          addToast({
+          useNotificationStore.getState().addNotification(notif);
+          playNotificationSound();
+          useNotificationStore.getState().addToast({
             title: notif.title,
             body: notif.body,
             link: notif.link || "/notifications",
           });
 
-          // Desktop notification
-          showNotification(notif.title, {
-            body: notif.body,
-            link: notif.link || "/notifications",
-            tag: `notif-${notif.id}`,
-          });
+          if (
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted" &&
+            !document.hasFocus()
+          ) {
+            const n = new Notification(notif.title, {
+              body: notif.body,
+              icon: "/lesco-icon.png",
+              tag: `notif-${notif.id}`,
+              silent: true,
+            });
+            n.onclick = () => {
+              window.focus();
+              if (notif.link) window.location.href = notif.link;
+              n.close();
+            };
+            setTimeout(() => n.close(), 6000);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          setTimeout(() => channel.subscribe(), 3000);
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
-      initializedRef.current = false;
     };
-    // Only re-subscribe when user changes — refs handle the rest
-  }, [user?.id, supabase, playSound, showNotification, addNotification, addToast]);
+  }, [user?.id]); // Only depends on user.id — refs handle the rest
 
-  return null; // This is a logic-only component
+  return null;
 }

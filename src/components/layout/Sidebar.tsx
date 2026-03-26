@@ -16,8 +16,7 @@ import { useChatStore } from "@/lib/stores/chat-store";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import type { Profile, Organization, Channel } from "@/lib/types/database";
-import { playNotificationSound, unlockAudio } from "@/lib/utils/notification-sound";
-import { useNotificationStore } from "@/lib/stores/notification-store";
+// Sound, toast and desktop notifications handled by NotificationListener
 
 interface SidebarProps {
   profile: Profile | null;
@@ -30,7 +29,6 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const supabase = createClient();
   const { channels, setChannels, unreadCounts, setUnreadCount, incrementUnread } = useChatStore();
   const { sidebarOpen, setSidebarOpen, toggleSidebar, setActiveOrgId } = useUIStore();
-  const addToast = useNotificationStore((s) => s.addToast);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(
     organizations[0] || null
   );
@@ -110,12 +108,6 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   // Refs to avoid stale closures in realtime callbacks
   const pathnameRef = useRef(pathname);
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
-  const dmChannelsRef = useRef(dmChannels);
-  useEffect(() => { dmChannelsRef.current = dmChannels; }, [dmChannels]);
-  const channelsRef = useRef(channels);
-  useEffect(() => { channelsRef.current = channels; }, [channels]);
-  const orgMembersRef = useRef(orgMembers);
-  useEffect(() => { orgMembersRef.current = orgMembers; }, [orgMembers]);
 
   // Single consolidated realtime subscription for sidebar
   useEffect(() => {
@@ -127,30 +119,13 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         event: "INSERT",
         schema: "public",
         table: "messages",
-      }, async (payload: any) => {
+      }, (payload: any) => {
         const msg = payload.new;
         if (msg.user_id !== profile.id) {
-          // Use ref to get current pathname (not stale closure)
           const isViewingChannel = pathnameRef.current.includes(msg.channel_id);
           if (!isViewingChannel) {
             incrementUnread(msg.channel_id);
-            playNotificationSound();
-
-            // Show toast popup with sender info
-            const dm = dmChannelsRef.current.find((d) => d.id === msg.channel_id);
-            const ch = channelsRef.current.find((c) => c.id === msg.channel_id);
-            const member = orgMembersRef.current.find((m: any) => m.user_id === msg.user_id);
-            const senderProfile = member?.profiles;
-            const senderName = senderProfile?.full_name || senderProfile?.email || "Alguém";
-            const channelName = dm ? senderName : ch?.name || "";
-            const content = (msg.content || "").replace(/\*\*/g, "").replace(/\n/g, " ").slice(0, 100);
-
-            addToast({
-              title: senderName,
-              body: dm ? content : `#${channelName}: ${content}`,
-              link: `/chat/${msg.channel_id}`,
-              senderAvatar: senderProfile?.avatar_url || null,
-            });
+            // Sound, toast and desktop notification handled by NotificationListener
           }
         }
       })
@@ -194,20 +169,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     return () => { supabase.removeChannel(sub); };
   }, [activeOrg, profile]);
 
-  // Unlock Web Audio on first user interaction (browser autoplay policy)
-  useEffect(() => {
-    const handleInteraction = () => {
-      unlockAudio();
-      window.removeEventListener("click", handleInteraction);
-      window.removeEventListener("keydown", handleInteraction);
-    };
-    window.addEventListener("click", handleInteraction);
-    window.addEventListener("keydown", handleInteraction);
-    return () => {
-      window.removeEventListener("click", handleInteraction);
-      window.removeEventListener("keydown", handleInteraction);
-    };
-  }, []);
+  // Audio unlock handled by NotificationListener
 
   async function loadChannels(orgId: string) {
     const { data } = await supabase
