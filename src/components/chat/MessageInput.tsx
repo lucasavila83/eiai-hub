@@ -38,6 +38,13 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-focus textarea when switching channels
+  useEffect(() => {
+    // Small delay to ensure DOM is ready after navigation
+    const timer = setTimeout(() => textareaRef.current?.focus(), 100);
+    return () => clearTimeout(timer);
+  }, [channelId]);
+
   // Load org members for @mentions
   useEffect(() => {
     if (!orgId) return;
