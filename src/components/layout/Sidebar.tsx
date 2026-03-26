@@ -108,24 +108,31 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   // Refs to avoid stale closures in realtime callbacks
   const pathnameRef = useRef(pathname);
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
+  const profileRef = useRef(profile);
+  useEffect(() => { profileRef.current = profile; }, [profile]);
+  const activeOrgRef = useRef(activeOrg);
+  useEffect(() => { activeOrgRef.current = activeOrg; }, [activeOrg]);
+
+  // Stable IDs for subscription deps (avoid object reference changes)
+  const profileId = profile?.id;
+  const orgId = activeOrg?.id;
 
   // Single consolidated realtime subscription for sidebar
   useEffect(() => {
-    if (!activeOrg || !profile) return;
+    if (!orgId || !profileId) return;
 
     const sub = supabase
-      .channel("sidebar-realtime")
+      .channel(`sidebar-rt-${orgId}`)
       .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
         table: "messages",
       }, (payload: any) => {
         const msg = payload.new;
-        if (msg.user_id !== profile.id) {
+        if (msg.user_id !== profileRef.current?.id) {
           const isViewingChannel = pathnameRef.current.includes(msg.channel_id);
           if (!isViewingChannel) {
             incrementUnread(msg.channel_id);
-            // Sound, toast and desktop notification handled by NotificationListener
           }
         }
       })
@@ -133,18 +140,22 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         event: "*",
         schema: "public",
         table: "org_members",
-        filter: `org_id=eq.${activeOrg.id}`,
+        filter: `org_id=eq.${orgId}`,
       }, () => {
-        loadOrgMembers(activeOrg.id);
+        const org = activeOrgRef.current;
+        if (org) loadOrgMembers(org.id);
       })
       .on("postgres_changes", {
         event: "*",
         schema: "public",
         table: "channels",
-        filter: `org_id=eq.${activeOrg.id}`,
+        filter: `org_id=eq.${orgId}`,
       }, () => {
-        loadChannels(activeOrg.id);
-        loadDMs(activeOrg.id);
+        const org = activeOrgRef.current;
+        if (org) {
+          loadChannels(org.id);
+          loadDMs(org.id);
+        }
       })
       .on("postgres_changes", {
         event: "INSERT",
@@ -152,24 +163,31 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         table: "channel_members",
       }, (payload: any) => {
         const cm = payload.new;
-        if (cm.user_id === profile.id) {
-          loadChannels(activeOrg.id);
-          loadDMs(activeOrg.id);
+        if (cm.user_id === profileRef.current?.id) {
+          const org = activeOrgRef.current;
+          if (org) {
+            loadChannels(org.id);
+            loadDMs(org.id);
+          }
         }
       })
       .subscribe((status) => {
         if (status === "CHANNEL_ERROR") {
-          // Retry subscription after a brief delay
-          setTimeout(() => {
-            sub.subscribe();
-          }, 3000);
+          setTimeout(() => sub.subscribe(), 3000);
         }
       });
 
     return () => { supabase.removeChannel(sub); };
-  }, [activeOrg, profile]);
+  }, [orgId, profileId]); // Only string IDs — stable across re-renders
 
-  // Audio unlock handled by NotificationListener
+  // Fallback: poll unread counts every 30s in case realtime drops
+  useEffect(() => {
+    if (!profileId) return;
+    const interval = setInterval(() => {
+      loadUnreadCounts();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [profileId, loadUnreadCounts]);
 
   async function loadChannels(orgId: string) {
     const { data } = await supabase
