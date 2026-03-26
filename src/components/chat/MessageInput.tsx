@@ -35,8 +35,11 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [orgMembers, setOrgMembers] = useState<any[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [droppedFile, setDroppedFile] = useState<File | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef(0);
 
   // Auto-focus textarea when switching channels
   useEffect(() => {
@@ -263,8 +266,50 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
     }
   }
 
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes("Files")) {
+      setIsDragging(true);
+    }
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0 && channelId) {
+      setDroppedFile(files[0]);
+      setShowFileUpload(true);
+    }
+  }
+
   return (
-    <div className="p-4 shrink-0">
+    <div
+      className="p-4 shrink-0 relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       {/* Task creation inline */}
       {showTaskInput && (
         <div className="mb-2 bg-card border border-primary/30 rounded-xl p-3">
@@ -304,13 +349,24 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
         </div>
       )}
 
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary rounded-xl backdrop-blur-sm pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <Paperclip className="w-8 h-8 text-primary" />
+            <span className="text-sm font-medium text-primary">Solte o arquivo aqui</span>
+          </div>
+        </div>
+      )}
+
       {/* File upload inline */}
       {showFileUpload && channelId && (
         <div className="mb-2">
           <FileUpload
             channelId={channelId}
             onFileUploaded={handleFileUploaded}
-            onClose={() => setShowFileUpload(false)}
+            onClose={() => { setShowFileUpload(false); setDroppedFile(null); }}
+            droppedFile={droppedFile}
           />
         </div>
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Paperclip,
@@ -14,6 +14,7 @@ interface Props {
   channelId: string;
   onFileUploaded: (fileUrl: string, fileName: string, fileType: string) => void;
   onClose: () => void;
+  droppedFile?: File | null;
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -42,38 +43,45 @@ function isImageType(type: string): boolean {
   return type.startsWith("image/");
 }
 
-export function FileUpload({ channelId, onFileUploaded, onClose }: Props) {
+export function FileUpload({ channelId, onFileUploaded, onClose, droppedFile }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-populate when a file is dropped from drag & drop
+  const processFile = useCallback((selected: File) => {
+    setError(null);
+    if (selected.size > MAX_FILE_SIZE) {
+      setError("Arquivo muito grande (max. 10MB)");
+      setFile(null);
+      setPreview(null);
+      return;
+    }
+    setFile(selected);
+    if (isImageType(selected.type)) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setPreview(ev.target?.result as string);
+      reader.readAsDataURL(selected);
+    } else {
+      setPreview(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (droppedFile) {
+      processFile(droppedFile);
+    }
+  }, [droppedFile, processFile]);
+
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const selected = e.target.files?.[0];
       if (!selected) return;
-
-      setError(null);
-
-      if (selected.size > MAX_FILE_SIZE) {
-        setError("Arquivo muito grande (max. 10MB)");
-        setFile(null);
-        setPreview(null);
-        return;
-      }
-
-      setFile(selected);
-
-      if (isImageType(selected.type)) {
-        const reader = new FileReader();
-        reader.onload = (ev) => setPreview(ev.target?.result as string);
-        reader.readAsDataURL(selected);
-      } else {
-        setPreview(null);
-      }
+      processFile(selected);
     },
-    []
+    [processFile]
   );
 
   const handleUpload = useCallback(async () => {
