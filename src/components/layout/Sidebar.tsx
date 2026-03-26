@@ -16,6 +16,7 @@ import { useChatStore } from "@/lib/stores/chat-store";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import type { Profile, Organization, Channel } from "@/lib/types/database";
+import { playNotificationSound, unlockAudio } from "@/lib/utils/notification-sound";
 
 interface SidebarProps {
   profile: Profile | null;
@@ -83,15 +84,18 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     for (let i = 0; i < memberships.length; i += batchSize) {
       const batch = memberships.slice(i, i + batchSize);
       const results = await Promise.all(
-        batch.map((m: any) =>
-          supabase
+        batch.map((m: any) => {
+          let query = supabase
             .from("messages")
             .select("*", { count: "exact", head: true })
             .eq("channel_id", m.channel_id)
-            .gt("created_at", m.last_read_at)
-            .neq("user_id", profile.id)
-            .then((res) => ({ channelId: m.channel_id, count: res.count || 0 }))
-        )
+            .neq("user_id", profile.id);
+          // If last_read_at is null, count ALL messages from others
+          if (m.last_read_at) {
+            query = query.gt("created_at", m.last_read_at);
+          }
+          return query.then((res) => ({ channelId: m.channel_id, count: res.count || 0 }));
+        })
       );
       results.forEach(({ channelId, count }) => setUnreadCount(channelId, count));
     }
@@ -119,9 +123,10 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         const msg = payload.new;
         if (msg.user_id !== profile.id) {
           // Use ref to get current pathname (not stale closure)
-          if (!pathnameRef.current.includes(msg.channel_id)) {
-            // Use incrementUnread which reads from store state directly
+          const isViewingChannel = pathnameRef.current.includes(msg.channel_id);
+          if (!isViewingChannel) {
             incrementUnread(msg.channel_id);
+            playNotificationSound();
           }
         }
       })
@@ -165,14 +170,20 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     return () => { supabase.removeChannel(sub); };
   }, [activeOrg, profile]);
 
-  // Polling fallback: refresh unread counts every 5s (realtime may miss events)
+  // Unlock Web Audio on first user interaction (browser autoplay policy)
   useEffect(() => {
-    if (!profile) return;
-    const interval = setInterval(() => {
-      loadUnreadCounts();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [profile, loadUnreadCounts]);
+    const handleInteraction = () => {
+      unlockAudio();
+      window.removeEventListener("click", handleInteraction);
+      window.removeEventListener("keydown", handleInteraction);
+    };
+    window.addEventListener("click", handleInteraction);
+    window.addEventListener("keydown", handleInteraction);
+    return () => {
+      window.removeEventListener("click", handleInteraction);
+      window.removeEventListener("keydown", handleInteraction);
+    };
+  }, []);
 
   async function loadChannels(orgId: string) {
     const { data } = await supabase
