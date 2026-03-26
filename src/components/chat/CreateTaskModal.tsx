@@ -65,11 +65,12 @@ export function CreateTaskModal({
   useEffect(() => {
     if (selectedBoardId) {
       loadColumns(selectedBoardId);
+      loadBoardMembers(selectedBoardId);
     }
   }, [selectedBoardId]);
 
   async function loadData() {
-    const [boardsRes, memberBoardsRes, membersRes] = await Promise.all([
+    const [boardsRes, memberBoardsRes] = await Promise.all([
       supabase
         .from("boards")
         .select("id, name")
@@ -80,10 +81,6 @@ export function CreateTaskModal({
         .from("board_members")
         .select("board_id")
         .eq("user_id", currentUserId),
-      supabase
-        .from("org_members")
-        .select("user_id, role, profiles:user_id(id, full_name, avatar_url, email)")
-        .eq("org_id", orgId),
     ]);
 
     if (boardsRes.data) {
@@ -100,10 +97,31 @@ export function CreateTaskModal({
         setSelectedBoardId(filtered[0].id);
       }
     }
-    if (membersRes.data) {
-      setMembers(membersRes.data);
-    }
     setLoadingData(false);
+  }
+
+  async function loadBoardMembers(boardId: string) {
+    // Load only members of the selected board, not all org members
+    const { data } = await supabase
+      .from("board_members")
+      .select("user_id, role, profiles:user_id(id, full_name, avatar_url, email)")
+      .eq("board_id", boardId);
+
+    if (data && data.length > 0) {
+      setMembers(data as any);
+    } else {
+      // Fallback: if board has no members, show org members
+      const { data: orgData } = await supabase
+        .from("org_members")
+        .select("user_id, role, profiles:user_id(id, full_name, avatar_url, email)")
+        .eq("org_id", orgId);
+      setMembers(orgData || []);
+    }
+    // Clear assignees that are no longer in the board
+    setSelectedAssigneeIds((prev) => {
+      const memberIds = new Set((data || []).map((m: any) => m.user_id));
+      return prev.filter((id) => memberIds.has(id));
+    });
   }
 
   async function loadColumns(boardId: string) {

@@ -611,11 +611,11 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         </div>
       )}
 
-      {/* Expand button when content panel is collapsed */}
+      {/* Expand button when content panel is collapsed — positioned below TopBar to avoid overlap */}
       {!sidebarOpen && (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="absolute top-3 left-[60px] z-20 w-6 h-6 flex items-center justify-center rounded-full bg-card border border-border shadow-sm text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
+          className="absolute top-14 left-[60px] z-20 w-6 h-6 flex items-center justify-center rounded-full bg-card border border-border shadow-sm text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
           title="Abrir barra lateral"
         >
           <ChevronRight className="w-3.5 h-3.5" />

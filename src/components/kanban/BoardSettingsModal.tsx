@@ -46,6 +46,7 @@ export function BoardSettingsModal({
   const [saving, setSaving] = useState(false);
   const [showAddDropdown, setShowAddDropdown] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -83,12 +84,17 @@ export function BoardSettingsModal({
 
   async function saveBoardInfo() {
     setSaving(true);
-    await supabase
+    setSaveSuccess(false);
+    const { error } = await supabase
       .from("boards")
-      .update({ name: name.trim(), description: description.trim() || null })
+      .update({ name: name.trim(), description: description.trim() || null } as any)
       .eq("id", board.id);
     setSaving(false);
-    onUpdated?.();
+    if (!error) {
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+      onUpdated?.();
+    }
   }
 
   async function addMember(userId: string) {
@@ -202,10 +208,15 @@ export function BoardSettingsModal({
           <button
             onClick={saveBoardInfo}
             disabled={saving || !name.trim()}
-            className="w-full bg-primary text-primary-foreground py-2 rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
+            className={cn(
+              "w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors",
+              saveSuccess
+                ? "bg-green-600 text-white"
+                : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            )}
           >
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-            Salvar
+            {saveSuccess ? "Salvo!" : "Salvar"}
           </button>
 
           {/* Divider */}
