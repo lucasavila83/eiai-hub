@@ -559,48 +559,50 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
             </div>
 
             {/* Labels/Tags */}
-            {boardLabels.length > 0 && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => { setShowLabelDropdown(!showLabelDropdown); setShowAssigneeDropdown(false); setShowPriorityDropdown(false); }}
-                  className={cn(
-                    "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left",
-                    newCardLabelIds.length > 0 ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
-                  )}
-                >
-                  <Tag className="w-3.5 h-3.5 shrink-0" />
-                  {newCardLabelIds.length > 0
-                    ? `${newCardLabelIds.length} tag(s)`
-                    : "Adicionar tags"}
-                </button>
-                {showLabelDropdown && (
-                  <div className="absolute left-0 top-full mt-1 w-full bg-popover border border-border rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
-                    {boardLabels.map((label) => {
-                      const selected = newCardLabelIds.includes(label.id);
-                      return (
-                        <button
-                          key={label.id}
-                          onClick={() => {
-                            setNewCardLabelIds((prev) =>
-                              selected ? prev.filter((id) => id !== label.id) : [...prev, label.id]
-                            );
-                          }}
-                          className={cn(
-                            "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors",
-                            selected ? "bg-primary/10" : "hover:bg-accent"
-                          )}
-                        >
-                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
-                          <span className="truncate text-foreground">{label.name}</span>
-                          {selected && <span className="ml-auto text-primary">✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => { setShowLabelDropdown(!showLabelDropdown); setShowAssigneeDropdown(false); setShowPriorityDropdown(false); }}
+                className={cn(
+                  "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left",
+                  newCardLabelIds.length > 0 ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
                 )}
-              </div>
-            )}
+              >
+                <Tag className="w-3.5 h-3.5 shrink-0" />
+                {newCardLabelIds.length > 0
+                  ? `${newCardLabelIds.length} tag(s)`
+                  : "Adicionar tags"}
+              </button>
+              {showLabelDropdown && (
+                <div className="absolute left-0 top-full mt-1 w-full bg-popover border border-border rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
+                  {boardLabels.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground text-center">
+                      Nenhuma label criada. Use o gerenciador de Labels.
+                    </div>
+                  ) : boardLabels.map((label) => {
+                    const selected = newCardLabelIds.includes(label.id);
+                    return (
+                      <button
+                        key={label.id}
+                        onClick={() => {
+                          setNewCardLabelIds((prev) =>
+                            selected ? prev.filter((id) => id !== label.id) : [...prev, label.id]
+                          );
+                        }}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors",
+                          selected ? "bg-primary/10" : "hover:bg-accent"
+                        )}
+                      >
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+                        <span className="truncate text-foreground">{label.name}</span>
+                        {selected && <span className="ml-auto text-primary">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <button
