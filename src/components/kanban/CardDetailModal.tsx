@@ -318,13 +318,43 @@ export function CardDetailModal({
     }
     if (!orgId) { setLoadingPipes(false); return; }
 
-    const { data } = await supabase
-      .from("bpm_pipes")
-      .select("id, name, color")
-      .eq("org_id", orgId)
-      .eq("is_archived", false)
-      .order("name");
-    setAvailablePipes(data || []);
+    // Get pipes linked to this specific board
+    const { data: linkedPipes } = await supabase
+      .from("bpm_pipe_boards")
+      .select("pipe_id")
+      .eq("board_id", boardId);
+
+    const linkedPipeIds = (linkedPipes || []).map((lp: any) => lp.pipe_id);
+
+    if (linkedPipeIds.length === 0) {
+      // Fallback: if no pipes are linked to any board, show all org pipes
+      const { data: anyLinked } = await supabase
+        .from("bpm_pipe_boards")
+        .select("pipe_id")
+        .limit(1);
+      if (anyLinked && anyLinked.length > 0) {
+        // Some pipes ARE linked to boards, but not this one — show nothing
+        setAvailablePipes([]);
+        setLoadingPipes(false);
+        return;
+      }
+      // No pipe-board links exist at all — show all pipes (legacy mode)
+      const { data } = await supabase
+        .from("bpm_pipes")
+        .select("id, name, color")
+        .eq("org_id", orgId)
+        .eq("is_archived", false)
+        .order("name");
+      setAvailablePipes(data || []);
+    } else {
+      const { data } = await supabase
+        .from("bpm_pipes")
+        .select("id, name, color")
+        .in("id", linkedPipeIds)
+        .eq("is_archived", false)
+        .order("name");
+      setAvailablePipes(data || []);
+    }
     setLoadingPipes(false);
   }
 

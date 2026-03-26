@@ -452,6 +452,67 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
                 </button>
               )}
 
+              {/* Approval */}
+              {card.approval_status === "pending" && (() => {
+                const currentPhase = phases.find((p) => p.id === card.current_phase_id);
+                const isApprover = currentPhase?.approver_id === currentUserId || !currentPhase?.approver_id;
+                return isApprover ? (
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 space-y-2">
+                    <p className="text-xs text-amber-600 font-medium flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Aprovação pendente
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          await supabase.from("bpm_cards").update({
+                            approval_status: "approved",
+                            approved_by: currentUserId,
+                            approved_at: new Date().toISOString(),
+                          }).eq("id", card.id);
+                          await supabase.from("bpm_card_history").insert({
+                            card_id: card.id,
+                            to_phase_id: card.current_phase_id,
+                            moved_by: currentUserId,
+                            action: "approved",
+                          });
+                          onUpdate();
+                          onClose();
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" /> Aprovar
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await supabase.from("bpm_cards").update({
+                            approval_status: "rejected",
+                          }).eq("id", card.id);
+                          await supabase.from("bpm_card_history").insert({
+                            card_id: card.id,
+                            to_phase_id: card.current_phase_id,
+                            moved_by: currentUserId,
+                            action: "rejected",
+                          });
+                          onUpdate();
+                          onClose();
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition-colors cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" /> Rejeitar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                    <p className="text-xs text-amber-600 font-medium flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      Aguardando aprovação de {getMember(currentPhase?.approver_id || null)?.full_name || "aprovador"}
+                    </p>
+                  </div>
+                );
+              })()}
+
               {/* Divider */}
               <div className="border-t border-border my-3" />
 

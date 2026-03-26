@@ -12,11 +12,11 @@ import { FieldConfigurator } from "@/components/bpm/FieldConfigurator";
 import { AutomationBuilder, type Automation } from "@/components/bpm/AutomationBuilder";
 import type { FieldDef } from "@/components/bpm/DynamicField";
 import {
-  ArrowLeft, Loader2, Workflow, Settings2, Layers, FileText, Zap,
+  ArrowLeft, Loader2, Workflow, Settings2, Layers, FileText, Zap, LayoutGrid,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 
-type SettingsTab = "phases" | "fields" | "automations";
+type SettingsTab = "phases" | "fields" | "automations" | "boards";
 
 export default function PipeSettingsPage() {
   return (
@@ -46,6 +46,11 @@ function PipeSettingsContent() {
   // Automations state
   const [automations, setAutomations] = useState<Automation[]>([]);
 
+  // Boards state
+  const [orgBoards, setOrgBoards] = useState<any[]>([]);
+  const [linkedBoardIds, setLinkedBoardIds] = useState<string[]>([]);
+  const [savingBoards, setSavingBoards] = useState(false);
+
   useEffect(() => {
     if (pipeId && activeOrgId) loadData();
   }, [pipeId, activeOrgId]);
@@ -53,7 +58,7 @@ function PipeSettingsContent() {
   async function loadData() {
     setLoading(true);
 
-    const [pipeRes, phasesRes, membersRes, autoRes] = await Promise.all([
+    const [pipeRes, phasesRes, membersRes, autoRes, boardsRes, linkedRes] = await Promise.all([
       supabase.from("bpm_pipes").select("*").eq("id", pipeId).single(),
       supabase
         .from("bpm_phases")
@@ -69,11 +74,15 @@ function PipeSettingsContent() {
         .select("*")
         .eq("pipe_id", pipeId)
         .order("created_at"),
+      supabase.from("boards").select("id, name").eq("org_id", activeOrgId!).eq("is_archived", false).order("name"),
+      supabase.from("bpm_pipe_boards").select("board_id").eq("pipe_id", pipeId),
     ]);
 
     if (pipeRes.data) setPipe(pipeRes.data);
     if (phasesRes.data) setPhases(phasesRes.data);
     if (autoRes.data) setAutomations(autoRes.data);
+    if (boardsRes.data) setOrgBoards(boardsRes.data);
+    if (linkedRes.data) setLinkedBoardIds(linkedRes.data.map((r: any) => r.board_id));
     if (membersRes.data) {
       setMembers(
         membersRes.data.map((m: any) => ({
@@ -172,6 +181,19 @@ function PipeSettingsContent() {
     setAutomations((prev) => prev.map((a) => a.id === id ? { ...a, is_active: active } : a));
   }
 
+  async function handleToggleBoard(boardId: string) {
+    setSavingBoards(true);
+    const isLinked = linkedBoardIds.includes(boardId);
+    if (isLinked) {
+      await supabase.from("bpm_pipe_boards").delete().eq("pipe_id", pipeId).eq("board_id", boardId);
+      setLinkedBoardIds((prev) => prev.filter((id) => id !== boardId));
+    } else {
+      await supabase.from("bpm_pipe_boards").insert({ pipe_id: pipeId, board_id: boardId });
+      setLinkedBoardIds((prev) => [...prev, boardId]);
+    }
+    setSavingBoards(false);
+  }
+
   async function handleSavePhases(updatedPhases: Phase[]) {
     // Update each phase
     for (const phase of updatedPhases) {
@@ -186,6 +208,8 @@ function PipeSettingsContent() {
           is_start: phase.is_start,
           is_end: phase.is_end,
           color: phase.color,
+          requires_approval: phase.requires_approval || false,
+          approver_id: phase.approver_id || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", phase.id);
@@ -234,6 +258,7 @@ function PipeSettingsContent() {
     { key: "phases", label: "Fases", icon: Layers },
     { key: "fields", label: "Campos", icon: FileText },
     { key: "automations", label: "Automações", icon: Zap },
+    { key: "boards", label: "Boards", icon: LayoutGrid },
   ];
 
   return (
@@ -364,6 +389,51 @@ function PipeSettingsContent() {
           onDelete={handleDeleteAutomation}
           onToggle={handleToggleAutomation}
         />
+      )}
+
+      {activeTab === "boards" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Boards vinculados</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Selecione em quais boards este processo pode ser iniciado</p>
+            </div>
+            <span className="text-xs text-muted-foreground">{linkedBoardIds.length} board{linkedBoardIds.length !== 1 ? "s" : ""}</span>
+          </div>
+          {orgBoards.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <LayoutGrid className="w-10 h-10 mb-3 opacity-50" />
+              <p className="text-sm">Nenhum board encontrado na organização</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {orgBoards.map((board) => {
+                const isLinked = linkedBoardIds.includes(board.id);
+                return (
+                  <label
+                    key={board.id}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-colors",
+                      isLinked
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:bg-accent"
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isLinked}
+                      onChange={() => handleToggleBoard(board.id)}
+                      disabled={savingBoards}
+                      className="accent-primary w-4 h-4 cursor-pointer"
+                    />
+                    <LayoutGrid className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm text-foreground font-medium">{board.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

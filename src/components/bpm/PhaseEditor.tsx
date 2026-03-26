@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   Plus, X, GripVertical, Loader2, Trash2, Play, Flag,
-  Clock, User, Pencil, Check, ChevronDown,
+  Clock, User, Pencil, Check, ChevronDown, ShieldCheck,
 } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 import {
@@ -29,6 +29,8 @@ export interface Phase {
   is_start: boolean;
   is_end: boolean;
   color: string;
+  requires_approval?: boolean;
+  approver_id?: string | null;
 }
 
 interface OrgMember {
@@ -58,6 +60,8 @@ export function PhaseEditor({ phases, members, onSave, onAdd, onDelete }: Props)
   const [addSla, setAddSla] = useState("");
   const [addColor, setAddColor] = useState(PHASE_COLORS[0]);
   const [addAssignee, setAddAssignee] = useState("");
+  const [addRequiresApproval, setAddRequiresApproval] = useState(false);
+  const [addApprover, setAddApprover] = useState("");
 
   // Edit form
   const [editName, setEditName] = useState("");
@@ -67,6 +71,8 @@ export function PhaseEditor({ phases, members, onSave, onAdd, onDelete }: Props)
   const [editAssignee, setEditAssignee] = useState("");
   const [editIsStart, setEditIsStart] = useState(false);
   const [editIsEnd, setEditIsEnd] = useState(false);
+  const [editRequiresApproval, setEditRequiresApproval] = useState(false);
+  const [editApprover, setEditApprover] = useState("");
 
   function startEdit(phase: Phase) {
     setEditingId(phase.id);
@@ -77,6 +83,8 @@ export function PhaseEditor({ phases, members, onSave, onAdd, onDelete }: Props)
     setEditAssignee(phase.default_assignee_id || "");
     setEditIsStart(phase.is_start);
     setEditIsEnd(phase.is_end);
+    setEditRequiresApproval(phase.requires_approval || false);
+    setEditApprover(phase.approver_id || "");
   }
 
   async function saveEdit(phase: Phase) {
@@ -92,6 +100,8 @@ export function PhaseEditor({ phases, members, onSave, onAdd, onDelete }: Props)
             default_assignee_id: editAssignee || null,
             is_start: editIsStart,
             is_end: editIsEnd,
+            requires_approval: editRequiresApproval,
+            approver_id: editRequiresApproval ? (editApprover || null) : null,
           }
         : p
     );
@@ -113,11 +123,15 @@ export function PhaseEditor({ phases, members, onSave, onAdd, onDelete }: Props)
       is_start: phases.length === 0,
       is_end: false,
       color: addColor,
+      requires_approval: addRequiresApproval,
+      approver_id: addRequiresApproval ? (addApprover || null) : null,
     });
     setAddName("");
     setAddDesc("");
     setAddSla("");
     setAddAssignee("");
+    setAddRequiresApproval(false);
+    setAddApprover("");
     setAddColor(PHASE_COLORS[(phases.length + 1) % PHASE_COLORS.length]);
     setShowAdd(false);
     setSaving(false);
@@ -273,6 +287,33 @@ export function PhaseEditor({ phases, members, onSave, onAdd, onDelete }: Props)
                               <Flag className="w-3 h-3" /> Fase final
                             </label>
                           </div>
+
+                          {/* Approval */}
+                          <div className="flex items-center gap-4">
+                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={editRequiresApproval}
+                                onChange={(e) => setEditRequiresApproval(e.target.checked)}
+                                className="accent-primary"
+                              />
+                              <ShieldCheck className="w-3 h-3" /> Requer aprovação
+                            </label>
+                            {editRequiresApproval && (
+                              <select
+                                value={editApprover}
+                                onChange={(e) => setEditApprover(e.target.value)}
+                                className="px-2 py-1 bg-background border border-input rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                              >
+                                <option value="">Selecionar aprovador...</option>
+                                {members.map((m) => (
+                                  <option key={m.user_id} value={m.user_id}>
+                                    {m.full_name || m.email}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         /* View mode */
@@ -299,6 +340,11 @@ export function PhaseEditor({ phases, members, onSave, onAdd, onDelete }: Props)
                               {phase.is_end && (
                                 <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/10 text-blue-500 rounded-full font-medium flex items-center gap-0.5">
                                   <Flag className="w-2.5 h-2.5" /> Fim
+                                </span>
+                              )}
+                              {phase.requires_approval && (
+                                <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-500 rounded-full font-medium flex items-center gap-0.5">
+                                  <ShieldCheck className="w-2.5 h-2.5" /> Aprovação
                                 </span>
                               )}
                             </div>
@@ -419,6 +465,33 @@ export function PhaseEditor({ phases, members, onSave, onAdd, onDelete }: Props)
                 />
               ))}
             </div>
+          </div>
+
+          {/* Approval */}
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={addRequiresApproval}
+                onChange={(e) => setAddRequiresApproval(e.target.checked)}
+                className="accent-primary"
+              />
+              <ShieldCheck className="w-3 h-3" /> Requer aprovação
+            </label>
+            {addRequiresApproval && (
+              <select
+                value={addApprover}
+                onChange={(e) => setAddApprover(e.target.value)}
+                className="px-2 py-1 bg-background border border-input rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              >
+                <option value="">Selecionar aprovador...</option>
+                {members.map((m) => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {m.full_name || m.email}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="flex justify-end gap-2">

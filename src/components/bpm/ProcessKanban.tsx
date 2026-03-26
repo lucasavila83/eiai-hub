@@ -28,6 +28,10 @@ export interface BpmCard {
   completed_at: string | null;
   is_archived: boolean;
   created_at: string;
+  approval_status?: string | null;
+  approval_requested_at?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
 }
 
 interface OrgMember {
@@ -401,6 +405,14 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
                             >
                               {/* Priority bar */}
                               <div className={cn("w-full h-1 rounded-full mb-2", PRIORITY_COLORS[card.priority])} />
+
+                              {/* Approval badge */}
+                              {card.approval_status === "pending" && (
+                                <div className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full w-fit mb-1.5 bg-amber-500/10 text-amber-600">
+                                  <Clock className="w-3 h-3" />
+                                  Aguardando aprovação
+                                </div>
+                              )}
 
                               {/* Title */}
                               <p className="text-sm font-medium text-foreground mb-2 line-clamp-2">{card.title}</p>

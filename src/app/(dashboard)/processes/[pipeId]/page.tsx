@@ -111,6 +111,47 @@ function PipeKanbanContent() {
   async function handleMoveCard(cardId: string, fromPhaseId: string, toPhaseId: string): Promise<boolean> {
     setMoveError(null);
 
+    // Check if current phase requires approval
+    const fromPhase = phases.find((p) => p.id === fromPhaseId);
+    if (fromPhase?.requires_approval) {
+      // Check if the card has been approved
+      const card = cards.find((c) => c.id === cardId);
+      if (card?.approval_status !== "approved") {
+        // Request approval
+        if (card?.approval_status !== "pending") {
+          await supabase
+            .from("bpm_cards")
+            .update({
+              approval_status: "pending",
+              approval_requested_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", cardId);
+
+          setCards((prev) =>
+            prev.map((c) =>
+              c.id === cardId ? { ...c, approval_status: "pending", approval_requested_at: new Date().toISOString() } : c
+            )
+          );
+
+          const approverName = fromPhase.approver_id
+            ? members.find((m) => m.user_id === fromPhase.approver_id)?.full_name || "aprovador"
+            : "um aprovador";
+          setMoveError(`Fase "${fromPhase.name}" requer aprovação de ${approverName}. Solicitação enviada.`);
+        } else {
+          setMoveError(`Aguardando aprovação para sair da fase "${fromPhase.name}".`);
+        }
+        setTimeout(() => setMoveError(null), 5000);
+        return false;
+      }
+
+      // Reset approval status after approved move
+      await supabase
+        .from("bpm_cards")
+        .update({ approval_status: null, approved_by: null, approved_at: null, approval_requested_at: null })
+        .eq("id", cardId);
+    }
+
     // Check required fields of current phase
     const { data: currentFields } = await supabase
       .from("bpm_fields")
@@ -309,6 +350,46 @@ function PipeKanbanContent() {
         moved_by: user?.id,
         action: "created",
       });
+
+      // Create board task for start phase assignee
+      if (startPhase.default_assignee_id) {
+        const { data: phaseFields } = await supabase
+          .from("bpm_fields")
+          .select("id, label, field_type, is_required, options, assignee_id")
+          .eq("phase_id", startPhase.id)
+          .order("position");
+
+        const allPhaseFields = phaseFields || [];
+        const defaultAssignee = startPhase.default_assignee_id;
+        const grouped: Record<string, typeof allPhaseFields> = {};
+        for (const f of allPhaseFields) {
+          const key = (f as any).assignee_id || defaultAssignee;
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(f);
+        }
+
+        for (const [assigneeId, groupFields] of Object.entries(grouped)) {
+          const nonChecklistFields = groupFields.filter((f: any) => f.field_type !== "checklist");
+          const checklistFields = groupFields.filter((f: any) => f.field_type === "checklist");
+
+          await createBoardTaskFromBpm(supabase, {
+            bpmCardId: newCard.id,
+            bpmCardTitle: newCard.title,
+            pipeId: pipeId,
+            pipeName: pipe?.name || "Processo",
+            phaseName: startPhase.name,
+            phaseId: startPhase.id,
+            assigneeId: assigneeId,
+            orgId: activeOrgId!,
+            slaDeadline,
+            requiredFields: nonChecklistFields.map((f: any) => ({ label: f.label })),
+            checklistFields: checklistFields.map((f: any) => ({
+              label: f.label,
+              items: (f.options || []).map((o: any) => ({ label: o.label, checked: false })),
+            })),
+          });
+        }
+      }
 
       setCards((prev) => [...prev, newCard]);
       setCreateTitle("");
