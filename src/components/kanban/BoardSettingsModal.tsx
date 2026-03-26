@@ -3,11 +3,11 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
-import { X, Loader2, Users, Settings, UserPlus, Trash2 } from "lucide-react";
+import { X, Loader2, Users, Settings, UserPlus, Trash2, Globe, Lock, UsersRound } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 
 interface Props {
-  board: { id: string; name: string; org_id: string; description?: string };
+  board: { id: string; name: string; org_id: string; description?: string; visibility?: string };
   currentUserId: string;
   onClose: () => void;
   onUpdated?: () => void;
@@ -40,6 +40,7 @@ export function BoardSettingsModal({
 
   const [name, setName] = useState(board.name);
   const [description, setDescription] = useState(board.description || "");
+  const [visibility, setVisibility] = useState(board.visibility || "team");
   const [boardMembers, setBoardMembers] = useState<MemberRow[]>([]);
   const [orgMembers, setOrgMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +88,7 @@ export function BoardSettingsModal({
     setSaveSuccess(false);
     const { error } = await supabase
       .from("boards")
-      .update({ name: name.trim(), description: description.trim() || null } as any)
+      .update({ name: name.trim(), description: description.trim() || null, visibility } as any)
       .eq("id", board.id);
     setSaving(false);
     if (!error) {
@@ -202,6 +203,36 @@ export function BoardSettingsModal({
               rows={3}
               className="w-full px-3 py-2 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
             />
+          </div>
+
+          {/* Visibility */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Visibilidade
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { value: "public", label: "Público", icon: Globe, desc: "Todos da org" },
+                { value: "team", label: "Time", icon: UsersRound, desc: "Membros do time" },
+                { value: "private", label: "Privado", icon: Lock, desc: "Só membros do board" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setVisibility(opt.value)}
+                  className={cn(
+                    "flex flex-col items-center gap-1 px-3 py-2.5 rounded-lg border text-xs font-medium transition-all",
+                    visibility === opt.value
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                  )}
+                >
+                  <opt.icon className="w-4 h-4" />
+                  {opt.label}
+                  <span className="text-[10px] font-normal opacity-70">{opt.desc}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Save board info */}
