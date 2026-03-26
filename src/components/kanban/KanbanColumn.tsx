@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import { Droppable, Draggable } from "@hello-pangea/dnd";
 import { KanbanCard, type VisibleFields } from "./KanbanCard";
-import { Plus, MoreHorizontal, Pencil, Palette, Gauge, Trash2, X } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Palette, Gauge, Trash2, X, Calendar, Users, Flag, Tag, Clock, ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
-import { cn } from "@/lib/utils/helpers";
+import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 import type { Column, Card } from "@/lib/types/database";
 
 const PRESET_COLORS = [
@@ -27,23 +27,40 @@ type CardWithRelations = Card & {
   subtaskCompleted?: number;
 };
 
+const PRIORITIES = [
+  { value: "none", label: "Nenhuma", color: "text-muted-foreground" },
+  { value: "low", label: "Baixa", color: "text-blue-500" },
+  { value: "medium", label: "Média", color: "text-yellow-500" },
+  { value: "high", label: "Alta", color: "text-orange-500" },
+  { value: "urgent", label: "Urgente", color: "text-red-500" },
+];
+
 interface Props {
   column: Column;
   cards: CardWithRelations[];
   currentUserId: string;
   boardId: string;
   visibleFields?: VisibleFields;
+  boardMembers?: any[];
+  boardLabels?: { id: string; name: string; color: string }[];
   onCardClick?: (card: CardWithRelations) => void;
   onColumnUpdated?: (column: Column) => void;
   onColumnDeleted?: (columnId: string) => void;
 }
 
-export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFields, onCardClick, onColumnUpdated, onColumnDeleted }: Props) {
+export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFields, boardMembers = [], boardLabels = [], onCardClick, onColumnUpdated, onColumnDeleted }: Props) {
   const supabase = createClient();
   const { addCard } = useKanbanStore();
   const [addingCard, setAddingCard] = useState(false);
   const [newCardTitle, setNewCardTitle] = useState("");
   const [newCardDueDate, setNewCardDueDate] = useState("");
+  const [newCardDueTime, setNewCardDueTime] = useState("");
+  const [newCardAssigneeIds, setNewCardAssigneeIds] = useState<string[]>([]);
+  const [newCardPriority, setNewCardPriority] = useState("none");
+  const [newCardLabelIds, setNewCardLabelIds] = useState<string[]>([]);
+  const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
+  const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
+  const [showLabelDropdown, setShowLabelDropdown] = useState(false);
 
   // Menu state
   const [menuOpen, setMenuOpen] = useState(false);
@@ -140,27 +157,54 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
   }
 
   async function handleAddCard() {
-    if (!newCardTitle.trim() || !newCardDueDate) return;
+    if (!newCardTitle.trim() || !newCardDueDate || newCardAssigneeIds.length === 0) return;
     const position = cards.length;
+    const dueDateTime = newCardDueTime
+      ? `${newCardDueDate}T${newCardDueTime}`
+      : newCardDueDate;
+
     const { data } = await supabase
       .from("cards")
       .insert({
         column_id: column.id,
         board_id: boardId,
         title: newCardTitle.trim(),
-        due_date: newCardDueDate,
+        due_date: dueDateTime,
         position,
-        priority: "none",
+        priority: newCardPriority,
         created_by: currentUserId,
-      })
+      } as any)
       .select()
       .single();
 
     if (data) {
-      addCard({ ...data, card_assignees: [] });
+      // Assign members
+      if (newCardAssigneeIds.length > 0) {
+        await supabase.from("card_assignees").insert(
+          newCardAssigneeIds.map((uid) => ({ card_id: (data as any).id, user_id: uid })) as any
+        );
+      }
+      // Assign labels
+      if (newCardLabelIds.length > 0) {
+        await supabase.from("card_labels").insert(
+          newCardLabelIds.map((lid) => ({ card_id: (data as any).id, label_id: lid })) as any
+        );
+      }
+      addCard({ ...data, card_assignees: newCardAssigneeIds.map((uid) => ({ user_id: uid })) } as any);
     }
+    resetAddForm();
+  }
+
+  function resetAddForm() {
     setNewCardTitle("");
     setNewCardDueDate("");
+    setNewCardDueTime("");
+    setNewCardAssigneeIds([]);
+    setNewCardPriority("none");
+    setNewCardLabelIds([]);
+    setShowAssigneeDropdown(false);
+    setShowPriorityDropdown(false);
+    setShowLabelDropdown(false);
     setAddingCard(false);
   }
 
@@ -349,42 +393,214 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
       {/* Add Card */}
       <div className="px-2 pb-2">
         {addingCard ? (
-          <div className="bg-card border border-border rounded-lg p-2">
-            <textarea
-              value={newCardTitle}
-              onChange={(e) => setNewCardTitle(e.target.value)}
-              placeholder="Titulo do card..."
-              rows={2}
-              className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddCard(); }
-                if (e.key === "Escape") setAddingCard(false);
-              }}
-            />
-            <input
-              type="date"
-              value={newCardDueDate}
-              onChange={(e) => setNewCardDueDate(e.target.value)}
-              className="w-full mt-1 px-2 py-1 bg-background border border-input rounded text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder="Prazo de entrega"
-              required
-            />
-            {!newCardDueDate && (
-              <p className="text-xs text-destructive mt-0.5">Prazo obrigatório</p>
-            )}
-            <div className="flex gap-2 mt-2">
+          <div className="bg-card border border-primary/30 rounded-lg p-3 shadow-sm space-y-2">
+            {/* Title */}
+            <div className="flex items-center gap-2">
+              <input
+                value={newCardTitle}
+                onChange={(e) => setNewCardTitle(e.target.value)}
+                placeholder="Nome da tarefa..."
+                className="flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddCard(); }
+                  if (e.key === "Escape") resetAddForm();
+                }}
+              />
               <button
                 onClick={handleAddCard}
-                disabled={!newCardTitle.trim() || !newCardDueDate}
-                className="flex-1 bg-primary text-primary-foreground py-1 rounded-md text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+                disabled={!newCardTitle.trim() || !newCardDueDate || newCardAssigneeIds.length === 0}
+                className="bg-primary text-primary-foreground px-3 py-1 rounded-md text-xs font-medium hover:bg-primary/90 disabled:opacity-50 shrink-0 flex items-center gap-1"
               >
-                Adicionar
-              </button>
-              <button onClick={() => setAddingCard(false)} className="px-2 py-1 text-muted-foreground hover:text-foreground text-xs">
-                Cancelar
+                Salvar
               </button>
             </div>
+
+            <div className="text-xs text-muted-foreground">{column.name}</div>
+
+            {/* Assignee */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => { setShowAssigneeDropdown(!showAssigneeDropdown); setShowPriorityDropdown(false); setShowLabelDropdown(false); }}
+                className={cn(
+                  "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left",
+                  newCardAssigneeIds.length > 0 ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
+                )}
+              >
+                <Users className="w-3.5 h-3.5 shrink-0" />
+                {newCardAssigneeIds.length > 0
+                  ? `${newCardAssigneeIds.length} responsável(is)`
+                  : "Adicionar responsável *"}
+              </button>
+              {showAssigneeDropdown && (
+                <div className="absolute left-0 top-full mt-1 w-full bg-popover border border-border rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
+                  {boardMembers.map((m: any) => {
+                    const name = m.profiles?.full_name || m.profiles?.email || "?";
+                    const selected = newCardAssigneeIds.includes(m.user_id);
+                    return (
+                      <button
+                        key={m.user_id}
+                        onClick={() => {
+                          setNewCardAssigneeIds((prev) =>
+                            selected ? prev.filter((id) => id !== m.user_id) : [...prev, m.user_id]
+                          );
+                        }}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors",
+                          selected ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
+                        )}
+                      >
+                        {m.profiles?.avatar_url ? (
+                          <img src={m.profiles.avatar_url} alt={name} className="w-5 h-5 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0" style={{ backgroundColor: generateColor(name) }}>
+                            {getInitials(name)}
+                          </div>
+                        )}
+                        <span className="truncate">{name}</span>
+                        {selected && <span className="ml-auto text-primary">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Date + Time */}
+            <div className="flex gap-1.5">
+              <div className="flex-1 relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const input = document.getElementById(`date-${column.id}`) as HTMLInputElement;
+                    input?.showPicker?.();
+                    input?.focus();
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left",
+                    newCardDueDate ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
+                  )}
+                >
+                  <Calendar className="w-3.5 h-3.5 shrink-0" />
+                  {newCardDueDate
+                    ? new Date(newCardDueDate + "T12:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })
+                    : "Adicionar data *"}
+                </button>
+                <input
+                  id={`date-${column.id}`}
+                  type="date"
+                  value={newCardDueDate}
+                  onChange={(e) => setNewCardDueDate(e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+              </div>
+              {newCardDueDate && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const input = document.getElementById(`time-${column.id}`) as HTMLInputElement;
+                      input?.showPicker?.();
+                      input?.focus();
+                    }}
+                    className={cn(
+                      "flex items-center gap-1 px-2 py-1.5 rounded-md text-xs transition-colors",
+                      newCardDueTime ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
+                    )}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    {newCardDueTime || "Hora"}
+                  </button>
+                  <input
+                    id={`time-${column.id}`}
+                    type="time"
+                    value={newCardDueTime}
+                    onChange={(e) => setNewCardDueTime(e.target.value)}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Priority */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => { setShowPriorityDropdown(!showPriorityDropdown); setShowAssigneeDropdown(false); setShowLabelDropdown(false); }}
+                className={cn(
+                  "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left",
+                  newCardPriority !== "none" ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
+                )}
+              >
+                <Flag className="w-3.5 h-3.5 shrink-0" />
+                {newCardPriority !== "none"
+                  ? PRIORITIES.find((p) => p.value === newCardPriority)?.label
+                  : "Adicionar prioridade"}
+              </button>
+              {showPriorityDropdown && (
+                <div className="absolute left-0 top-full mt-1 w-full bg-popover border border-border rounded-lg shadow-xl z-50">
+                  {PRIORITIES.map((p) => (
+                    <button
+                      key={p.value}
+                      onClick={() => { setNewCardPriority(p.value); setShowPriorityDropdown(false); }}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors hover:bg-accent",
+                        p.color
+                      )}
+                    >
+                      <Flag className="w-3 h-3" />
+                      {p.label}
+                      {newCardPriority === p.value && <span className="ml-auto">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Labels/Tags */}
+            {boardLabels.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => { setShowLabelDropdown(!showLabelDropdown); setShowAssigneeDropdown(false); setShowPriorityDropdown(false); }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left",
+                    newCardLabelIds.length > 0 ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
+                  )}
+                >
+                  <Tag className="w-3.5 h-3.5 shrink-0" />
+                  {newCardLabelIds.length > 0
+                    ? `${newCardLabelIds.length} tag(s)`
+                    : "Adicionar tags"}
+                </button>
+                {showLabelDropdown && (
+                  <div className="absolute left-0 top-full mt-1 w-full bg-popover border border-border rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
+                    {boardLabels.map((label) => {
+                      const selected = newCardLabelIds.includes(label.id);
+                      return (
+                        <button
+                          key={label.id}
+                          onClick={() => {
+                            setNewCardLabelIds((prev) =>
+                              selected ? prev.filter((id) => id !== label.id) : [...prev, label.id]
+                            );
+                          }}
+                          className={cn(
+                            "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors",
+                            selected ? "bg-primary/10" : "hover:bg-accent"
+                          )}
+                        >
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+                          <span className="truncate text-foreground">{label.name}</span>
+                          {selected && <span className="ml-auto text-primary">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <button

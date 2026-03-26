@@ -420,6 +420,8 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
               currentUserId={currentUserId}
               boardId={board.id}
               visibleFields={visibleFields}
+              boardMembers={orgMembers}
+              boardLabels={boardLabels}
               onCardClick={(card) => setSelectedCard(card)}
               onColumnUpdated={handleColumnUpdated}
               onColumnDeleted={handleColumnDeleted}
