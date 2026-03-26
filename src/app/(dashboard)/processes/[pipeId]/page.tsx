@@ -290,6 +290,7 @@ function PipeKanbanContent() {
               ? checklistValues[f.id]
               : (f.options || []).map((o: any) => ({ label: o.label, checked: false })),
           })),
+          fieldIds: groupFields.map((f) => f.id),
         });
       }
     }
@@ -387,6 +388,7 @@ function PipeKanbanContent() {
               label: f.label,
               items: (f.options || []).map((o: any) => ({ label: o.label, checked: false })),
             })),
+            fieldIds: groupFields.map((f: any) => f.id),
           });
         }
       }

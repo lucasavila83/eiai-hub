@@ -293,6 +293,12 @@ export function CardDetailModal({
   const [startingProcess, setStartingProcess] = useState(false);
   const processDropdownRef = useRef<HTMLDivElement>(null);
 
+  // BPM Task fields (when this card IS a BPM task)
+  const [bpmFields, setBpmFields] = useState<FieldDef[]>([]);
+  const [bpmFieldValues, setBpmFieldValues] = useState<Record<string, any>>({});
+  const [loadingBpmFields, setLoadingBpmFields] = useState(false);
+  const [savingBpmField, setSavingBpmField] = useState<string | null>(null);
+
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const activityEndRef = useRef<HTMLDivElement>(null);
@@ -410,6 +416,97 @@ export function CardDetailModal({
     setStartingProcess(false);
   }
 
+  // ─── BPM Task fields (render actual field types) ─────────────────────────
+
+  async function loadBpmTaskFields() {
+    const meta = card.metadata as any;
+    const fieldIds: string[] = meta?.bpm_field_ids || [];
+    const bpmCardId: string = meta?.bpm_card_id;
+    if (!cardIsBpmTask || fieldIds.length === 0 || !bpmCardId) return;
+
+    setLoadingBpmFields(true);
+    // Load field definitions
+    const { data: fields } = await supabase
+      .from("bpm_fields")
+      .select("*")
+      .in("id", fieldIds)
+      .order("position");
+
+    if (fields && fields.length > 0) {
+      setBpmFields(fields.map((f: any) => ({
+        ...f,
+        options: f.options || [],
+        validations: f.validations || {},
+      })));
+
+      // Load current values
+      const { data: values } = await supabase
+        .from("bpm_card_values")
+        .select("field_id, value")
+        .eq("card_id", bpmCardId)
+        .in("field_id", fieldIds);
+
+      const valMap: Record<string, any> = {};
+      for (const v of values || []) valMap[v.field_id] = v.value;
+      setBpmFieldValues(valMap);
+    }
+    setLoadingBpmFields(false);
+  }
+
+  async function handleBpmFieldChange(fieldId: string, value: any) {
+    const meta = card.metadata as any;
+    const bpmCardId = meta?.bpm_card_id;
+    if (!bpmCardId) return;
+
+    // Optimistic update
+    setBpmFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    setSavingBpmField(fieldId);
+
+    // Upsert to bpm_card_values
+    const { data: existing } = await supabase
+      .from("bpm_card_values")
+      .select("id")
+      .eq("card_id", bpmCardId)
+      .eq("field_id", fieldId)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      await supabase
+        .from("bpm_card_values")
+        .update({ value, updated_at: new Date().toISOString() })
+        .eq("id", existing[0].id);
+    } else {
+      await supabase
+        .from("bpm_card_values")
+        .insert({ card_id: bpmCardId, field_id: fieldId, value });
+    }
+
+    // Also mark the corresponding checklist item as completed if field has a value
+    const field = bpmFields.find((f) => f.id === fieldId);
+    if (field) {
+      const hasValue = value !== null && value !== undefined && value !== "" && !(Array.isArray(value) && value.length === 0);
+      // Find checklist item matching this field's label and toggle it
+      for (const cl of checklists) {
+        const item = cl.items.find((i) => i.title === field.label);
+        if (item && item.is_completed !== hasValue) {
+          await supabase
+            .from("checklist_items")
+            .update({ is_completed: hasValue })
+            .eq("id", item.id);
+          setChecklists((prev) =>
+            prev.map((c) =>
+              c.id === cl.id
+                ? { ...c, items: c.items.map((i) => i.id === item.id ? { ...i, is_completed: hasValue } : i) }
+                : c
+            )
+          );
+        }
+      }
+    }
+
+    setSavingBpmField(null);
+  }
+
   // ─── Data loading ────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -418,6 +515,7 @@ export function CardDetailModal({
     loadChecklists();
     loadAttachments();
     loadActivityFeed();
+    if (cardIsBpmTask) loadBpmTaskFields();
   }, []);
 
   // Close ALL dropdowns on click outside
@@ -1784,6 +1882,37 @@ export function CardDetailModal({
                   >
                     {addingSubtask ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* BPM Task Fields — render actual field types */}
+            {cardIsBpmTask && bpmFields.length > 0 && (
+              <div className="space-y-3">
+                <label className="text-xs font-medium text-violet-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Workflow className="w-3.5 h-3.5" />
+                  Campos do Processo
+                  {loadingBpmFields && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
+                </label>
+                <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-3 space-y-3">
+                  {bpmFields.map((field) => (
+                    <div key={field.id} className="relative">
+                      <DynamicField
+                        field={field}
+                        value={bpmFieldValues[field.id]}
+                        onChange={(val) => handleBpmFieldChange(field.id, val)}
+                        members={orgMembers.map((m) => ({ user_id: m.user_id, full_name: m.profiles.full_name, email: m.profiles.email }))}
+                      />
+                      {savingBpmField === field.id && (
+                        <div className="absolute top-0 right-0 mt-1 mr-1">
+                          <Loader2 className="w-3 h-3 animate-spin text-violet-500" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground">
+                    Alterações são sincronizadas automaticamente com o processo BPM.
+                  </p>
                 </div>
               </div>
             )}

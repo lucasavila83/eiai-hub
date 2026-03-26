@@ -56,6 +56,7 @@ export interface BpmBoardTaskParams {
   slaDeadline: string | null;
   requiredFields: { label: string }[];
   checklistFields?: BpmChecklistField[];
+  fieldIds?: string[];
 }
 
 export async function createBoardTaskFromBpm(
@@ -64,7 +65,7 @@ export async function createBoardTaskFromBpm(
 ): Promise<string | null> {
   const {
     bpmCardId, bpmCardTitle, pipeId, pipeName, phaseName, phaseId,
-    assigneeId, orgId, slaDeadline, requiredFields, checklistFields,
+    assigneeId, orgId, slaDeadline, requiredFields, checklistFields, fieldIds,
   } = params;
 
   // Find a board where the assignee is a member (prefer their board)
@@ -134,6 +135,7 @@ export async function createBoardTaskFromBpm(
         bpm_pipe_name: pipeName,
         bpm_phase_name: phaseName,
         is_bpm_task: true,
+        bpm_field_ids: fieldIds || [],
       },
     })
     .select("id")
