@@ -1177,7 +1177,7 @@ function CreateChannelModal({
 // ============================================================
 function CreateDMModal({
   orgId,
-  members,
+  members: initialMembers,
   currentUserId,
   existingDMs,
   onClose,
@@ -1192,9 +1192,21 @@ function CreateDMModal({
 }) {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [freshMembers, setFreshMembers] = useState<any[]>(initialMembers);
   const supabase = createClient();
 
-  const otherMembers = members
+  // Always reload members fresh when modal opens (ensures new members appear instantly)
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("org_members")
+        .select("user_id, role, profiles:user_id(id, full_name, avatar_url, email, status)")
+        .eq("org_id", orgId);
+      if (data) setFreshMembers(data);
+    })();
+  }, [orgId]);
+
+  const otherMembers = freshMembers
     .filter((m: any) => m.user_id !== currentUserId)
     .filter((m: any) => {
       const name = m.profiles?.full_name || m.profiles?.email || "";
@@ -1214,7 +1226,7 @@ function CreateDMModal({
     setLoading(true);
 
     // All DM logic goes through server API (bypasses RLS issues)
-    const targetProfile = members.find((m: any) => m.user_id === targetUserId)?.profiles;
+    const targetProfile = freshMembers.find((m: any) => m.user_id === targetUserId)?.profiles;
     const dmName = targetProfile?.full_name || targetProfile?.email || "DM";
 
     const res = await fetch("/api/chat/create-dm", {
