@@ -16,6 +16,8 @@ export interface ToastItem {
   body: string;
   link?: string;
   timestamp: number;
+  senderAvatar?: string | null;
+  icon?: string; // emoji or icon identifier
 }
 
 interface NotificationState {
