@@ -46,9 +46,10 @@ interface Props {
   onCardClick?: (card: CardWithRelations) => void;
   onColumnUpdated?: (column: Column) => void;
   onColumnDeleted?: (columnId: string) => void;
+  dragHandleProps?: any;
 }
 
-export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFields, boardMembers = [], boardLabels = [], onCardClick, onColumnUpdated, onColumnDeleted }: Props) {
+export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFields, boardMembers = [], boardLabels = [], onCardClick, onColumnUpdated, onColumnDeleted, dragHandleProps }: Props) {
   const supabase = createClient();
   const { addCard } = useKanbanStore();
   const [addingCard, setAddingCard] = useState(false);
@@ -267,8 +268,8 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
 
   return (
     <div className={cn("shrink-0 w-72 flex flex-col rounded-xl bg-muted/50 border max-h-full", isOverLimit ? "border-destructive/50" : "border-border")}>
-      {/* Column Header */}
-      <div className="flex items-center justify-between px-3 py-2.5">
+      {/* Column Header — draggable handle */}
+      <div className="flex items-center justify-between px-3 py-2.5 cursor-grab active:cursor-grabbing" {...dragHandleProps}>
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: column.color }} />
           {activeAction === "rename" ? (

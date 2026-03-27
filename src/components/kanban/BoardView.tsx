@@ -218,10 +218,26 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   }
 
   async function handleDragEnd(result: DropResult) {
-    const { destination, source, draggableId } = result;
+    const { destination, source, draggableId, type } = result;
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
+    // Column reorder
+    if (type === "COLUMN") {
+      const newCols = [...boardColumns];
+      const [moved] = newCols.splice(source.index, 1);
+      newCols.splice(destination.index, 0, moved);
+      // Update positions
+      const reordered = newCols.map((col, idx) => ({ ...col, position: idx }));
+      setColumns(board.id, reordered);
+      // Persist to DB
+      for (const col of reordered) {
+        supabase.from("columns").update({ position: col.position }).eq("id", col.id).then(() => {});
+      }
+      return;
+    }
+
+    // Card move
     moveCard(draggableId, source.droppableId, destination.droppableId, destination.index);
 
     await supabase.from("cards").update({
@@ -469,28 +485,48 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         <DocumentsTab boardId={board.id} currentUserId={currentUserId} />
       ) : (
       <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="flex gap-4 p-6 overflow-x-auto flex-1 min-h-0">
-          {boardColumns.map((column) => (
-            <KanbanColumn
-              key={column.id}
-              column={column}
-              cards={filterCards(cards[column.id] || []).map((c) => ({
-                ...c,
-                labels: cardLabelsMap[c.id] || [],
-                subtaskCount: subtaskCounts[c.id]?.total,
-                subtaskCompleted: subtaskCounts[c.id]?.completed,
-                attachmentCount: attachmentCounts[c.id] || 0,
-              }))}
-              currentUserId={currentUserId}
-              boardId={board.id}
-              visibleFields={visibleFields}
-              boardMembers={orgMembers}
-              boardLabels={boardLabels}
-              onCardClick={(card) => setSelectedCard(card)}
-              onColumnUpdated={handleColumnUpdated}
-              onColumnDeleted={handleColumnDeleted}
-            />
+        <Droppable droppableId="board-columns" direction="horizontal" type="COLUMN">
+          {(provided) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.droppableProps}
+          className="flex gap-4 p-6 overflow-x-auto flex-1 min-h-0"
+        >
+          {boardColumns.map((column, colIndex) => (
+            <Draggable key={column.id} draggableId={`col-${column.id}`} index={colIndex}>
+              {(colProvided, colSnapshot) => (
+                <div
+                  ref={colProvided.innerRef}
+                  {...colProvided.draggableProps}
+                  className={cn(
+                    "shrink-0 transition-shadow",
+                    colSnapshot.isDragging && "shadow-2xl opacity-90"
+                  )}
+                >
+                  <KanbanColumn
+                    column={column}
+                    cards={filterCards(cards[column.id] || []).map((c) => ({
+                      ...c,
+                      labels: cardLabelsMap[c.id] || [],
+                      subtaskCount: subtaskCounts[c.id]?.total,
+                      subtaskCompleted: subtaskCounts[c.id]?.completed,
+                      attachmentCount: attachmentCounts[c.id] || 0,
+                    }))}
+                    currentUserId={currentUserId}
+                    boardId={board.id}
+                    visibleFields={visibleFields}
+                    boardMembers={orgMembers}
+                    boardLabels={boardLabels}
+                    onCardClick={(card) => setSelectedCard(card)}
+                    onColumnUpdated={handleColumnUpdated}
+                    onColumnDeleted={handleColumnDeleted}
+                    dragHandleProps={colProvided.dragHandleProps}
+                  />
+                </div>
+              )}
+            </Draggable>
           ))}
+          {provided.placeholder}
 
           {/* Add Column */}
           <div className="shrink-0 w-72">
@@ -534,6 +570,8 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
             )}
           </div>
         </div>
+          )}
+        </Droppable>
       </DragDropContext>
       )}
 
