@@ -28,6 +28,7 @@ interface Props {
   currentUserId: string;
   defaultTitle?: string;
   defaultAssigneeId?: string; // for DMs — pre-select the other user
+  targetUserId?: string; // DM 1-on-1: show boards where this user is a member
   onClose: () => void;
   onCreated: (card: any, assigneeName?: string, extra?: { boardName?: string; columnName?: string }) => void;
 }
@@ -37,6 +38,7 @@ export function CreateTaskModal({
   currentUserId,
   defaultTitle = "",
   defaultAssigneeId,
+  targetUserId,
   onClose,
   onCreated,
 }: Props) {
@@ -70,22 +72,25 @@ export function CreateTaskModal({
   }, [selectedBoardId]);
 
   async function loadData() {
+    // In DM 1-on-1: show boards where the TARGET user is a member
+    // Otherwise: show boards where the CURRENT user is a member
+    const lookupUserId = targetUserId || currentUserId;
+
     const [boardsRes, memberBoardsRes] = await Promise.all([
       supabase
         .from("boards")
         .select("id, name")
         .eq("org_id", orgId)
         .eq("is_archived", false)
-        .order("created_at"),
+        .order("name"),
       supabase
         .from("board_members")
         .select("board_id")
-        .eq("user_id", currentUserId),
+        .eq("user_id", lookupUserId),
     ]);
 
     if (boardsRes.data) {
-      // Filter boards: only show boards where user is a member
-      // If no board_members exist yet, show all boards (backwards compat)
+      // Filter boards: only show boards where the target/current user is a member
       const memberBoardIds = new Set(
         (memberBoardsRes.data || []).map((bm: any) => bm.board_id)
       );

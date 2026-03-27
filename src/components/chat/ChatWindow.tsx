@@ -506,22 +506,30 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
 
   // Create task from chat command
   async function createTaskFromChat(title: string, boardId?: string) {
-    // Find first board in the org
-    const { data: membership } = await supabase
-      .from("org_members")
-      .select("org_id")
-      .eq("user_id", currentUserId)
-      .limit(1)
-      .single();
-
-    if (!membership) return;
+    // In DM 1-on-1: find boards where the OTHER user is a member
+    const isDm = channel.type === "dm";
+    const targetUser = isDm ? otherUserId : currentUserId;
 
     let targetBoardId = boardId;
+    if (!targetBoardId && targetUser) {
+      // Get boards where target user is a member
+      const { data: memberBoards } = await supabase
+        .from("board_members")
+        .select("board_id, boards:board_id(id, name, is_archived, org_id)")
+        .eq("user_id", targetUser);
+
+      const validBoard = memberBoards?.find(
+        (mb: any) => mb.boards && !mb.boards.is_archived && mb.boards.org_id === channel.org_id
+      );
+      targetBoardId = (validBoard as any)?.boards?.id;
+    }
+
     if (!targetBoardId) {
+      // Fallback: any board in the org
       const { data: boards } = await supabase
         .from("boards")
         .select("id")
-        .eq("org_id", membership.org_id)
+        .eq("org_id", channel.org_id)
         .eq("is_archived", false)
         .limit(1);
       targetBoardId = boards?.[0]?.id;
@@ -582,9 +590,13 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   // Get other user ID for DMs (for task assignment default)
   const otherUserId = useMemo(() => {
     if (channel.type !== "dm") return undefined;
+    // Try from members first (more reliable)
+    const otherMember = members?.find((m: any) => m.user_id !== currentUserId);
+    if (otherMember) return otherMember.user_id;
+    // Fallback: from messages
     const otherMsg = channelMessages.find((m: any) => m.user_id !== currentUserId);
     return otherMsg?.profiles?.id;
-  }, [channel, channelMessages, currentUserId]);
+  }, [channel, members, channelMessages, currentUserId]);
 
   // Selection mode
   function toggleSelect(msgId: string) {
@@ -999,6 +1011,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
           currentUserId={currentUserId}
           defaultTitle={taskDefaultTitle}
           defaultAssigneeId={taskDefaultAssigneeId}
+          targetUserId={channel.type === "dm" ? otherUserId : undefined}
           onClose={() => setShowTaskModal(false)}
           onCreated={handleTaskCreated}
         />
