@@ -37,6 +37,7 @@ function PipeKanbanContent() {
   const [pipe, setPipe] = useState<any>(null);
   const [phases, setPhases] = useState<Phase[]>([]);
   const [cards, setCards] = useState<BpmCard[]>([]);
+  const [bpmCardProgress, setBpmCardProgress] = useState<Record<string, number>>({});
   const [members, setMembers] = useState<any[]>([]);
   const [allFields, setAllFields] = useState<any[]>([]);
   const [cardValues, setCardValues] = useState<Record<string, Record<string, any>>>({});
@@ -99,6 +100,58 @@ function PipeKanbanContent() {
         valMap[v.card_id][v.field_id] = v.value;
       });
       setCardValues(valMap);
+    }
+
+    // Load board task progress for each BPM card
+    if (cardIds.length > 0) {
+      const { data: taskLinks } = await supabase
+        .from("bpm_task_links")
+        .select("bpm_card_id, board_card_id, is_active")
+        .in("bpm_card_id", cardIds);
+
+      if (taskLinks && taskLinks.length > 0) {
+        const boardCardIds = taskLinks.map((tl: any) => tl.board_card_id);
+
+        // Get subtask counts and metadata for board cards
+        const [subtasksRes, checklistsRes, boardCardsRes] = await Promise.all([
+          supabase.from("subtasks").select("card_id, is_completed").in("card_id", boardCardIds),
+          supabase.from("checklists").select("id, card_id, checklist_items(id, is_completed)").in("card_id", boardCardIds),
+          supabase.from("cards").select("id, metadata, completed_at").in("id", boardCardIds),
+        ]);
+
+        // Calculate progress per board card
+        const boardCardProgress: Record<string, number> = {};
+        for (const bcId of boardCardIds) {
+          const manualProg = (boardCardsRes.data || []).find((c: any) => c.id === bcId);
+          const mp = typeof manualProg?.metadata?.manual_progress === "number" ? manualProg.metadata.manual_progress : null;
+
+          const subs = (subtasksRes.data || []).filter((s: any) => s.card_id === bcId);
+          const clItems = (checklistsRes.data || [])
+            .filter((cl: any) => cl.card_id === bcId)
+            .flatMap((cl: any) => cl.checklist_items || []);
+
+          const totalItems = subs.length + clItems.length;
+          const completedItems = subs.filter((s: any) => s.is_completed).length + clItems.filter((i: any) => i.is_completed).length;
+          const autoProgress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+
+          // If completed_at is set, treat as 100%
+          if (manualProg?.completed_at) {
+            boardCardProgress[bcId] = 100;
+          } else {
+            boardCardProgress[bcId] = mp !== null ? mp : autoProgress;
+          }
+        }
+
+        // Aggregate: BPM card progress = average of its board card progresses
+        const progressMap: Record<string, number> = {};
+        for (const cardId of cardIds) {
+          const links = taskLinks.filter((tl: any) => tl.bpm_card_id === cardId);
+          if (links.length === 0) continue;
+          const progresses = links.map((tl: any) => boardCardProgress[tl.board_card_id] ?? 0);
+          progressMap[cardId] = Math.round(progresses.reduce((a: number, b: number) => a + b, 0) / progresses.length);
+        }
+        setBpmCardProgress(progressMap);
+      }
     }
 
     setLoading(false);
@@ -499,6 +552,7 @@ function PipeKanbanContent() {
             members={members}
             fields={allFields}
             cardValues={cardValues}
+            cardProgress={bpmCardProgress}
             previewFieldIds={(pipe?.card_preview_fields as string[]) || []}
             onMoveCard={handleMoveCard}
             onCardClick={(card) => setSelectedCard(card)}

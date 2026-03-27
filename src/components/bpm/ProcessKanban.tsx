@@ -58,6 +58,7 @@ interface Props {
   members: OrgMember[];
   fields?: BpmField[];
   cardValues?: Record<string, Record<string, any>>;
+  cardProgress?: Record<string, number>; // BPM card ID → % from linked board tasks
   previewFieldIds?: string[];
   onMoveCard: (cardId: string, fromPhaseId: string, toPhaseId: string) => Promise<boolean>;
   onCardClick: (card: BpmCard) => void;
@@ -133,60 +134,7 @@ function formatFieldValue(value: any, fieldType: string): string {
   return String(value);
 }
 
-function calcCardProgress(cardId: string, cardVals: Record<string, Record<string, any>>, allFields: BpmField[]): { progress: number; hasItems: boolean } {
-  const values = cardVals[cardId];
-  if (!values) return { progress: 0, hasItems: false };
-  const checklistFields = allFields.filter((f) => f.field_type === "checklist");
-  let total = 0;
-  let checked = 0;
-  for (const f of checklistFields) {
-    const val = values[f.field_key];
-    if (Array.isArray(val)) {
-      total += val.length;
-      checked += val.filter((i: any) => i.checked).length;
-    }
-  }
-  if (total > 0) {
-    return { progress: Math.round((checked / total) * 100), hasItems: true };
-  }
-  // Also count required fields completion as progress
-  const requiredFields = allFields.filter((f) => f.is_required);
-  if (requiredFields.length === 0) return { progress: 0, hasItems: false };
-  let filled = 0;
-  for (const f of requiredFields) {
-    const val = values[f.field_key];
-    if (val !== null && val !== undefined && val !== "") filled++;
-  }
-  return { progress: Math.round((filled / requiredFields.length) * 100), hasItems: true };
-}
-
-function calcPhaseProgress(phase: Phase, allPhases: Phase[], allCards: BpmCard[]): number {
-  // For end phase: % of completed cards
-  if (phase.is_end) {
-    const cardsHere = allCards.filter((c) => c.current_phase_id === phase.id);
-    if (cardsHere.length === 0) return 0;
-    const completed = cardsHere.filter((c) => c.completed_at).length;
-    return cardsHere.length > 0 ? Math.round((completed / cardsHere.length) * 100) : 0;
-  }
-
-  // For other phases: cards that moved past this phase / total that reached this phase
-  const phasePos = phase.position;
-  const laterPhases = allPhases.filter((p) => p.position > phasePos);
-  const laterPhaseIds = new Set(laterPhases.map((p) => p.id));
-
-  const cardsInPhase = allCards.filter((c) => c.current_phase_id === phase.id && !c.is_archived);
-  const cardsMovedPast = allCards.filter((c) => {
-    if (c.is_archived) return false;
-    const currentPhase = allPhases.find((p) => p.id === c.current_phase_id);
-    return currentPhase && currentPhase.position > phasePos;
-  });
-
-  const total = cardsInPhase.length + cardsMovedPast.length;
-  if (total === 0) return 0;
-  return Math.round((cardsMovedPast.length / total) * 100);
-}
-
-export function ProcessKanban({ phases, cards, members, fields = [], cardValues = {}, previewFieldIds = [], onMoveCard, onCardClick, onCreateCard, canEdit }: Props) {
+export function ProcessKanban({ phases, cards, members, fields = [], cardValues = {}, cardProgress = {}, previewFieldIds = [], onMoveCard, onCardClick, onCreateCard, canEdit }: Props) {
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [filterAssignee, setFilterAssignee] = useState<string>("all");
@@ -391,37 +339,12 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
           return (
             <div key={phase.id} className="flex-shrink-0 w-72 flex flex-col max-h-full">
               {/* Column header */}
-              <div className="mb-2 px-1">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: phase.color }} />
-                  <h3 className="text-sm font-semibold text-foreground truncate flex-1">{phase.name}</h3>
-                  <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
-                    {phaseCards.length}
-                  </span>
-                </div>
-                {/* Phase progress bar */}
-                {(() => {
-                  const progress = calcPhaseProgress(phase, phases, cards);
-                  return progress > 0 ? (
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={cn(
-                            "h-full rounded-full transition-all duration-500",
-                            progress === 100 ? "bg-green-500" : progress >= 50 ? "bg-primary" : "bg-orange-400"
-                          )}
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                      <span className={cn(
-                        "text-[10px] font-semibold tabular-nums",
-                        progress === 100 ? "text-green-600" : "text-muted-foreground"
-                      )}>
-                        {progress}%
-                      </span>
-                    </div>
-                  ) : null;
-                })()}
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: phase.color }} />
+                <h3 className="text-sm font-semibold text-foreground truncate flex-1">{phase.name}</h3>
+                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                  {phaseCards.length}
+                </span>
               </div>
 
               {/* Per-column date filter */}
@@ -495,29 +418,27 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
                               {/* Title */}
                               <p className="text-sm font-medium text-foreground mb-2 line-clamp-2">{card.title}</p>
 
-                              {/* Card progress bar */}
-                              {(() => {
-                                const { progress: cp, hasItems } = calcCardProgress(card.id, cardValues, fields);
-                                return hasItems ? (
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                                      <div
-                                        className={cn(
-                                          "h-full rounded-full transition-all duration-300",
-                                          cp === 100 ? "bg-green-500" : cp >= 50 ? "bg-primary" : "bg-orange-400"
-                                        )}
-                                        style={{ width: `${cp}%` }}
-                                      />
-                                    </div>
-                                    <span className={cn(
-                                      "text-[10px] font-semibold tabular-nums",
-                                      cp === 100 ? "text-green-600" : "text-muted-foreground"
-                                    )}>
-                                      {cp}%
-                                    </span>
+                              {/* Card progress bar (from linked board tasks) */}
+                              {cardProgress[card.id] !== undefined && (
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                                    <div
+                                      className={cn(
+                                        "h-full rounded-full transition-all duration-300",
+                                        cardProgress[card.id] === 100 ? "bg-green-500"
+                                          : cardProgress[card.id] >= 50 ? "bg-primary" : "bg-orange-400"
+                                      )}
+                                      style={{ width: `${cardProgress[card.id]}%` }}
+                                    />
                                   </div>
-                                ) : null;
-                              })()}
+                                  <span className={cn(
+                                    "text-[10px] font-semibold tabular-nums min-w-[28px] text-right",
+                                    cardProgress[card.id] === 100 ? "text-green-600" : "text-muted-foreground"
+                                  )}>
+                                    {cardProgress[card.id]}%
+                                  </span>
+                                </div>
+                              )}
 
                               {/* Dynamic field preview (Pipefy-style) */}
                               {previewFields.length > 0 && (
