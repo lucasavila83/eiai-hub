@@ -83,6 +83,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   const [focusTrigger, setFocusTrigger] = useState(0);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [channelMembers, setChannelMembers] = useState<any[]>([]);
   // Read receipts: track other members' last_read_at
   const [othersLastRead, setOthersLastRead] = useState<string | null>(null);
 
@@ -142,19 +143,22 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
 
     markAsRead(channel.id);
 
-    // Fetch other members' last_read_at for read receipts
+    // Fetch channel members (for DM other-user detection + read receipts)
     supabase
       .from("channel_members")
-      .select("last_read_at")
+      .select("user_id, last_read_at")
       .eq("channel_id", channel.id)
-      .neq("user_id", currentUserId)
       .then(({ data }) => {
-        if (data && data.length > 0) {
-          // Use the most recent last_read_at among other members
-          const maxRead = data.reduce((max: string, m: any) => {
-            return m.last_read_at > max ? m.last_read_at : max;
-          }, data[0].last_read_at);
-          setOthersLastRead(maxRead);
+        if (data) {
+          setChannelMembers(data);
+          // Read receipts: use the most recent last_read_at among OTHER members
+          const others = data.filter((m: any) => m.user_id !== currentUserId);
+          if (others.length > 0) {
+            const maxRead = others.reduce((max: string, m: any) => {
+              return m.last_read_at > max ? m.last_read_at : max;
+            }, others[0].last_read_at);
+            setOthersLastRead(maxRead);
+          }
         }
       });
   }, [channel.id]);
@@ -590,13 +594,13 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   // Get other user ID for DMs (for task assignment default)
   const otherUserId = useMemo(() => {
     if (channel.type !== "dm") return undefined;
-    // Try from members first (more reliable)
-    const otherMember = members?.find((m: any) => m.user_id !== currentUserId);
+    // Try from channel members first (more reliable)
+    const otherMember = channelMembers?.find((m: any) => m.user_id !== currentUserId);
     if (otherMember) return otherMember.user_id;
     // Fallback: from messages
     const otherMsg = channelMessages.find((m: any) => m.user_id !== currentUserId);
     return otherMsg?.profiles?.id;
-  }, [channel, members, channelMessages, currentUserId]);
+  }, [channel, channelMembers, channelMessages, currentUserId]);
 
   // Selection mode
   function toggleSelect(msgId: string) {
