@@ -20,9 +20,10 @@ interface Props {
   channelId?: string;
   orgId?: string;
   currentUserId?: string;
+  focusTrigger?: number;
 }
 
-export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelId, orgId, currentUserId }: Props) {
+export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelId, orgId, currentUserId, focusTrigger }: Props) {
   const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
   const [showTaskInput, setShowTaskInput] = useState(false);
@@ -41,12 +42,12 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
   const taskInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
 
-  // Auto-focus textarea when switching channels
+  // Auto-focus textarea when switching channels or when reply is triggered
   useEffect(() => {
     // Small delay to ensure DOM is ready after navigation
     const timer = setTimeout(() => textareaRef.current?.focus(), 100);
     return () => clearTimeout(timer);
-  }, [channelId]);
+  }, [channelId, focusTrigger]);
 
   // Load org members for @mentions
   useEffect(() => {

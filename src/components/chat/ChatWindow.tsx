@@ -78,6 +78,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   const [emailContent, setEmailContent] = useState("");
   const [emailSender, setEmailSender] = useState("");
   const [replyTo, setReplyTo] = useState<(Message & { profiles: any }) | null>(null);
+  const [focusTrigger, setFocusTrigger] = useState(0);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // Read receipts: track other members' last_read_at
@@ -788,7 +789,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
                         onCreateTask={handleContextCreateTask}
                         onEmail={handleContextEmail}
                         onForward={handleContextForward}
-                        onReply={(m) => setReplyTo(m)}
+                        onReply={(m) => { setReplyTo(m); setFocusTrigger(t => t + 1); }}
                       />
                     </div>
                   </div>
@@ -852,6 +853,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
             channelId={channel.id}
             orgId={channel.org_id}
             currentUserId={currentUserId}
+            focusTrigger={focusTrigger}
           />
           </>
           )}
