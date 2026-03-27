@@ -304,6 +304,10 @@ export function CardDetailModal({
   const [loadingBpmFields, setLoadingBpmFields] = useState(false);
   const [savingBpmField, setSavingBpmField] = useState<string | null>(null);
 
+  // Progress acknowledgment gate
+  const [progressAcknowledged, setProgressAcknowledged] = useState(false);
+  const [showProgressWarning, setShowProgressWarning] = useState(false);
+
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const activityEndRef = useRef<HTMLDivElement>(null);
@@ -1228,12 +1232,12 @@ export function CardDetailModal({
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && !editingTitle && !editingDescription) {
-        onClose();
+        handleClose();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editingTitle, editingDescription, onClose]);
+  }, [editingTitle, editingDescription, progressAcknowledged]);
 
   // ─── Computed values ────────────────────────────────────────────────────
 
@@ -1244,6 +1248,28 @@ export function CardDetailModal({
 
   const completedSubtasks = subtasks.filter((s) => s.is_completed).length;
   const subtaskProgress = subtasks.length > 0 ? Math.round((completedSubtasks / subtasks.length) * 100) : 0;
+
+  // Total progress across subtasks + checklists
+  const allChecklistItems = checklists.flatMap((cl) => cl.items);
+  const totalItems = subtasks.length + allChecklistItems.length;
+  const completedItems = completedSubtasks + allChecklistItems.filter((i) => i.is_completed).length;
+  const totalProgress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+
+  // Gate close: require progress acknowledgment
+  function handleClose() {
+    if (progressAcknowledged) {
+      onClose();
+    } else {
+      setShowProgressWarning(true);
+      // Auto-hide warning after 3 seconds
+      setTimeout(() => setShowProgressWarning(false), 3000);
+    }
+  }
+
+  function acknowledgeProgress() {
+    setProgressAcknowledged(true);
+    setShowProgressWarning(false);
+  }
 
   const descriptionIsLong = description.length > 300;
 
@@ -1282,7 +1308,7 @@ export function CardDetailModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
 
       <div className="relative bg-card border border-border rounded-2xl w-full max-w-5xl max-h-[92vh] shadow-2xl flex flex-col overflow-hidden">
         {/* Cover color bar */}
@@ -1310,12 +1336,60 @@ export function CardDetailModal({
           <div className="flex items-center gap-2">
             {saving && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
+        </div>
+
+        {/* Progress acknowledgment bar */}
+        <div className="px-6 pt-3 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <div
+                className={cn(
+                  "relative h-2.5 rounded-full overflow-hidden cursor-pointer transition-all",
+                  progressAcknowledged ? "bg-muted" : "bg-muted ring-2 ring-primary/40 ring-offset-1 ring-offset-card animate-pulse"
+                )}
+                onClick={acknowledgeProgress}
+                title="Clique para confirmar o progresso"
+              >
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all duration-300",
+                    totalProgress === 100 ? "bg-green-500" : totalProgress >= 50 ? "bg-primary" : "bg-orange-400"
+                  )}
+                  style={{ width: `${totalProgress}%` }}
+                />
+              </div>
+            </div>
+            <button
+              onClick={acknowledgeProgress}
+              className={cn(
+                "text-xs font-bold tabular-nums px-2 py-1 rounded-md transition-all min-w-[48px] text-center",
+                progressAcknowledged
+                  ? totalProgress === 100 ? "text-green-600 bg-green-50" : "text-muted-foreground bg-muted"
+                  : "text-primary bg-primary/10 hover:bg-primary/20 ring-1 ring-primary/30 cursor-pointer"
+              )}
+            >
+              {totalProgress}%
+            </button>
+            {progressAcknowledged && (
+              <span className="text-[10px] text-green-500 font-medium">✓</span>
+            )}
+          </div>
+
+          {/* Warning toast */}
+          {showProgressWarning && (
+            <div className="mt-2 flex items-center gap-2 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 rounded-lg px-3 py-2 animate-in slide-in-from-top-2">
+              <span className="text-orange-500 text-sm">⚠️</span>
+              <p className="text-xs text-orange-700 dark:text-orange-300 font-medium">
+                Confirme o progresso clicando na barra ou no percentual antes de fechar.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Two-column layout */}
