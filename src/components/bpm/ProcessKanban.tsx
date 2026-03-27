@@ -133,9 +133,9 @@ function formatFieldValue(value: any, fieldType: string): string {
   return String(value);
 }
 
-function calcCardProgress(cardId: string, cardVals: Record<string, Record<string, any>>, allFields: BpmField[]): number {
+function calcCardProgress(cardId: string, cardVals: Record<string, Record<string, any>>, allFields: BpmField[]): { progress: number; hasItems: boolean } {
   const values = cardVals[cardId];
-  if (!values) return 0;
+  if (!values) return { progress: 0, hasItems: false };
   const checklistFields = allFields.filter((f) => f.field_type === "checklist");
   let total = 0;
   let checked = 0;
@@ -146,18 +146,18 @@ function calcCardProgress(cardId: string, cardVals: Record<string, Record<string
       checked += val.filter((i: any) => i.checked).length;
     }
   }
-  // Also count required fields completion as progress
-  if (total === 0) {
-    const requiredFields = allFields.filter((f) => f.is_required);
-    if (requiredFields.length === 0) return 0;
-    let filled = 0;
-    for (const f of requiredFields) {
-      const val = values[f.field_key];
-      if (val !== null && val !== undefined && val !== "") filled++;
-    }
-    return Math.round((filled / requiredFields.length) * 100);
+  if (total > 0) {
+    return { progress: Math.round((checked / total) * 100), hasItems: true };
   }
-  return Math.round((checked / total) * 100);
+  // Also count required fields completion as progress
+  const requiredFields = allFields.filter((f) => f.is_required);
+  if (requiredFields.length === 0) return { progress: 0, hasItems: false };
+  let filled = 0;
+  for (const f of requiredFields) {
+    const val = values[f.field_key];
+    if (val !== null && val !== undefined && val !== "") filled++;
+  }
+  return { progress: Math.round((filled / requiredFields.length) * 100), hasItems: true };
 }
 
 function calcPhaseProgress(phase: Phase, allPhases: Phase[], allCards: BpmCard[]): number {
@@ -497,8 +497,8 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
 
                               {/* Card progress bar */}
                               {(() => {
-                                const cp = calcCardProgress(card.id, cardValues, fields);
-                                return cp > 0 ? (
+                                const { progress: cp, hasItems } = calcCardProgress(card.id, cardValues, fields);
+                                return hasItems ? (
                                   <div className="flex items-center gap-2 mb-2">
                                     <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                                       <div
