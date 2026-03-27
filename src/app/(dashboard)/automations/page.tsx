@@ -21,6 +21,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn, formatDateTime } from "@/lib/utils/helpers";
+import { TemplateManager } from "@/components/automations/TemplateManager";
+import { TemplateSelector } from "@/components/automations/TemplateSelector";
 
 const TRIGGER_OPTIONS = [
   { value: "card_moved_to_column", label: "Tarefa movida para coluna", icon: "→" },
@@ -93,6 +95,7 @@ export default function AutomationsPage() {
   const supabase = createClient();
   const { activeOrgId } = useUIStore();
 
+  const [activeTab, setActiveTab] = useState<"automations" | "templates">("automations");
   const [automations, setAutomations] = useState<AutomationRow[]>([]);
   const [boards, setBoards] = useState<BoardOption[]>([]);
   const [columns, setColumns] = useState<ColumnOption[]>([]);
@@ -113,6 +116,7 @@ export default function AutomationsPage() {
   const [formActionMemberId, setFormActionMemberId] = useState("");
   const [formActionColumnId, setFormActionColumnId] = useState("");
   const [formActionMessage, setFormActionMessage] = useState("");
+  const [formTemplateId, setFormTemplateId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -183,6 +187,7 @@ export default function AutomationsPage() {
     setFormActionMemberId("");
     setFormActionColumnId("");
     setFormActionMessage("");
+    setFormTemplateId(null);
     setError(null);
     setShowModal(true);
   }
@@ -199,6 +204,7 @@ export default function AutomationsPage() {
     setFormActionMemberId(auto.action_config?.user_id || "");
     setFormActionColumnId(auto.action_config?.column_id || "");
     setFormActionMessage(auto.action_config?.message || "");
+    setFormTemplateId((auto as any).template_id || null);
     setError(null);
     setShowModal(true);
   }
@@ -235,6 +241,7 @@ export default function AutomationsPage() {
             trigger_config: triggerConfig,
             action_type: formAction,
             action_config: actionConfig,
+            template_id: formTemplateId,
             updated_at: new Date().toISOString(),
           })
           .eq("id", editingId);
@@ -249,6 +256,7 @@ export default function AutomationsPage() {
           trigger_config: triggerConfig,
           action_type: formAction,
           action_config: actionConfig,
+          template_id: formTemplateId,
           created_by: currentUserId,
           last_run_at: null,
         });
@@ -339,16 +347,51 @@ export default function AutomationsPage() {
             Automatize ações quando eventos acontecem nos seus boards
           </p>
         </div>
+        {activeTab === "automations" && (
+          <button
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nova Automacao
+          </button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-muted rounded-lg p-1 mb-6">
         <button
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+          onClick={() => setActiveTab("automations")}
+          className={cn(
+            "flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+            activeTab === "automations"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
         >
-          <Plus className="w-4 h-4" />
-          Nova Automação
+          Automacoes
+        </button>
+        <button
+          onClick={() => setActiveTab("templates")}
+          className={cn(
+            "flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+            activeTab === "templates"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Templates
         </button>
       </div>
 
+      {/* Templates Tab */}
+      {activeTab === "templates" && currentUserId && activeOrgId && (
+        <TemplateManager orgId={activeOrgId} currentUserId={currentUserId} />
+      )}
+
       {/* Automations List */}
+      {activeTab === "automations" && (
+      <>
       {automations.length === 0 ? (
         <div className="text-center py-16">
           <Zap className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
@@ -474,6 +517,8 @@ export default function AutomationsPage() {
             </div>
           ))}
         </div>
+      )}
+      </>
       )}
 
       {/* Create/Edit Modal */}
@@ -675,17 +720,29 @@ export default function AutomationsPage() {
                 )}
 
                 {formAction === "send_notification" && (
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">
-                      Mensagem da notificação
-                    </label>
-                    <input
-                      type="text"
-                      value={formActionMessage}
-                      onChange={(e) => setFormActionMessage(e.target.value)}
-                      placeholder="Ex: Tarefa precisa de atenção!"
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    />
+                  <div className="space-y-3">
+                    {activeOrgId && (
+                      <TemplateSelector
+                        orgId={activeOrgId}
+                        selectedTemplateId={formTemplateId}
+                        onSelect={setFormTemplateId}
+                        filterTypes={["chat", "email"]}
+                      />
+                    )}
+                    {!formTemplateId && (
+                      <div>
+                        <label className="block text-xs text-muted-foreground mb-1">
+                          Mensagem inline (sem template)
+                        </label>
+                        <input
+                          type="text"
+                          value={formActionMessage}
+                          onChange={(e) => setFormActionMessage(e.target.value)}
+                          placeholder="Ex: Tarefa precisa de atencao!"
+                          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

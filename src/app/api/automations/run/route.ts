@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveTemplate } from "@/lib/utils/template-resolver";
 
 /**
  * POST /api/automations/run
@@ -95,27 +96,55 @@ export async function POST(req: NextRequest) {
             // Get card info for notification
             const { data: card } = await supabase
               .from("cards")
-              .select("title, board_id, boards!inner(org_id)")
+              .select("title, board_id, due_date, priority, boards!inner(org_id, name)")
               .eq("id", card_id)
               .single();
 
             if (card) {
               const orgId = (card as any).boards?.org_id;
-              const message = auto.action_config?.message || "Automação executada";
-              // Get card assignees to notify
+              const boardName = (card as any).boards?.name || "";
+
+              // Get card assignees to notify + resolve names
               const { data: assignees } = await supabase
                 .from("card_assignees")
-                .select("user_id")
+                .select("user_id, profiles:user_id(full_name)")
                 .eq("card_id", card_id);
 
+              const assigneeNames = assignees?.map((a: any) => a.profiles?.full_name).filter(Boolean).join(", ") || "";
               const userIds = assignees?.map((a) => a.user_id) || [user.id];
+
+              // Resolve message: use template if linked, else inline message
+              let title = auto.action_config?.message || "Automacao executada";
+              let body = `Tarefa: ${card.title}`;
+
+              if (auto.template_id) {
+                const { data: tpl } = await supabase
+                  .from("message_templates")
+                  .select("subject, body")
+                  .eq("id", auto.template_id)
+                  .single();
+
+                if (tpl) {
+                  const vars: Record<string, string> = {
+                    card_title: card.title,
+                    card_assignee: assigneeNames,
+                    board_name: boardName,
+                    due_date: card.due_date ? new Date(card.due_date).toLocaleDateString("pt-BR") : "",
+                    progress: String(data?.progress ?? ""),
+                    org_name: "",
+                  };
+                  title = tpl.subject ? resolveTemplate(tpl.subject, vars) : title;
+                  body = resolveTemplate(tpl.body, vars);
+                }
+              }
+
               for (const uid of userIds) {
                 await supabase.from("notifications").insert({
                   org_id: orgId,
                   user_id: uid,
                   type: "automation",
-                  title: message,
-                  body: `Tarefa: ${card.title}`,
+                  title,
+                  body,
                   link: `/boards/${card.board_id}`,
                   is_read: false,
                   metadata: { automation_id: auto.id },
