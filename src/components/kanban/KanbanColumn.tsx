@@ -551,6 +551,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
                           setNewCardAssigneeIds((prev) =>
                             selected ? prev.filter((id) => id !== m.user_id) : [...prev, m.user_id]
                           );
+                          setShowAssigneeDropdown(false);
                         }}
                         className={cn(
                           "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors",
