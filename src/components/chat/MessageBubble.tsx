@@ -6,7 +6,7 @@ import { formatDateTime, getInitials, generateColor } from "@/lib/utils/helpers"
 import {
   Bot, ListTodo, Mail, Forward, ChevronDown, ChevronUp,
   Pencil, Check, CheckCheck, X, FileText, Image as ImageIcon, Download,
-  File, FileSpreadsheet, FileArchive, Play, Pause,
+  File, FileSpreadsheet, FileArchive, Play, Pause, Reply,
 } from "lucide-react";
 import type { Message } from "@/lib/types/database";
 
@@ -19,6 +19,7 @@ interface Props {
   onForward?: (messageContent: string, senderName: string) => void;
   onEmail?: (messageContent: string, senderName: string) => void;
   onMessageEdited?: (messageId: string, newContent: string) => void;
+  onReply?: (message: Message & { profiles: any }) => void;
 }
 
 // File attachment detection
@@ -192,7 +193,7 @@ function FileAttachment({ fileName, fileUrl, isOwn }: { fileName: string; fileUr
   );
 }
 
-export function MessageBubble({ message, showHeader, isOwn, isRead, onCreateTask, onForward, onEmail, onMessageEdited }: Props) {
+export function MessageBubble({ message, showHeader, isOwn, isRead, onCreateTask, onForward, onEmail, onMessageEdited, onReply }: Props) {
   const profile = message.profiles;
   const name = profile?.full_name || profile?.email || "Usuário";
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -449,6 +450,16 @@ export function MessageBubble({ message, showHeader, isOwn, isRead, onCreateTask
           className="fixed z-[100] bg-card border border-border rounded-xl shadow-2xl py-1 w-52 animate-in fade-in zoom-in-95 duration-100"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          <button
+            onClick={() => {
+              setContextMenu(null);
+              onReply?.(message);
+            }}
+            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+          >
+            <Reply className="w-4 h-4 text-blue-500" />
+            Responder
+          </button>
           {isOwn && !isFileMsg && (
             <button
               onClick={() => {

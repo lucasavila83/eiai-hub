@@ -167,7 +167,15 @@ export function KanbanCard({
               <div className="flex -space-x-1.5">
                 {card.card_assignees.slice(0, 3).map((a: any) => {
                   const name = a.profiles?.full_name || a.profiles?.email || "?";
-                  return (
+                  return a.profiles?.avatar_url ? (
+                    <img
+                      key={a.user_id}
+                      src={a.profiles.avatar_url}
+                      alt={name}
+                      title={name}
+                      className="w-6 h-6 rounded-full border-2 border-card object-cover"
+                    />
+                  ) : (
                     <div
                       key={a.user_id}
                       title={name}

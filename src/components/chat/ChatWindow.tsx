@@ -12,7 +12,7 @@ import { useChatStore } from "@/lib/stores/chat-store";
 import {
   Hash, Lock, MessageSquare, ListTodo,
   Kanban, CheckCircle2, Clock, AlertCircle,
-  CheckSquare, Square, X, Mail, Loader2,
+  CheckSquare, Square, X, Mail, Loader2, Reply,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils/helpers";
 import type { Channel, Message } from "@/lib/types/database";
@@ -77,6 +77,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailContent, setEmailContent] = useState("");
   const [emailSender, setEmailSender] = useState("");
+  const [replyTo, setReplyTo] = useState<(Message & { profiles: any }) | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // Read receipts: track other members' last_read_at
@@ -183,12 +184,18 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     if (activeTab !== "chat") return;
 
     if (isInitialLoad.current) {
-      // Wait for DOM to render messages, then scroll instantly
-      const timer = setTimeout(() => {
+      // Scroll multiple times to ensure we reach bottom after all content renders
+      const scrollToBottom = () => {
         bottomRef.current?.scrollIntoView({ behavior: "instant" });
+      };
+      scrollToBottom();
+      const t1 = setTimeout(scrollToBottom, 50);
+      const t2 = setTimeout(scrollToBottom, 150);
+      const t3 = setTimeout(() => {
+        scrollToBottom();
         isInitialLoad.current = false;
-      }, 50);
-      return () => clearTimeout(timer);
+      }, 300);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
     } else if (!loadingMore) {
       // Smooth scroll only for new messages (not when loading older ones)
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -266,40 +273,12 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     return { ...raw, profiles: profileCacheRef.current[userId] || null };
   }
 
-  // Realtime subscription + polling fallback
+  // Fast polling — check for new messages every 2s (primary mechanism)
   useEffect(() => {
-    const sub = supabase
-      .channel(`messages:${channel.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `channel_id=eq.${channel.id}`,
-        },
-        async (payload) => {
-          const raw = payload.new;
-          // Skip own messages (already added via optimistic update)
-          if (raw.user_id === currentUserId) return;
-          // Avoid duplicates
-          const existing = useChatStore.getState().messages[channel.id] || [];
-          if (existing.some((m: any) => m.id === raw.id)) return;
-          const enriched = await enrichMessage(raw);
-          addMessage(channel.id, enriched as any);
-          // Update last_read_at so Sidebar polling doesn't count this as unread
-          supabase
-            .from("channel_members")
-            .update({ last_read_at: new Date().toISOString() })
-            .eq("channel_id", channel.id)
-            .eq("user_id", currentUserId)
-            .then();
-        }
-      )
-      .subscribe();
+    let active = true;
 
-    // Polling fallback every 15s for messages that realtime might miss
-    const pollInterval = setInterval(async () => {
+    async function pollMessages() {
+      if (!active) return;
       const currentMsgs = useChatStore.getState().messages[channel.id] || [];
       const lastMsg = currentMsgs.filter((m: any) => !m._optimistic).pop();
       const since = lastMsg?.created_at || new Date(0).toISOString();
@@ -311,15 +290,14 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
         .gt("created_at", since)
         .order("created_at");
 
+      if (!active) return;
+
       if (newMsgs && newMsgs.length > 0) {
         let updated = [...useChatStore.getState().messages[channel.id] || []];
         let changed = false;
 
         for (const msg of newMsgs) {
-          // Skip if already exists with real ID
           if (updated.some((m: any) => m.id === msg.id)) continue;
-
-          // Replace optimistic message if it matches
           const optIdx = updated.findIndex(
             (m: any) => m._optimistic && m.user_id === msg.user_id && m.content === msg.content
           );
@@ -334,7 +312,6 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
 
         if (changed) {
           setMessages(channel.id, updated);
-          // Update last_read_at so Sidebar polling doesn't count these as unread
           supabase
             .from("channel_members")
             .update({ last_read_at: new Date().toISOString() })
@@ -343,27 +320,18 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
             .then();
         }
       }
-    }, 15000);
+    }
 
-    return () => {
-      supabase.removeChannel(sub);
-      clearInterval(pollInterval);
-    };
-  }, [channel.id]);
+    const pollInterval = setInterval(pollMessages, 2000);
 
-  // Instant broadcast listener — receives messages from other tabs/devices without CDC delay
-  useEffect(() => {
+    // Also listen for broadcast for instant delivery (when it works)
     const unsub = onChatBroadcast(async (msg: any) => {
-      // Only handle messages for this channel
       if (msg.channel_id !== channel.id) return;
-      // Skip own messages (already shown via optimistic update)
       if (msg.user_id === currentUserId) return;
-      // Avoid duplicates
       const existing = useChatStore.getState().messages[channel.id] || [];
-      if (existing.some((m: any) => m.id === msg.id)) return;
+      if (existing.some((m: any) => m.id === msg.id || m.content === msg.content)) return;
       const enriched = await enrichMessage(msg);
       addMessage(channel.id, enriched as any);
-      // Update last_read_at
       supabase
         .from("channel_members")
         .update({ last_read_at: new Date().toISOString() })
@@ -371,7 +339,12 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
         .eq("user_id", currentUserId)
         .then();
     });
-    return unsub;
+
+    return () => {
+      active = false;
+      clearInterval(pollInterval);
+      unsub();
+    };
   }, [channel.id]);
 
   // Load tasks when tasks tab is active (for DMs: tasks assigned to that person)
@@ -426,7 +399,16 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     }
   }
 
-  async function sendMessage(content: string) {
+  async function sendMessage(rawContent: string) {
+    // Prepend reply context if replying to a message
+    let content = rawContent;
+    if (replyTo) {
+      const senderName = replyTo.profiles?.full_name || replyTo.profiles?.email || "Usuário";
+      const truncatedContent = replyTo.content.length > 100 ? replyTo.content.slice(0, 100) + "..." : replyTo.content;
+      content = `> _${senderName}: ${truncatedContent}_\n\n${rawContent}`;
+      setReplyTo(null);
+    }
+
     // Optimistic update — show message instantly (non-blocking)
     const optimisticMsg = {
       id: `opt_${Date.now()}`,
@@ -440,8 +422,17 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     };
     addMessage(channel.id, optimisticMsg as any);
 
-    // Fire-and-forget: DB insert + broadcast + profile cache
-    // Don't await — let the UI unlock immediately
+    // Broadcast IMMEDIATELY (before DB insert) for instant delivery to other users
+    sendChatBroadcast({
+      id: optimisticMsg.id,
+      channel_id: channel.id,
+      user_id: currentUserId,
+      content,
+      mentions: [],
+      created_at: optimisticMsg.created_at,
+    });
+
+    // Fire-and-forget: DB insert + profile cache (non-blocking)
     (async () => {
       // Cache own profile if not cached yet
       if (!profileCacheRef.current[currentUserId]) {
@@ -454,22 +445,12 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       }
 
       // Insert into database
-      const { data: insertedMsg } = await (supabase.from("messages").insert({
+      await supabase.from("messages").insert({
         channel_id: channel.id,
         user_id: currentUserId,
         content,
         mentions: [],
-      } as any).select("id").single() as any);
-
-      // Broadcast for instant notification (bypasses CDC latency)
-      sendChatBroadcast({
-        id: insertedMsg?.id || optimisticMsg.id,
-        channel_id: channel.id,
-        user_id: currentUserId,
-        content,
-        mentions: [],
-        created_at: new Date().toISOString(),
-      });
+      } as any);
     })().catch(() => {});
 
     // Sending a message means user has read everything — update last_read_at
@@ -807,6 +788,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
                         onCreateTask={handleContextCreateTask}
                         onEmail={handleContextEmail}
                         onForward={handleContextForward}
+                        onReply={(m) => setReplyTo(m)}
                       />
                     </div>
                   </div>
@@ -843,6 +825,25 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
 
           {/* Input */}
           {!selectMode && (
+          <>
+          {replyTo && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-t border-border">
+              <Reply className="w-4 h-4 text-blue-500 shrink-0" />
+              <div className="flex-1 min-w-0 text-xs text-muted-foreground truncate">
+                <span className="font-semibold text-foreground">
+                  {replyTo.profiles?.full_name || replyTo.profiles?.email || "Usuário"}
+                </span>
+                {": "}
+                {replyTo.content.length > 80 ? replyTo.content.slice(0, 80) + "..." : replyTo.content}
+              </div>
+              <button
+                onClick={() => setReplyTo(null)}
+                className="shrink-0 p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           <MessageInput
             onSend={sendMessage}
             channelName={channel.type === "dm" ? headerName : channel.name}
@@ -852,6 +853,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
             orgId={channel.org_id}
             currentUserId={currentUserId}
           />
+          </>
           )}
         </>
       ) : (

@@ -444,7 +444,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         <DocumentsTab boardId={board.id} currentUserId={currentUserId} />
       ) : (
       <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="flex gap-4 p-6 overflow-x-auto h-full">
+        <div className="flex gap-4 p-6 overflow-x-auto flex-1 min-h-0">
           {boardColumns.map((column) => (
             <KanbanColumn
               key={column.id}

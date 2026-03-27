@@ -39,12 +39,14 @@ function ensureNativeBroadcast() {
   }
 }
 
+let supabaseBroadcastChannel: any = null;
+
 function ensureSupabaseBroadcast() {
   if (supabaseBroadcastReady) return;
   supabaseBroadcastReady = true;
   const supabase = createClient();
-  supabase
-    .channel("chat-broadcast")
+  supabaseBroadcastChannel = supabase
+    .channel("chat-broadcast", { config: { broadcast: { self: false, ack: false } } })
     .on("broadcast", { event: "new-message" }, (event: any) => {
       const msg = event.payload;
       if (msg) broadcastListeners.forEach((cb) => cb(msg));
@@ -69,8 +71,7 @@ export function sendChatBroadcast(payload: any) {
 
   // 2. Supabase broadcast — for other devices/browsers
   ensureSupabaseBroadcast();
-  const supabase = createClient();
-  const ch = supabase.channel("chat-broadcast");
-  // Send regardless of state — Supabase queues if not yet joined
-  ch.send({ type: "broadcast", event: "new-message", payload }).catch(() => {});
+  if (supabaseBroadcastChannel) {
+    supabaseBroadcastChannel.send({ type: "broadcast", event: "new-message", payload }).catch(() => {});
+  }
 }

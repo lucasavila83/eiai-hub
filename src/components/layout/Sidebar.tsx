@@ -10,7 +10,7 @@ import {
   Plus, LogOut, X, Loader2, Users, MessageCircle, Check,
   MoreHorizontal, Trash2, EyeOff, UserCog,
 } from "lucide-react";
-import { createClient, onChatBroadcast } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { useUIStore } from "@/lib/stores/ui-store";
@@ -69,7 +69,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }
   }, [activeOrg]);
 
-  // Load unread counts (batched — all channels in parallel, max 10 concurrent)
+  // Load unread counts — all channels in parallel
   const loadUnreadCounts = useCallback(async () => {
     if (!profile) return;
     const { data: memberships } = await supabase
@@ -79,26 +79,20 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
     if (!memberships || memberships.length === 0) return;
 
-    // Batch in groups of 10 to avoid overwhelming the server
-    const batchSize = 10;
-    for (let i = 0; i < memberships.length; i += batchSize) {
-      const batch = memberships.slice(i, i + batchSize);
-      const results = await Promise.all(
-        batch.map((m: any) => {
-          let query = supabase
-            .from("messages")
-            .select("*", { count: "exact", head: true })
-            .eq("channel_id", m.channel_id)
-            .neq("user_id", profile.id);
-          // If last_read_at is null, count ALL messages from others
-          if (m.last_read_at) {
-            query = query.gt("created_at", m.last_read_at);
-          }
-          return query.then((res) => ({ channelId: m.channel_id, count: res.count || 0 }));
-        })
-      );
-      results.forEach(({ channelId, count }) => setUnreadCount(channelId, count));
-    }
+    const results = await Promise.all(
+      memberships.map((m: any) => {
+        let query = supabase
+          .from("messages")
+          .select("*", { count: "exact", head: true })
+          .eq("channel_id", m.channel_id)
+          .neq("user_id", profile.id);
+        if (m.last_read_at) {
+          query = query.gt("created_at", m.last_read_at);
+        }
+        return query.then((res) => ({ channelId: m.channel_id, count: res.count || 0 }));
+      })
+    );
+    results.forEach(({ channelId, count }) => setUnreadCount(channelId, count));
   }, [profile]);
 
   useEffect(() => {
@@ -117,20 +111,8 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const profileId = profile?.id;
   const orgId = activeOrg?.id;
 
-  // Instant broadcast listener for unread badges (no CDC latency)
-  useEffect(() => {
-    if (!profileId) return;
-
-    const unsub = onChatBroadcast((msg) => {
-      if (msg.user_id === profileRef.current?.id) return;
-      const isViewingChannel = pathnameRef.current.includes(msg.channel_id);
-      if (!isViewingChannel) {
-        incrementUnread(msg.channel_id);
-      }
-    });
-
-    return unsub;
-  }, [profileId]);
+  // Unread badges are handled by NotificationListener (broadcast + CDC)
+  // Sidebar only polls as fallback
 
   // Consolidated realtime subscription for sidebar (org data changes)
   useEffect(() => {
@@ -182,12 +164,12 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     return () => { supabase.removeChannel(sub); };
   }, [orgId, profileId]); // Only string IDs — stable across re-renders
 
-  // Fallback: poll unread counts every 30s in case realtime drops
+  // Poll unread counts every 3s for instant badge updates
   useEffect(() => {
     if (!profileId) return;
     const interval = setInterval(() => {
       loadUnreadCounts();
-    }, 30000);
+    }, 3000);
     return () => clearInterval(interval);
   }, [profileId, loadUnreadCounts]);
 

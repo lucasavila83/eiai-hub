@@ -8,7 +8,7 @@ import {
   Users, Mail, Copy, Check, Loader2, Trash2,
   Crown, Shield, User, UserX, Link2, ArrowLeft,
   ChevronDown, MoreHorizontal, UserMinus, ShieldCheck,
-  ShieldOff, UsersRound, UserCheck, Ban,
+  ShieldOff, UsersRound, UserCheck, Ban, Pencil, X,
 } from "lucide-react";
 import { cn, getInitials, generateColor, formatDate } from "@/lib/utils/helpers";
 import Link from "next/link";
@@ -58,6 +58,10 @@ export default function MembersPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   // Team assignment modal
   const [teamModalMember, setTeamModalMember] = useState<any | null>(null);
+  // Edit name state
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editNameValue, setEditNameValue] = useState("");
+  const [savingName, setSavingName] = useState(false);
 
   // Derive current user role from members list
   const currentUserRole = members.find((m) => m.user_id === currentUserId)?.role || null;
@@ -302,6 +306,34 @@ export default function MembersPage() {
     await loadTeams();
   }
 
+  function startEditName(userId: string, currentName: string) {
+    setEditingNameId(userId);
+    setEditNameValue(currentName);
+    setOpenMenuId(null);
+  }
+
+  async function handleSaveName(userId: string) {
+    if (!editNameValue.trim() || !activeOrgId) return;
+    setSavingName(true);
+    setError(null);
+    setSuccess(null);
+    const headers = await getAuthHeaders();
+    const res = await fetch("/api/members/update-name", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ userId, orgId: activeOrgId, newName: editNameValue.trim() }),
+    });
+    const json = await res.json();
+    if (res.ok) {
+      setSuccess(json.message);
+      setEditingNameId(null);
+      loadMembers();
+    } else {
+      setError(json.error);
+    }
+    setSavingName(false);
+  }
+
   return (
     <div className="p-6 max-w-3xl">
       <div className="flex items-center gap-3 mb-6">
@@ -543,7 +575,7 @@ export default function MembersPage() {
           return (
             <div
               key={m.id}
-              className="bg-card border border-border rounded-xl px-4 py-3"
+              className="bg-card border border-border rounded-xl px-4 py-3 group"
             >
               <div className="flex items-center gap-3">
                 {/* Avatar */}
@@ -568,17 +600,57 @@ export default function MembersPage() {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className={cn("text-sm font-medium truncate", isInactive ? "text-muted-foreground line-through" : "text-foreground")}>{name}</p>
-                    {isSelf && (
-                      <span className="text-xs text-muted-foreground">(Você)</span>
-                    )}
-                    {isInactive && (
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/10 text-yellow-600 border border-yellow-500/20">
-                        Inativo
-                      </span>
-                    )}
-                  </div>
+                  {editingNameId === m.user_id ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={editNameValue}
+                        onChange={(e) => setEditNameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSaveName(m.user_id);
+                          if (e.key === "Escape") setEditingNameId(null);
+                        }}
+                        className="flex-1 min-w-0 px-2 py-1 bg-background border border-primary/50 rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        autoFocus
+                        disabled={savingName}
+                      />
+                      <button
+                        onClick={() => handleSaveName(m.user_id)}
+                        disabled={savingName || !editNameValue.trim()}
+                        className="p-1 text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-50"
+                      >
+                        {savingName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        onClick={() => setEditingNameId(null)}
+                        disabled={savingName}
+                        className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className={cn("text-sm font-medium truncate", isInactive ? "text-muted-foreground line-through" : "text-foreground")}>{name}</p>
+                      {isSelf && (
+                        <span className="text-xs text-muted-foreground">(Você)</span>
+                      )}
+                      {isAdmin && !isSelf && (
+                        <button
+                          onClick={() => startEditName(m.user_id, name)}
+                          className="p-0.5 text-muted-foreground/50 hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                          title="Editar nome"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      )}
+                      {isInactive && (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/10 text-yellow-600 border border-yellow-500/20">
+                          Inativo
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground truncate">{p?.email}</p>
                 </div>
 
@@ -625,6 +697,15 @@ export default function MembersPage() {
                         className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-xl shadow-2xl py-1 w-52 animate-in fade-in zoom-in-95 duration-100"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        {/* Edit name */}
+                        <button
+                          onClick={() => startEditName(m.user_id, name)}
+                          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+                        >
+                          <Pencil className="w-4 h-4 text-muted-foreground" />
+                          Editar nome
+                        </button>
+
                         {/* Change role */}
                         {m.role === "member" && (
                           <button

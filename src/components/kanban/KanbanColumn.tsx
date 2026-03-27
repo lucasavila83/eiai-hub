@@ -79,6 +79,14 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
 
   const isOverLimit = column.wip_limit !== null && cards.length >= column.wip_limit;
 
+  // Refs for click-outside on add-card dropdowns
+  const addCardFormRef = useRef<HTMLDivElement>(null);
+  const addCardFormEndRef = useRef<HTMLDivElement>(null);
+  const columnRef = useRef<HTMLDivElement>(null);
+  const assigneeDropdownRef = useRef<HTMLDivElement>(null);
+  const priorityDropdownRef = useRef<HTMLDivElement>(null);
+  const labelDropdownRef = useRef<HTMLDivElement>(null);
+
   // Close menu on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -91,6 +99,55 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [menuOpen]);
+
+  // Auto-scroll to add card form when it opens
+  useEffect(() => {
+    if (addingCard) {
+      // Wait for render, then scroll the form into view
+      requestAnimationFrame(() => {
+        addCardFormEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+  }, [addingCard]);
+
+  // Click-outside to close the entire add card form
+  useEffect(() => {
+    if (!addingCard) return;
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      if (
+        addCardFormRef.current &&
+        !addCardFormRef.current.contains(target) &&
+        (!assigneeDropdownRef.current || !assigneeDropdownRef.current.contains(target)) &&
+        (!priorityDropdownRef.current || !priorityDropdownRef.current.contains(target)) &&
+        (!labelDropdownRef.current || !labelDropdownRef.current.contains(target))
+      ) {
+        resetAddForm();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [addingCard]);
+
+  // Close add-card dropdowns on outside click
+  useEffect(() => {
+    const anyOpen = showAssigneeDropdown || showPriorityDropdown || showLabelDropdown;
+    if (!anyOpen) return;
+    function handleClick(e: MouseEvent) {
+      const target = e.target as Node;
+      if (showAssigneeDropdown && assigneeDropdownRef.current && !assigneeDropdownRef.current.contains(target)) {
+        setShowAssigneeDropdown(false);
+      }
+      if (showPriorityDropdown && priorityDropdownRef.current && !priorityDropdownRef.current.contains(target)) {
+        setShowPriorityDropdown(false);
+      }
+      if (showLabelDropdown && labelDropdownRef.current && !labelDropdownRef.current.contains(target)) {
+        setShowLabelDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showAssigneeDropdown, showPriorityDropdown, showLabelDropdown]);
 
   function closeMenu() {
     setMenuOpen(false);
@@ -209,7 +266,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
   }
 
   return (
-    <div className={cn("shrink-0 w-72 flex flex-col rounded-xl bg-muted/50 border", isOverLimit ? "border-destructive/50" : "border-border")}>
+    <div className={cn("shrink-0 w-72 flex flex-col rounded-xl bg-muted/50 border max-h-full", isOverLimit ? "border-destructive/50" : "border-border")}>
       {/* Column Header */}
       <div className="flex items-center justify-between px-3 py-2.5">
         <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -367,7 +424,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
-            className={cn("flex-1 px-2 pb-2 space-y-2 min-h-16 transition-colors", snapshot.isDraggingOver && "bg-primary/5")}
+            className={cn("flex-1 overflow-y-auto px-2 pb-2 space-y-2 min-h-16 transition-colors scrollbar-thin", snapshot.isDraggingOver && "bg-primary/5")}
           >
             {cards.map((card, index) => (
               <Draggable key={card.id} draggableId={card.id} index={index}>
@@ -391,9 +448,9 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
       </Droppable>
 
       {/* Add Card */}
-      <div className="px-2 pb-2">
+      <div className="px-2 pb-2 shrink-0">
         {addingCard ? (
-          <div className="bg-card border border-primary/30 rounded-lg p-3 shadow-sm space-y-2">
+          <div ref={addCardFormRef} className="bg-card border border-primary/30 rounded-lg p-3 shadow-sm space-y-2">
             {/* Title */}
             <div className="flex items-center gap-2">
               <input
@@ -419,7 +476,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
             <div className="text-xs text-muted-foreground">{column.name}</div>
 
             {/* Assignee */}
-            <div className="relative">
+            <div className="relative" ref={assigneeDropdownRef}>
               <button
                 type="button"
                 onClick={() => { setShowAssigneeDropdown(!showAssigneeDropdown); setShowPriorityDropdown(false); setShowLabelDropdown(false); }}
@@ -492,7 +549,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
                   type="date"
                   value={newCardDueDate}
                   onChange={(e) => setNewCardDueDate(e.target.value)}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
               </div>
               {newCardDueDate && (
@@ -517,14 +574,14 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
                     type="time"
                     value={newCardDueTime}
                     onChange={(e) => setNewCardDueTime(e.target.value)}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
                 </div>
               )}
             </div>
 
             {/* Priority */}
-            <div className="relative">
+            <div className="relative" ref={priorityDropdownRef}>
               <button
                 type="button"
                 onClick={() => { setShowPriorityDropdown(!showPriorityDropdown); setShowAssigneeDropdown(false); setShowLabelDropdown(false); }}
@@ -559,7 +616,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
             </div>
 
             {/* Labels/Tags */}
-            <div className="relative">
+            <div className="relative" ref={labelDropdownRef}>
               <button
                 type="button"
                 onClick={() => { setShowLabelDropdown(!showLabelDropdown); setShowAssigneeDropdown(false); setShowPriorityDropdown(false); }}
@@ -603,6 +660,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
                 </div>
               )}
             </div>
+            <div ref={addCardFormEndRef} />
           </div>
         ) : (
           <button
