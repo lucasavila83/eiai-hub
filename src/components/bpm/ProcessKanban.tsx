@@ -134,6 +134,26 @@ function formatFieldValue(value: any, fieldType: string): string {
   return String(value);
 }
 
+function calcBpmCardProgress(cardId: string, vals: Record<string, Record<string, any>>, allFields: BpmField[]): number | null {
+  const values = vals[cardId];
+  if (!values) return null;
+
+  let total = 0;
+  let checked = 0;
+
+  // Iterate all field values (keyed by field_id)
+  for (const fieldId of Object.keys(values)) {
+    const val = values[fieldId];
+    if (Array.isArray(val) && val.length > 0 && typeof val[0] === "object" && "checked" in val[0]) {
+      total += val.length;
+      checked += val.filter((i: any) => i.checked).length;
+    }
+  }
+
+  if (total > 0) return Math.round((checked / total) * 100);
+  return null; // No trackable items
+}
+
 export function ProcessKanban({ phases, cards, members, fields = [], cardValues = {}, cardProgress = {}, previewFieldIds = [], onMoveCard, onCardClick, onCreateCard, canEdit }: Props) {
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -418,27 +438,33 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
                               {/* Title */}
                               <p className="text-sm font-medium text-foreground mb-2 line-clamp-2">{card.title}</p>
 
-                              {/* Card progress bar (from linked board tasks) */}
-                              {cardProgress[card.id] !== undefined && (
-                                <div className="flex items-center gap-2 mb-1.5">
-                                  <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                                    <div
-                                      className={cn(
-                                        "h-full rounded-full transition-all duration-300",
-                                        cardProgress[card.id] === 100 ? "bg-green-500"
-                                          : cardProgress[card.id] >= 50 ? "bg-primary" : "bg-orange-400"
-                                      )}
-                                      style={{ width: `${cardProgress[card.id]}%` }}
-                                    />
+                              {/* Card progress bar */}
+                              {(() => {
+                                // Priority: board task progress > BPM field progress
+                                const bp = cardProgress[card.id];
+                                const fp = calcBpmCardProgress(card.id, cardValues, fields);
+                                const cp = bp !== undefined ? bp : fp;
+                                if (cp === null) return null;
+                                return (
+                                  <div className="flex items-center gap-2 mb-1.5">
+                                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                                      <div
+                                        className={cn(
+                                          "h-full rounded-full transition-all duration-300",
+                                          cp === 100 ? "bg-green-500" : cp >= 50 ? "bg-primary" : "bg-orange-400"
+                                        )}
+                                        style={{ width: `${cp}%` }}
+                                      />
+                                    </div>
+                                    <span className={cn(
+                                      "text-[10px] font-semibold tabular-nums min-w-[28px] text-right",
+                                      cp === 100 ? "text-green-600" : "text-muted-foreground"
+                                    )}>
+                                      {cp}%
+                                    </span>
                                   </div>
-                                  <span className={cn(
-                                    "text-[10px] font-semibold tabular-nums min-w-[28px] text-right",
-                                    cardProgress[card.id] === 100 ? "text-green-600" : "text-muted-foreground"
-                                  )}>
-                                    {cardProgress[card.id]}%
-                                  </span>
-                                </div>
-                              )}
+                                );
+                              })()}
 
                               {/* Dynamic field preview (Pipefy-style) */}
                               {previewFields.length > 0 && (
