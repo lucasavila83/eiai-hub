@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Droppable, Draggable } from "@hello-pangea/dnd";
 import { KanbanCard, type VisibleFields } from "./KanbanCard";
-import { Plus, MoreHorizontal, Pencil, Palette, Gauge, Trash2, X, Calendar, Users, Flag, Tag, Clock, ChevronDown } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Palette, Gauge, Trash2, X, Calendar, Users, Flag, Tag, Clock, ChevronDown, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
@@ -62,6 +62,9 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
   const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
   const [showLabelDropdown, setShowLabelDropdown] = useState(false);
+
+  // Collapse state
+  const [collapsed, setCollapsed] = useState(false);
 
   // Menu state
   const [menuOpen, setMenuOpen] = useState(false);
@@ -266,8 +269,46 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
     setAddingCard(false);
   }
 
+  // Collapsed view
+  if (collapsed) {
+    return (
+      <div
+        className={cn(
+          "shrink-0 w-10 flex flex-col items-center rounded-xl border cursor-pointer hover:bg-accent/50 transition-colors relative group",
+          isOverLimit ? "border-destructive/50" : "border-border",
+          "bg-muted/50"
+        )}
+        onClick={() => setCollapsed(false)}
+        {...dragHandleProps}
+      >
+        {/* Color dot + expand button */}
+        <div className="flex flex-col items-center gap-2 py-3">
+          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: column.color }} />
+          <ChevronsRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+        </div>
+
+        {/* Vertical column name */}
+        <div className="flex-1 flex items-center justify-center min-h-0 py-2">
+          <span
+            className="text-xs font-semibold text-muted-foreground whitespace-nowrap"
+            style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+          >
+            {column.name}
+          </span>
+        </div>
+
+        {/* Card count badge */}
+        {cards.length > 0 && (
+          <div className="mb-3 bg-primary text-primary-foreground text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+            {cards.length}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className={cn("shrink-0 w-72 flex flex-col rounded-xl bg-muted/50 border max-h-full", isOverLimit ? "border-destructive/50" : "border-border")}>
+    <div className={cn("shrink-0 w-72 flex flex-col rounded-xl bg-muted/50 border max-h-full group", isOverLimit ? "border-destructive/50" : "border-border")}>
       {/* Column Header — draggable handle */}
       <div className="flex items-center justify-between px-3 py-2.5 cursor-grab active:cursor-grabbing" {...dragHandleProps}>
         <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -292,6 +333,13 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
           </span>
         </div>
         <div className="flex items-center gap-1 relative" ref={menuRef}>
+          <button
+            onClick={() => setCollapsed(true)}
+            className="text-muted-foreground hover:text-foreground transition-colors p-0.5 opacity-0 group-hover:opacity-100"
+            title="Minimizar coluna"
+          >
+            <ChevronsLeft className="w-4 h-4" />
+          </button>
           <button onClick={() => setAddingCard(true)} className="text-muted-foreground hover:text-foreground transition-colors p-0.5">
             <Plus className="w-4 h-4" />
           </button>
