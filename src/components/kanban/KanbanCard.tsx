@@ -104,6 +104,31 @@ export function KanbanCard({
       {/* Title - main prominent element */}
       <p className="text-sm font-medium text-foreground leading-snug mb-1.5">{card.title}</p>
 
+      {/* Progress bar */}
+      {showSubtasks && subtaskCount! > 0 && (
+        <div className="flex items-center gap-2 mb-1">
+          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-300",
+                subtaskCompleted === subtaskCount
+                  ? "bg-green-500"
+                  : (subtaskCompleted! / subtaskCount!) >= 0.5
+                    ? "bg-primary"
+                    : "bg-orange-400"
+              )}
+              style={{ width: `${Math.round((subtaskCompleted! / subtaskCount!) * 100)}%` }}
+            />
+          </div>
+          <span className={cn(
+            "text-[10px] font-semibold tabular-nums min-w-[28px] text-right",
+            subtaskCompleted === subtaskCount ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
+          )}>
+            {Math.round((subtaskCompleted! / subtaskCount!) * 100)}%
+          </span>
+        </div>
+      )}
+
       {/* Bottom row: icons/badges */}
       {hasBottomRow && (
         <div className="mt-1.5 space-y-1.5">

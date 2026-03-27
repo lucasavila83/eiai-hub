@@ -147,19 +147,36 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   async function loadSubtaskCounts() {
     const cardIds = initialCards.map((c) => c.id);
     if (cardIds.length === 0) return;
-    const { data } = await supabase
-      .from("subtasks")
-      .select("card_id, is_completed")
-      .in("card_id", cardIds);
-    if (data) {
-      const counts: Record<string, { total: number; completed: number }> = {};
-      for (const row of data) {
+
+    // Load from both subtasks AND checklist_items
+    const [subtasksRes, checklistItemsRes] = await Promise.all([
+      supabase.from("subtasks").select("card_id, is_completed").in("card_id", cardIds),
+      supabase.from("checklist_items").select("checklist_id, is_completed, checklists!inner(card_id)").in("checklists.card_id", cardIds),
+    ]);
+
+    const counts: Record<string, { total: number; completed: number }> = {};
+
+    // Count subtasks
+    if (subtasksRes.data) {
+      for (const row of subtasksRes.data) {
         if (!counts[row.card_id]) counts[row.card_id] = { total: 0, completed: 0 };
         counts[row.card_id].total++;
         if (row.is_completed) counts[row.card_id].completed++;
       }
-      setSubtaskCounts(counts);
     }
+
+    // Count checklist items
+    if (checklistItemsRes.data) {
+      for (const row of checklistItemsRes.data as any[]) {
+        const cardId = row.checklists?.card_id;
+        if (!cardId) continue;
+        if (!counts[cardId]) counts[cardId] = { total: 0, completed: 0 };
+        counts[cardId].total++;
+        if (row.is_completed) counts[cardId].completed++;
+      }
+    }
+
+    setSubtaskCounts(counts);
   }
 
   async function loadAttachmentCounts() {
@@ -545,7 +562,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
           orgMembers={orgMembers}
           boardLabels={boardLabels}
           currentUserId={currentUserId}
-          onClose={() => setSelectedCard(null)}
+          onClose={() => { setSelectedCard(null); loadSubtaskCounts(); loadAttachmentCounts(); }}
           onUpdated={(updatedCard) => {
             updateCard(updatedCard.id, updatedCard);
             setSelectedCard(updatedCard);

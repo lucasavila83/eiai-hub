@@ -196,6 +196,11 @@ function getActivityDescription(action: string, details: any): string {
     case "due_date_changed": return `alterou prazo para ${details?.due_date || "?"}`;
     case "label_added": return `adicionou label "${details?.label_name || ""}"`;
     case "label_removed": return `removeu label "${details?.label_name || ""}"`;
+    case "subtask_completed": return `concluiu subtarefa "${details?.title || ""}"`;
+    case "subtask_uncompleted": return `reabriu subtarefa "${details?.title || ""}"`;
+    case "checklist_item_completed": return `concluiu "${details?.title || ""}" em ${details?.checklist || "checklist"}`;
+    case "checklist_item_uncompleted": return `reabriu "${details?.title || ""}" em ${details?.checklist || "checklist"}`;
+    case "progress_updated": return `atualizou progresso para ${details?.progress || 0}%`;
     default: return action;
   }
 }
@@ -898,10 +903,14 @@ export function CardDetailModal({
   }
 
   async function handleToggleSubtask(subtaskId: string, currentState: boolean) {
+    const subtask = subtasks.find((s) => s.id === subtaskId);
     setSubtasks((prev) =>
       prev.map((s) => (s.id === subtaskId ? { ...s, is_completed: !currentState } : s))
     );
     await supabase.from("subtasks").update({ is_completed: !currentState }).eq("id", subtaskId);
+    if (subtask) {
+      logActivity(!currentState ? "subtask_completed" : "subtask_uncompleted", { title: subtask.title });
+    }
   }
 
   async function handleDeleteSubtask(subtaskId: string) {
@@ -1041,6 +1050,8 @@ export function CardDetailModal({
   }
 
   async function handleToggleChecklistItem(checklistId: string, itemId: string, current: boolean) {
+    const cl = checklists.find((c) => c.id === checklistId);
+    const item = cl?.items.find((i) => i.id === itemId);
     setChecklists((prev) =>
       prev.map((c) =>
         c.id === checklistId
@@ -1049,6 +1060,9 @@ export function CardDetailModal({
       )
     );
     await supabase.from("checklist_items").update({ is_completed: !current }).eq("id", itemId);
+    if (item) {
+      logActivity(!current ? "checklist_item_completed" : "checklist_item_uncompleted", { title: item.title, checklist: cl?.name });
+    }
   }
 
   async function handleDeleteChecklistItem(checklistId: string, itemId: string) {
