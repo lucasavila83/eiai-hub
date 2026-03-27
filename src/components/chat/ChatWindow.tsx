@@ -15,6 +15,7 @@ import {
   CheckSquare, Square, X, Mail, Loader2, Reply,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils/helpers";
+import { usePermissions } from "@/lib/hooks/usePermissions";
 import type { Channel, Message } from "@/lib/types/database";
 
 interface Props {
@@ -59,6 +60,7 @@ const priorityConfig: Record<string, { color: string; icon: any; label: string }
 export function ChatWindow({ channel, initialMessages, initialHasMore, currentUserId }: Props) {
   const router = useRouter();
   const supabase = createClient();
+  const permissions = usePermissions();
   const { messages, setMessages, addMessage, markAsRead } = useChatStore();
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -390,46 +392,51 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   }, [activeTab, channel.id]);
 
   async function loadTasks() {
-    // For DMs: find cards assigned to the other person
-    // For channels: find cards mentioned in the channel (or all cards in the org)
     if (channel.type === "dm") {
-      // Find the other user in this DM
-      const { data: members } = await supabase
-        .from("channel_members")
-        .select("user_id")
-        .eq("channel_id", channel.id)
-        .neq("user_id", currentUserId);
+      const isAdmin = permissions.isAdmin;
 
-      const otherUserId = members?.[0]?.user_id;
-      if (!otherUserId) return;
+      if (isAdmin) {
+        // Admin: show tasks of the OTHER person in the DM
+        const { data: members } = await supabase
+          .from("channel_members")
+          .select("user_id")
+          .eq("channel_id", channel.id)
+          .neq("user_id", currentUserId);
 
+        const otherUserId = members?.[0]?.user_id;
+        if (!otherUserId) return;
+
+        const { data } = await supabase
+          .from("card_assignees")
+          .select("cards(*, columns(name, color), boards(name))")
+          .eq("user_id", otherUserId);
+
+        if (data) {
+          const cards = data.map((d: any) => d.cards).filter(Boolean);
+          setTasks(cards);
+        }
+      } else {
+        // Member: show only MY OWN tasks
+        const { data } = await supabase
+          .from("card_assignees")
+          .select("cards(*, columns(name, color), boards(name))")
+          .eq("user_id", currentUserId);
+
+        if (data) {
+          const cards = data.map((d: any) => d.cards).filter(Boolean);
+          setTasks(cards);
+        }
+      }
+    } else {
+      // For group channels: show only MY tasks
       const { data } = await supabase
         .from("card_assignees")
         .select("cards(*, columns(name, color), boards(name))")
-        .eq("user_id", otherUserId);
+        .eq("user_id", currentUserId);
 
       if (data) {
-        const cards = data.map((d: any) => d.cards).filter(Boolean);
+        const cards = data.map((d: any) => d.cards).filter(Boolean).filter((c: any) => !c.is_archived);
         setTasks(cards);
-      }
-    } else {
-      // For group channels: show all org tasks (could filter by channel topic)
-      const { data: membership } = await supabase
-        .from("org_members")
-        .select("org_id")
-        .eq("user_id", currentUserId)
-        .limit(1)
-        .single();
-
-      if (membership) {
-        const { data } = await supabase
-          .from("cards")
-          .select("*, columns(name, color), boards(name)")
-          .eq("is_archived", false)
-          .order("created_at", { ascending: false })
-          .limit(20);
-
-        if (data) setTasks(data);
       }
     }
   }
@@ -654,8 +661,10 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     : channel.name;
 
   const tabLabel = channel.type === "dm"
-    ? `Tarefas de ${otherUserName || channel.name}`
-    : "Tarefas do canal";
+    ? permissions.isAdmin
+      ? `Tarefas de ${otherUserName || channel.name}`
+      : "Minhas Tarefas"
+    : "Minhas Tarefas";
 
   return (
     <div className="flex flex-col h-full">
