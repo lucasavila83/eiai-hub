@@ -40,12 +40,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Fetch profile + orgs in parallel — single round trip
       const [profileRes, orgsRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", userId).single(),
-        supabase.from("org_members").select("org_id, organizations(*)").eq("user_id", userId),
+        supabase.from("org_members").select("org_id, role, joined_at, organizations(*)").eq("user_id", userId),
       ]);
 
       if (!mounted) return;
 
-      const orgs = orgsRes.data?.map((o: any) => o.organizations).filter(Boolean) ?? [];
+      const memberships = orgsRes.data ?? [];
+
+      // Sort: prefer orgs where user is NOT owner (team orgs first), then by oldest join
+      memberships.sort((a: any, b: any) => {
+        const aIsOwner = a.role === "owner" ? 1 : 0;
+        const bIsOwner = b.role === "owner" ? 1 : 0;
+        if (aIsOwner !== bIsOwner) return aIsOwner - bIsOwner;
+        return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+      });
+
+      const orgs = memberships.map((o: any) => o.organizations).filter(Boolean);
 
       if (orgs.length === 0) {
         if (userEmail) {
@@ -64,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      return { profile: profileRes.data, organizations: orgs, orgId: orgsRes.data?.[0]?.org_id || "" };
+      return { profile: profileRes.data, organizations: orgs, orgId: memberships[0]?.org_id || "" };
     }
 
     // Initial session check
