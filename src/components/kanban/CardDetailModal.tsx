@@ -304,9 +304,10 @@ export function CardDetailModal({
   const [loadingBpmFields, setLoadingBpmFields] = useState(false);
   const [savingBpmField, setSavingBpmField] = useState<string | null>(null);
 
-  // Progress acknowledgment gate
+  // Progress acknowledgment gate — auto-acknowledged if user toggles any checklist/subtask
   const [progressAcknowledged, setProgressAcknowledged] = useState(false);
   const [showProgressWarning, setShowProgressWarning] = useState(false);
+  const [checklistToggledInSession, setChecklistToggledInSession] = useState(false);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
@@ -911,6 +912,8 @@ export function CardDetailModal({
     setSubtasks((prev) =>
       prev.map((s) => (s.id === subtaskId ? { ...s, is_completed: !currentState } : s))
     );
+    setChecklistToggledInSession(true);
+    setProgressAcknowledged(true);
     await supabase.from("subtasks").update({ is_completed: !currentState }).eq("id", subtaskId);
     if (subtask) {
       logActivity(!currentState ? "subtask_completed" : "subtask_uncompleted", { title: subtask.title });
@@ -1063,6 +1066,8 @@ export function CardDetailModal({
           : c
       )
     );
+    setChecklistToggledInSession(true);
+    setProgressAcknowledged(true);
     await supabase.from("checklist_items").update({ is_completed: !current }).eq("id", itemId);
     if (item) {
       logActivity(!current ? "checklist_item_completed" : "checklist_item_uncompleted", { title: item.title, checklist: cl?.name });
