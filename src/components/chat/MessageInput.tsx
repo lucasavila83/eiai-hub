@@ -518,7 +518,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
           </div>
 
           {/* Text area */}
-          <div className="flex items-end gap-2 p-2">
+          <div className="flex items-center gap-2 p-2">
             <textarea
               ref={textareaRef}
               value={content}
@@ -535,7 +535,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
               onClick={handleSend}
               disabled={!content.trim() || sending}
               className={cn(
-                "p-1.5 rounded-lg transition-colors shrink-0",
+                "p-2 rounded-lg transition-colors shrink-0 self-center",
                 content.trim()
                   ? "text-primary hover:bg-primary/10"
                   : "text-muted-foreground cursor-not-allowed"

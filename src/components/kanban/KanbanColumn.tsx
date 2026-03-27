@@ -526,14 +526,8 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
 
             {/* Date + Time */}
             <div className="flex gap-1.5">
-              <div className="flex-1 relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const input = document.getElementById(`date-${column.id}`) as HTMLInputElement;
-                    input?.showPicker?.();
-                    input?.focus();
-                  }}
+              <label htmlFor={`date-${column.id}`} className="flex-1 relative cursor-pointer">
+                <div
                   className={cn(
                     "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left",
                     newCardDueDate ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
@@ -543,15 +537,15 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
                   {newCardDueDate
                     ? new Date(newCardDueDate + "T12:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })
                     : "Adicionar data *"}
-                </button>
+                </div>
                 <input
                   id={`date-${column.id}`}
                   type="date"
                   value={newCardDueDate}
                   onChange={(e) => setNewCardDueDate(e.target.value)}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  className="absolute left-0 top-0 w-full h-full opacity-0 cursor-pointer"
                 />
-              </div>
+              </label>
               {newCardDueDate && (
                 <div className="relative">
                   <button
