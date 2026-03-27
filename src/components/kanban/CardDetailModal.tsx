@@ -967,6 +967,12 @@ export function CardDetailModal({
     if (subtask) {
       logActivity(!currentState ? "subtask_completed" : "subtask_uncompleted", { title: subtask.title });
     }
+    // Fire progress automation with new auto-calculated value
+    const newCompleted = subtasks.filter((s) => (s.id === subtaskId ? !currentState : s.is_completed)).length;
+    const allClItems = checklists.flatMap((cl) => cl.items);
+    const clCompleted = allClItems.filter((i) => i.is_completed).length;
+    const total = subtasks.length + allClItems.length;
+    if (total > 0) fireProgressAutomation(Math.round(((newCompleted + clCompleted) / total) * 100));
   }
 
   async function handleDeleteSubtask(subtaskId: string) {
@@ -1126,6 +1132,16 @@ export function CardDetailModal({
     if (item) {
       logActivity(!current ? "checklist_item_completed" : "checklist_item_uncompleted", { title: item.title, checklist: cl?.name });
     }
+    // Fire progress automation with new auto-calculated value
+    const subCompleted = subtasks.filter((s) => s.is_completed).length;
+    const allItems = checklists.flatMap((c) =>
+      c.id === checklistId
+        ? c.items.map((i) => (i.id === itemId ? { ...i, is_completed: !current } : i))
+        : c.items
+    );
+    const totalAll = subtasks.length + allItems.length;
+    const completedAll = subCompleted + allItems.filter((i) => i.is_completed).length;
+    if (totalAll > 0) fireProgressAutomation(Math.round((completedAll / totalAll) * 100));
   }
 
   async function handleDeleteChecklistItem(checklistId: string, itemId: string) {
@@ -1366,6 +1382,25 @@ export function CardDetailModal({
     return snapTo5((x / rect.width) * 100);
   }
 
+  const prevProgressRef = useRef<number>(effectiveProgress);
+
+  async function fireProgressAutomation(newProgress: number) {
+    const prev = prevProgressRef.current;
+    prevProgressRef.current = newProgress;
+    if (prev === newProgress) return;
+    // Fire in background — don't block UI
+    fetch("/api/automations/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        trigger_type: "progress_reached",
+        board_id: card.board_id,
+        card_id: card.id,
+        data: { progress: newProgress, previous_progress: prev },
+      }),
+    }).catch(() => {});
+  }
+
   async function saveManualProgress(value: number) {
     // Skip if value hasn't changed from last save
     if (value === lastSavedProgressRef.current) return;
@@ -1379,6 +1414,8 @@ export function CardDetailModal({
     logActivity("progress_updated", { progress: value });
     // Propagate to parent so card list updates
     onUpdated({ ...card, metadata: newMeta });
+    // Fire progress automation
+    fireProgressAutomation(value);
   }
 
   function handleBarMouseDown(e: React.MouseEvent) {

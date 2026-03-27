@@ -44,6 +44,17 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      if (trigger_type === "progress_reached") {
+        const targetPercent = auto.trigger_config?.percent;
+        const currentProgress = data?.progress;
+        const previousProgress = data?.previous_progress ?? 0;
+        if (targetPercent == null || currentProgress == null) continue;
+        // Only fire when crossing the threshold (previous < target <= current)
+        if (!(previousProgress < targetPercent && currentProgress >= targetPercent)) {
+          continue;
+        }
+      }
+
       // Execute action
       try {
         switch (auto.action_type) {

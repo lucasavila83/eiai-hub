@@ -27,7 +27,10 @@ const TRIGGER_OPTIONS = [
   { value: "card_created", label: "Tarefa criada", icon: "+" },
   { value: "card_overdue", label: "Tarefa atrasada", icon: "⏰" },
   { value: "card_completed", label: "Tarefa concluída", icon: "✓" },
+  { value: "progress_reached", label: "Progresso atingiu %", icon: "📊" },
 ] as const;
+
+const PROGRESS_PRESETS = [10, 25, 50, 75, 100];
 
 const ACTION_OPTIONS = [
   { value: "mark_completed", label: "Marcar como concluída" },
@@ -104,6 +107,7 @@ export default function AutomationsPage() {
   const [formBoardId, setFormBoardId] = useState("");
   const [formTrigger, setFormTrigger] = useState<string>("card_moved_to_column");
   const [formTriggerColumnId, setFormTriggerColumnId] = useState("");
+  const [formTriggerPercent, setFormTriggerPercent] = useState<number>(100);
   const [formAction, setFormAction] = useState<string>("mark_completed");
   const [formActionPriority, setFormActionPriority] = useState("high");
   const [formActionMemberId, setFormActionMemberId] = useState("");
@@ -173,6 +177,7 @@ export default function AutomationsPage() {
     setFormBoardId(boards[0]?.id || "");
     setFormTrigger("card_moved_to_column");
     setFormTriggerColumnId("");
+    setFormTriggerPercent(100);
     setFormAction("mark_completed");
     setFormActionPriority("high");
     setFormActionMemberId("");
@@ -188,6 +193,7 @@ export default function AutomationsPage() {
     setFormBoardId(auto.board_id || boards[0]?.id || "");
     setFormTrigger(auto.trigger_type);
     setFormTriggerColumnId(auto.trigger_config?.column_id || "");
+    setFormTriggerPercent(auto.trigger_config?.percent || 100);
     setFormAction(auto.action_type);
     setFormActionPriority(auto.action_config?.priority || "high");
     setFormActionMemberId(auto.action_config?.user_id || "");
@@ -207,6 +213,9 @@ export default function AutomationsPage() {
     const triggerConfig: any = {};
     if (formTrigger === "card_moved_to_column" && formTriggerColumnId) {
       triggerConfig.column_id = formTriggerColumnId;
+    }
+    if (formTrigger === "progress_reached") {
+      triggerConfig.percent = formTriggerPercent;
     }
 
     const actionConfig: any = {};
@@ -554,6 +563,43 @@ export default function AutomationsPage() {
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
+                  </div>
+                )}
+
+                {formTrigger === "progress_reached" && (
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">
+                      Percentual de progresso
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="5"
+                        max="100"
+                        step="5"
+                        value={formTriggerPercent}
+                        onChange={(e) => setFormTriggerPercent(parseInt(e.target.value) || 100)}
+                        className="w-24 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                      <span className="text-sm text-muted-foreground">%</span>
+                      <div className="flex gap-1 ml-2">
+                        {PROGRESS_PRESETS.map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setFormTriggerPercent(p)}
+                            className={cn(
+                              "px-2 py-1 text-xs rounded-md border transition-colors",
+                              formTriggerPercent === p
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                            )}
+                          >
+                            {p}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
