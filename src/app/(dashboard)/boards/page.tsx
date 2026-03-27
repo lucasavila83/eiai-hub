@@ -34,7 +34,7 @@ export default function BoardsPage() {
       .select("*")
       .eq("org_id", orgId)
       .eq("is_archived", false)
-      .order("created_at", { ascending: false });
+      .order("name", { ascending: true });
 
     if (!allBoards) {
       setBoards([]);

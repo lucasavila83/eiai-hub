@@ -104,7 +104,7 @@ function ProcessesContent() {
       .select("*")
       .eq("org_id", activeOrgId!)
       .eq("is_archived", false)
-      .order("created_at", { ascending: false });
+      .order("name", { ascending: true });
 
     if (data) {
       // Count cards and phases for each pipe
