@@ -1518,6 +1518,32 @@ export function CardDetailModal({
           </div>
           <div className="flex items-center gap-2">
             {saving && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+            {confirmDelete ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-destructive font-medium">Excluir?</span>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="px-2 py-1 text-xs font-medium rounded-md bg-destructive text-white hover:bg-destructive/90 transition-colors cursor-pointer"
+                >
+                  {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : "Sim"}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-2 py-1 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:bg-accent transition-colors cursor-pointer"
+                >
+                  Não
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="p-2 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+                title="Excluir card"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={handleClose}
               className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
@@ -2764,39 +2790,12 @@ export function CardDetailModal({
               )}
             </div>
 
-            {/* Footer: Created info + Delete */}
-            <div className="border-t border-border px-4 py-3 shrink-0 space-y-2">
+            {/* Footer: Created info */}
+            <div className="border-t border-border px-4 py-3 shrink-0">
               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                 <Clock className="w-3 h-3" />
                 Criado em {formatDate(card.created_at)}
               </div>
-
-              {!confirmDelete ? (
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors w-full"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Deletar tarefa
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setConfirmDelete(false)}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive text-destructive-foreground rounded-md text-xs font-medium hover:bg-destructive/90 disabled:opacity-50 transition-colors"
-                  >
-                    {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    Confirmar
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </div>
