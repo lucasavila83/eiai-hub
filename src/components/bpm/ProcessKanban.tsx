@@ -133,6 +133,33 @@ function formatFieldValue(value: any, fieldType: string): string {
   return String(value);
 }
 
+function calcCardProgress(cardId: string, cardVals: Record<string, Record<string, any>>, allFields: BpmField[]): number {
+  const values = cardVals[cardId];
+  if (!values) return 0;
+  const checklistFields = allFields.filter((f) => f.field_type === "checklist");
+  let total = 0;
+  let checked = 0;
+  for (const f of checklistFields) {
+    const val = values[f.field_key];
+    if (Array.isArray(val)) {
+      total += val.length;
+      checked += val.filter((i: any) => i.checked).length;
+    }
+  }
+  // Also count required fields completion as progress
+  if (total === 0) {
+    const requiredFields = allFields.filter((f) => f.is_required);
+    if (requiredFields.length === 0) return 0;
+    let filled = 0;
+    for (const f of requiredFields) {
+      const val = values[f.field_key];
+      if (val !== null && val !== undefined && val !== "") filled++;
+    }
+    return Math.round((filled / requiredFields.length) * 100);
+  }
+  return Math.round((checked / total) * 100);
+}
+
 function calcPhaseProgress(phase: Phase, allPhases: Phase[], allCards: BpmCard[]): number {
   // For end phase: % of completed cards
   if (phase.is_end) {
@@ -357,12 +384,12 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
       </div>
 
     <DragDropContext onDragEnd={handleDragEnd}>
-      <div className="flex gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-200px)]">
+      <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)]">
         {phases.map((phase) => {
           const phaseCards = getPhaseCards(phase.id);
           const dateFilter = columnDateFilters[phase.id] || "all";
           return (
-            <div key={phase.id} className="flex-shrink-0 w-72">
+            <div key={phase.id} className="flex-shrink-0 w-72 flex flex-col max-h-full">
               {/* Column header */}
               <div className="mb-2 px-1">
                 <div className="flex items-center gap-2">
@@ -425,7 +452,7 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
                     ref={provided.innerRef}
                     {...provided.droppableProps}
                     className={cn(
-                      "bg-muted/30 rounded-xl p-2 min-h-[120px] space-y-2 transition-colors",
+                      "bg-muted/30 rounded-xl p-2 min-h-[120px] space-y-2 transition-colors flex-1 overflow-y-auto scrollbar-thin",
                       snapshot.isDraggingOver && "bg-primary/5 ring-2 ring-primary/20"
                     )}
                   >
@@ -467,6 +494,30 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
 
                               {/* Title */}
                               <p className="text-sm font-medium text-foreground mb-2 line-clamp-2">{card.title}</p>
+
+                              {/* Card progress bar */}
+                              {(() => {
+                                const cp = calcCardProgress(card.id, cardValues, fields);
+                                return cp > 0 ? (
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                                      <div
+                                        className={cn(
+                                          "h-full rounded-full transition-all duration-300",
+                                          cp === 100 ? "bg-green-500" : cp >= 50 ? "bg-primary" : "bg-orange-400"
+                                        )}
+                                        style={{ width: `${cp}%` }}
+                                      />
+                                    </div>
+                                    <span className={cn(
+                                      "text-[10px] font-semibold tabular-nums",
+                                      cp === 100 ? "text-green-600" : "text-muted-foreground"
+                                    )}>
+                                      {cp}%
+                                    </span>
+                                  </div>
+                                ) : null;
+                              })()}
 
                               {/* Dynamic field preview (Pipefy-style) */}
                               {previewFields.length > 0 && (
