@@ -180,28 +180,62 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     return () => { supabase.removeChannel(readSub); };
   }, [channel.id]);
 
-  // Scroll to bottom — instant on initial load, smooth on new messages
+  // Scroll to bottom — force container to absolute bottom
   useEffect(() => {
     if (activeTab !== "chat") return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const forceBottom = () => {
+      container.scrollTop = container.scrollHeight;
+    };
 
     if (isInitialLoad.current) {
-      // Scroll multiple times to ensure we reach bottom after all content renders
-      const scrollToBottom = () => {
-        bottomRef.current?.scrollIntoView({ behavior: "instant" });
-      };
-      scrollToBottom();
-      const t1 = setTimeout(scrollToBottom, 50);
-      const t2 = setTimeout(scrollToBottom, 150);
-      const t3 = setTimeout(() => {
-        scrollToBottom();
+      // Multiple attempts to handle images/dynamic content loading
+      forceBottom();
+      const t1 = setTimeout(forceBottom, 50);
+      const t2 = setTimeout(forceBottom, 150);
+      const t3 = setTimeout(forceBottom, 400);
+      const t4 = setTimeout(() => {
+        forceBottom();
         isInitialLoad.current = false;
-      }, 300);
-      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+      }, 800);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
     } else if (!loadingMore) {
-      // Smooth scroll only for new messages (not when loading older ones)
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      // Smooth scroll for new messages
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
     }
   }, [channelMessages.length, activeTab]);
+
+  // Keep scrolled to bottom when images/content load and change height
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || activeTab !== "chat") return;
+
+    const observer = new MutationObserver(() => {
+      // Only auto-scroll if user is near bottom (within 150px)
+      const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      if (distFromBottom < 150) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+
+    observer.observe(container, { childList: true, subtree: true, attributes: true });
+
+    // Also handle image loads
+    function handleImageLoad() {
+      const distFromBottom = container!.scrollHeight - container!.scrollTop - container!.clientHeight;
+      if (distFromBottom < 150) {
+        container!.scrollTop = container!.scrollHeight;
+      }
+    }
+    container.addEventListener("load", handleImageLoad, { capture: true });
+
+    return () => {
+      observer.disconnect();
+      container.removeEventListener("load", handleImageLoad, { capture: true });
+    };
+  }, [activeTab, channel.id]);
 
   // Load older messages when scrolling up
   async function loadOlderMessages() {
