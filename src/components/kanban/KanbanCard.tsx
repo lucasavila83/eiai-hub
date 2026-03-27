@@ -53,10 +53,10 @@ export function KanbanCard({
   const showLabels = visibleFields.labels && labels && labels.length > 0;
   const showPriority = visibleFields.priority && card.priority !== "none";
   const showDueDate = visibleFields.dates && card.due_date;
-  const cardManualProgress = typeof (card.metadata as any)?.manual_progress === "number" ? (card.metadata as any).manual_progress : null;
+  const cardManualProgress = typeof (card.metadata as any)?.manual_progress === "number" ? (card.metadata as any).manual_progress : 0;
   const autoProgressPct = subtaskCount && subtaskCount > 0 ? Math.round((subtaskCompleted! / subtaskCount) * 100) : 0;
-  const cardProgress = cardManualProgress !== null ? cardManualProgress : autoProgressPct;
-  const showProgress = (visibleFields.subtasks && subtaskCount != null && subtaskCount > 0) || cardManualProgress !== null;
+  const cardProgress = Math.max(autoProgressPct, cardManualProgress);
+  const showProgress = cardProgress > 0;
   const showSubtasks = visibleFields.subtasks && subtaskCount != null && subtaskCount > 0;
   const showDescription = visibleFields.description && card.description;
   const showAttachments = attachmentCount != null && attachmentCount > 0;

@@ -958,11 +958,7 @@ export function CardDetailModal({
     );
     setChecklistToggledInSession(true);
     setProgressAcknowledged(true);
-    setManualProgress(null); // Clear manual override — let auto-calculation take over
     await supabase.from("subtasks").update({ is_completed: !currentState }).eq("id", subtaskId);
-    // Clear manual_progress in DB
-    const newMeta = { ...((card.metadata as any) || {}), manual_progress: undefined };
-    await supabase.from("cards").update({ metadata: newMeta }).eq("id", card.id);
     if (subtask) {
       logActivity(!currentState ? "subtask_completed" : "subtask_uncompleted", { title: subtask.title });
     }
@@ -1116,11 +1112,7 @@ export function CardDetailModal({
     );
     setChecklistToggledInSession(true);
     setProgressAcknowledged(true);
-    setManualProgress(null); // Clear manual override — let auto-calculation take over
     await supabase.from("checklist_items").update({ is_completed: !current }).eq("id", itemId);
-    // Clear manual_progress in DB
-    const newMetaCl = { ...((card.metadata as any) || {}), manual_progress: undefined };
-    await supabase.from("cards").update({ metadata: newMetaCl }).eq("id", card.id);
     if (item) {
       logActivity(!current ? "checklist_item_completed" : "checklist_item_uncompleted", { title: item.title, checklist: cl?.name });
     }
@@ -1312,8 +1304,8 @@ export function CardDetailModal({
   const completedItems = completedSubtasks + allChecklistItems.filter((i) => i.is_completed).length;
   const autoProgress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
-  // Effective progress: manual overrides auto
-  const effectiveProgress = manualProgress !== null ? manualProgress : autoProgress;
+  // Effective progress: hybrid — the higher of auto (checklists) and manual wins
+  const effectiveProgress = Math.max(autoProgress, manualProgress ?? 0);
 
   // Find the done column (is_done_column flag, or last column by position)
   const doneColumn = columns.find((c) => c.is_done_column)
