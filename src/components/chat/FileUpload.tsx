@@ -20,17 +20,30 @@ interface Props {
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const ACCEPTED_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
+  // Imagens
+  "image/*",
+  // Documentos
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "text/plain",
-  "text/csv",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  // Texto e código
+  "text/*",
+  // Compactados
+  "application/zip",
+  "application/x-rar-compressed",
+  "application/x-7z-compressed",
+  "application/gzip",
+  // Áudio e vídeo
+  "audio/*",
+  "video/*",
+  // Outros
+  "application/json",
+  "application/xml",
+  "application/octet-stream",
 ].join(",");
 
 function formatFileSize(bytes: number): string {
