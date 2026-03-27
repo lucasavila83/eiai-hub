@@ -7,8 +7,10 @@ import { CardDetailModal } from "./CardDetailModal";
 import { LabelManagerModal } from "./LabelManagerModal";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
-import { Plus, Settings, Tags, SlidersHorizontal, Filter, X } from "lucide-react";
+import { Plus, Settings, Tags, SlidersHorizontal, Filter, X, FileText, LayoutGrid } from "lucide-react";
+import { cn } from "@/lib/utils/helpers";
 import { BoardSettingsModal } from "./BoardSettingsModal";
+import { DocumentsTab } from "./DocumentsTab";
 import { defaultVisibleFields, type VisibleFields } from "./KanbanCard";
 import type { Board, Column, Card } from "@/lib/types/database";
 
@@ -37,6 +39,9 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   const [visibleFields, setVisibleFields] = useState<VisibleFields>({ ...defaultVisibleFields });
   const [showFieldsPopover, setShowFieldsPopover] = useState(false);
   const fieldsPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Active view tab
+  const [activeView, setActiveView] = useState<"kanban" | "documents">("kanban");
 
   // Filters
   const [filterPriority, setFilterPriority] = useState<string>("");
@@ -249,9 +254,39 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   return (
     <div className="flex flex-col h-full">
       <div className="px-6 py-3 border-b border-border flex items-center justify-between shrink-0">
-        <h2 className="font-bold text-foreground text-lg">{board.name}</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="font-bold text-foreground text-lg">{board.name}</h2>
+          {/* View tabs */}
+          <div className="flex items-center bg-muted rounded-lg p-0.5">
+            <button
+              onClick={() => setActiveView("kanban")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                activeView === "kanban"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              Board
+            </button>
+            <button
+              onClick={() => setActiveView("documents")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                activeView === "documents"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Documentos
+            </button>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
-          {/* Filters button */}
+          {activeView === "kanban" && <>
+          {/* Filters button (kanban only) */}
           <button
             onClick={() => setShowFilters((v) => !v)}
             className={`flex items-center gap-1.5 text-sm transition-colors px-2 py-1 rounded-md ${
@@ -329,6 +364,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
             <Tags className="w-4 h-4" />
             Labels
           </button>
+          </>}
           <button
             onClick={() => setShowSettings(true)}
             className="text-muted-foreground hover:text-foreground transition-colors"
@@ -339,7 +375,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
       </div>
 
       {/* Filter bar */}
-      {showFilters && (
+      {showFilters && activeView === "kanban" && (
         <div className="px-6 py-2 border-b border-border bg-accent/20 flex items-center gap-3 flex-wrap shrink-0">
           {/* Filter by assignee */}
           <div className="flex items-center gap-1.5">
@@ -404,6 +440,9 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         </div>
       )}
 
+      {activeView === "documents" ? (
+        <DocumentsTab boardId={board.id} currentUserId={currentUserId} />
+      ) : (
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-4 p-6 overflow-x-auto h-full">
           {boardColumns.map((column) => (
@@ -471,6 +510,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
           </div>
         </div>
       </DragDropContext>
+      )}
 
       {showSettings && (
         <BoardSettingsModal
