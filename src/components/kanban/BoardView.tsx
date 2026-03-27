@@ -596,12 +596,16 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         <CardDetailModal
           card={selectedCard}
           boardId={board.id}
-          columns={boardColumns.map((c) => ({ id: c.id, name: c.name, color: c.color }))}
+          columns={boardColumns.map((c) => ({ id: c.id, name: c.name, color: c.color, is_done_column: c.is_done_column, position: c.position }))}
           orgMembers={orgMembers}
           boardLabels={boardLabels}
           currentUserId={currentUserId}
           onClose={() => { setSelectedCard(null); loadSubtaskCounts(); loadAttachmentCounts(); }}
           onUpdated={(updatedCard) => {
+            // If column changed (e.g. auto-move to done), move card in store
+            if (selectedCard && updatedCard.column_id !== selectedCard.column_id) {
+              moveCard(updatedCard.id, selectedCard.column_id, updatedCard.column_id, 0);
+            }
             updateCard(updatedCard.id, updatedCard);
             setSelectedCard(updatedCard);
           }}

@@ -53,7 +53,7 @@ import { isBpmTask } from "@/lib/bpm/task-sync";
 interface Props {
   card: Card & { card_assignees: any[] };
   boardId: string;
-  columns: { id: string; name: string; color: string }[];
+  columns: { id: string; name: string; color: string; is_done_column?: boolean; position?: number }[];
   orgMembers: {
     user_id: string;
     profiles: {
@@ -1260,15 +1260,31 @@ export function CardDetailModal({
   const completedItems = completedSubtasks + allChecklistItems.filter((i) => i.is_completed).length;
   const totalProgress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
-  // Gate close: require progress acknowledgment
-  function handleClose() {
-    if (progressAcknowledged) {
-      onClose();
-    } else {
+  // Find the done column (is_done_column flag, or last column by position)
+  const doneColumn = columns.find((c) => c.is_done_column)
+    || [...columns].sort((a, b) => (b.position ?? 0) - (a.position ?? 0))[0];
+
+  // Gate close: require progress acknowledgment + auto-move to done if 100%
+  async function handleClose() {
+    if (!progressAcknowledged) {
       setShowProgressWarning(true);
-      // Auto-hide warning after 3 seconds
       setTimeout(() => setShowProgressWarning(false), 3000);
+      return;
     }
+
+    // If progress is 100% and card is NOT already in done column, move it
+    if (totalProgress === 100 && doneColumn && columnId !== doneColumn.id) {
+      const supabase = createClient();
+      await supabase.from("cards").update({
+        column_id: doneColumn.id,
+        completed_at: new Date().toISOString(),
+      }).eq("id", card.id);
+      logActivity("moved", { to_column: doneColumn.name });
+      logActivity("completed", {});
+      onUpdated({ ...card, column_id: doneColumn.id, completed_at: new Date().toISOString() });
+    }
+
+    onClose();
   }
 
   function acknowledgeProgress() {
