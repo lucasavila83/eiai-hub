@@ -1315,6 +1315,9 @@ export function CardDetailModal({
 
   // ─── Interactive progress bar ──────────────────────────────────────────
 
+  const lastSavedProgressRef = useRef<number | null>(manualProgress);
+  const dragStartedRef = useRef(false);
+
   function snapTo5(value: number): number {
     return Math.min(100, Math.max(0, Math.round(value / 5) * 5));
   }
@@ -1328,6 +1331,9 @@ export function CardDetailModal({
   }
 
   async function saveManualProgress(value: number) {
+    // Skip if value hasn't changed from last save
+    if (value === lastSavedProgressRef.current) return;
+    lastSavedProgressRef.current = value;
     setManualProgress(value);
     setProgressAcknowledged(true);
     setShowProgressWarning(false);
@@ -1335,15 +1341,13 @@ export function CardDetailModal({
     const newMeta = { ...((card.metadata as any) || {}), manual_progress: value };
     await supabase.from("cards").update({ metadata: newMeta }).eq("id", card.id);
     logActivity("progress_updated", { progress: value });
-  }
-
-  function handleBarClick(e: React.MouseEvent) {
-    const val = calcProgressFromEvent(e);
-    saveManualProgress(val);
+    // Propagate to parent so card list updates
+    onUpdated({ ...card, metadata: newMeta });
   }
 
   function handleBarMouseDown(e: React.MouseEvent) {
     e.preventDefault();
+    dragStartedRef.current = true;
     setIsDraggingProgress(true);
     const val = calcProgressFromEvent(e);
     setManualProgress(val);
@@ -1357,6 +1361,7 @@ export function CardDetailModal({
       setIsDraggingProgress(false);
       const finalVal = calcProgressFromEvent(ev);
       saveManualProgress(finalVal);
+      dragStartedRef.current = false;
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
@@ -1460,7 +1465,6 @@ export function CardDetailModal({
                   isDraggingProgress ? "cursor-grabbing" : "cursor-pointer",
                   progressAcknowledged ? "bg-muted" : "bg-muted ring-2 ring-primary/40 ring-offset-1 ring-offset-card animate-pulse"
                 )}
-                onClick={handleBarClick}
                 onMouseDown={handleBarMouseDown}
                 title="Clique ou arraste para ajustar o progresso (5 em 5%)"
               >
