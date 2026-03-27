@@ -736,18 +736,52 @@ export function CardDetailModal({
     logActivity("priority_changed", { new_priority: priorityConfig[p].label });
   }
 
-  // Due date
+  // Due date + time
+  const [dueTime, setDueTime] = useState(() => {
+    if (!card.due_date) return "";
+    const t = card.due_date.includes("T") ? card.due_date.split("T")[1]?.substring(0, 5) : "";
+    return t || "";
+  });
+  const [startTime, setStartTime] = useState(() => {
+    const sd = (card.metadata as any)?.start_date || "";
+    if (!sd) return "";
+    const t = sd.includes("T") ? sd.split("T")[1]?.substring(0, 5) : "";
+    return t || "";
+  });
+
   async function handleDueDateChange(value: string) {
-    setDueDate(value);
-    await updateCard({ due_date: value || null });
-    logActivity("due_date_changed", { due_date: value || null });
+    const dateOnly = value || "";
+    const combined = dateOnly && dueTime ? `${dateOnly}T${dueTime}` : dateOnly;
+    setDueDate(combined);
+    await updateCard({ due_date: combined || null });
+    logActivity("due_date_changed", { due_date: combined || null });
   }
 
-  // Start date (stored in metadata)
+  async function handleDueTimeChange(value: string) {
+    setDueTime(value);
+    const dateOnly = dueDate ? dueDate.split("T")[0] : "";
+    if (!dateOnly) return;
+    const combined = value ? `${dateOnly}T${value}` : dateOnly;
+    setDueDate(combined);
+    await updateCard({ due_date: combined || null });
+  }
+
   async function handleStartDateChange(value: string) {
-    setStartDate(value);
+    const dateOnly = value || "";
+    const combined = dateOnly && startTime ? `${dateOnly}T${startTime}` : dateOnly;
+    setStartDate(combined);
     const meta = (card.metadata as any) || {};
-    await updateCard({ metadata: { ...meta, start_date: value || null } } as any);
+    await updateCard({ metadata: { ...meta, start_date: combined || null } } as any);
+  }
+
+  async function handleStartTimeChange(value: string) {
+    setStartTime(value);
+    const dateOnly = startDate ? startDate.split("T")[0] : "";
+    if (!dateOnly) return;
+    const combined = value ? `${dateOnly}T${value}` : dateOnly;
+    setStartDate(combined);
+    const meta = (card.metadata as any) || {};
+    await updateCard({ metadata: { ...meta, start_date: combined || null } } as any);
   }
 
   // Column
@@ -1678,27 +1712,50 @@ export function CardDetailModal({
                   <CalendarDays className="w-3.5 h-3.5" />
                   Datas
                 </label>
-                <div className="flex gap-2">
-                  <div className="flex-1">
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Start date + time */}
+                  <div>
                     <label className="text-[10px] text-muted-foreground">Inicio</label>
-                    <input
-                      type="date"
-                      value={startDate ? startDate.split("T")[0] : ""}
-                      onChange={(e) => handleStartDateChange(e.target.value)}
-                      className="w-full px-2 py-1 bg-accent/50 border border-transparent hover:border-border rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
+                    <div className="flex gap-1">
+                      <input
+                        type="date"
+                        value={startDate ? startDate.split("T")[0] : ""}
+                        onChange={(e) => handleStartDateChange(e.target.value)}
+                        className="flex-1 min-w-0 px-2 py-1 bg-accent/50 border border-transparent hover:border-border rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                      <input
+                        type="time"
+                        value={startTime}
+                        onChange={(e) => handleStartTimeChange(e.target.value)}
+                        className="w-[72px] px-1.5 py-1 bg-accent/50 border border-transparent hover:border-border rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                        title="Hora de início"
+                      />
+                    </div>
                   </div>
-                  <div className="flex-1">
+                  {/* Due date + time */}
+                  <div>
                     <label className="text-[10px] text-muted-foreground">Prazo</label>
-                    <input
-                      type="date"
-                      value={dueDate ? dueDate.split("T")[0] : ""}
-                      onChange={(e) => handleDueDateChange(e.target.value)}
-                      className={cn(
-                        "w-full px-2 py-1 bg-accent/50 border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring",
-                        isOverdue ? "border-destructive text-destructive" : "border-transparent hover:border-border text-foreground"
-                      )}
-                    />
+                    <div className="flex gap-1">
+                      <input
+                        type="date"
+                        value={dueDate ? dueDate.split("T")[0] : ""}
+                        onChange={(e) => handleDueDateChange(e.target.value)}
+                        className={cn(
+                          "flex-1 min-w-0 px-2 py-1 bg-accent/50 border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring",
+                          isOverdue ? "border-destructive text-destructive" : "border-transparent hover:border-border text-foreground"
+                        )}
+                      />
+                      <input
+                        type="time"
+                        value={dueTime}
+                        onChange={(e) => handleDueTimeChange(e.target.value)}
+                        className={cn(
+                          "w-[72px] px-1.5 py-1 bg-accent/50 border rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring",
+                          isOverdue ? "border-destructive text-destructive" : "border-transparent hover:border-border text-foreground"
+                        )}
+                        title="Hora limite"
+                      />
+                    </div>
                   </div>
                 </div>
                 {isOverdue && (
