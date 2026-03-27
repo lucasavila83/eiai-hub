@@ -958,7 +958,12 @@ export function CardDetailModal({
     );
     setChecklistToggledInSession(true);
     setProgressAcknowledged(true);
+    // Last action wins: checklist toggle clears manual so auto takes over
+    setManualProgress(null);
     await supabase.from("subtasks").update({ is_completed: !currentState }).eq("id", subtaskId);
+    const clearMeta = { ...((card.metadata as any) || {}), manual_progress: undefined };
+    await supabase.from("cards").update({ metadata: clearMeta }).eq("id", card.id);
+    onUpdated({ ...card, metadata: clearMeta });
     if (subtask) {
       logActivity(!currentState ? "subtask_completed" : "subtask_uncompleted", { title: subtask.title });
     }
@@ -1112,7 +1117,12 @@ export function CardDetailModal({
     );
     setChecklistToggledInSession(true);
     setProgressAcknowledged(true);
+    // Last action wins: checklist toggle clears manual so auto takes over
+    setManualProgress(null);
     await supabase.from("checklist_items").update({ is_completed: !current }).eq("id", itemId);
+    const clearMetaCl = { ...((card.metadata as any) || {}), manual_progress: undefined };
+    await supabase.from("cards").update({ metadata: clearMetaCl }).eq("id", card.id);
+    onUpdated({ ...card, metadata: clearMetaCl });
     if (item) {
       logActivity(!current ? "checklist_item_completed" : "checklist_item_uncompleted", { title: item.title, checklist: cl?.name });
     }

@@ -133,6 +133,32 @@ function formatFieldValue(value: any, fieldType: string): string {
   return String(value);
 }
 
+function calcPhaseProgress(phase: Phase, allPhases: Phase[], allCards: BpmCard[]): number {
+  // For end phase: % of completed cards
+  if (phase.is_end) {
+    const cardsHere = allCards.filter((c) => c.current_phase_id === phase.id);
+    if (cardsHere.length === 0) return 0;
+    const completed = cardsHere.filter((c) => c.completed_at).length;
+    return cardsHere.length > 0 ? Math.round((completed / cardsHere.length) * 100) : 0;
+  }
+
+  // For other phases: cards that moved past this phase / total that reached this phase
+  const phasePos = phase.position;
+  const laterPhases = allPhases.filter((p) => p.position > phasePos);
+  const laterPhaseIds = new Set(laterPhases.map((p) => p.id));
+
+  const cardsInPhase = allCards.filter((c) => c.current_phase_id === phase.id && !c.is_archived);
+  const cardsMovedPast = allCards.filter((c) => {
+    if (c.is_archived) return false;
+    const currentPhase = allPhases.find((p) => p.id === c.current_phase_id);
+    return currentPhase && currentPhase.position > phasePos;
+  });
+
+  const total = cardsInPhase.length + cardsMovedPast.length;
+  if (total === 0) return 0;
+  return Math.round((cardsMovedPast.length / total) * 100);
+}
+
 export function ProcessKanban({ phases, cards, members, fields = [], cardValues = {}, previewFieldIds = [], onMoveCard, onCardClick, onCreateCard, canEdit }: Props) {
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -338,12 +364,37 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
           return (
             <div key={phase.id} className="flex-shrink-0 w-72">
               {/* Column header */}
-              <div className="flex items-center gap-2 mb-2 px-1">
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: phase.color }} />
-                <h3 className="text-sm font-semibold text-foreground truncate flex-1">{phase.name}</h3>
-                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
-                  {phaseCards.length}
-                </span>
+              <div className="mb-2 px-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: phase.color }} />
+                  <h3 className="text-sm font-semibold text-foreground truncate flex-1">{phase.name}</h3>
+                  <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                    {phaseCards.length}
+                  </span>
+                </div>
+                {/* Phase progress bar */}
+                {(() => {
+                  const progress = calcPhaseProgress(phase, phases, cards);
+                  return progress > 0 ? (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all duration-500",
+                            progress === 100 ? "bg-green-500" : progress >= 50 ? "bg-primary" : "bg-orange-400"
+                          )}
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <span className={cn(
+                        "text-[10px] font-semibold tabular-nums",
+                        progress === 100 ? "text-green-600" : "text-muted-foreground"
+                      )}>
+                        {progress}%
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
               </div>
 
               {/* Per-column date filter */}
