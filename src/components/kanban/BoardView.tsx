@@ -7,8 +7,9 @@ import { CardDetailModal } from "./CardDetailModal";
 import { LabelManagerModal } from "./LabelManagerModal";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
-import { Plus, Settings, Tags, SlidersHorizontal, Filter, X, FileText, LayoutGrid } from "lucide-react";
+import { Plus, Settings, Tags, SlidersHorizontal, Filter, X, FileText, LayoutGrid, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
+import Link from "next/link";
 import { BoardSettingsModal } from "./BoardSettingsModal";
 import { DocumentsTab } from "./DocumentsTab";
 import { defaultVisibleFields, type VisibleFields } from "./KanbanCard";
@@ -255,6 +256,13 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
     <div className="flex flex-col h-full">
       <div className="px-6 py-3 border-b border-border flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
+          <Link
+            href="/boards"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            title="Voltar aos boards"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
           <h2 className="font-bold text-foreground text-lg">{board.name}</h2>
           {/* View tabs */}
           <div className="flex items-center bg-muted rounded-lg p-0.5">
