@@ -575,37 +575,39 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
 
             {/* Date + Time */}
             <div className="flex gap-1.5">
-              <label htmlFor={`date-${column.id}`} className="flex-1 relative cursor-pointer">
-                <div
-                  className={cn(
-                    "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left",
-                    newCardDueDate ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
-                  )}
-                >
-                  <Calendar className="w-3.5 h-3.5 shrink-0" />
-                  {newCardDueDate
-                    ? new Date(newCardDueDate + "T12:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })
-                    : "Adicionar data *"}
-                </div>
-                <input
-                  id={`date-${column.id}`}
-                  type="date"
-                  value={newCardDueDate}
-                  onChange={(e) => setNewCardDueDate(e.target.value)}
-                  className="absolute left-0 top-0 w-full h-full opacity-0 cursor-pointer"
-                />
-              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  const input = document.getElementById(`date-${column.id}`) as HTMLInputElement;
+                  if (input) { input.showPicker?.(); input.focus(); }
+                }}
+                className={cn(
+                  "flex-1 flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left cursor-pointer",
+                  newCardDueDate ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
+                )}
+              >
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                {newCardDueDate
+                  ? new Date(newCardDueDate + "T12:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })
+                  : "Adicionar data *"}
+              </button>
+              <input
+                id={`date-${column.id}`}
+                type="date"
+                value={newCardDueDate}
+                onChange={(e) => setNewCardDueDate(e.target.value)}
+                className="sr-only"
+              />
               {newCardDueDate && (
-                <div className="relative">
+                <>
                   <button
                     type="button"
                     onClick={() => {
                       const input = document.getElementById(`time-${column.id}`) as HTMLInputElement;
-                      input?.showPicker?.();
-                      input?.focus();
+                      if (input) { input.showPicker?.(); input.focus(); }
                     }}
                     className={cn(
-                      "flex items-center gap-1 px-2 py-1.5 rounded-md text-xs transition-colors",
+                      "flex items-center gap-1 px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer",
                       newCardDueTime ? "text-foreground bg-primary/5" : "text-muted-foreground hover:bg-accent"
                     )}
                   >
@@ -617,9 +619,9 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
                     type="time"
                     value={newCardDueTime}
                     onChange={(e) => setNewCardDueTime(e.target.value)}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    className="sr-only"
                   />
-                </div>
+                </>
               )}
             </div>
 

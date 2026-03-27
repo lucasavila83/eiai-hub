@@ -53,6 +53,10 @@ export function KanbanCard({
   const showLabels = visibleFields.labels && labels && labels.length > 0;
   const showPriority = visibleFields.priority && card.priority !== "none";
   const showDueDate = visibleFields.dates && card.due_date;
+  const cardManualProgress = typeof (card.metadata as any)?.manual_progress === "number" ? (card.metadata as any).manual_progress : null;
+  const autoProgressPct = subtaskCount && subtaskCount > 0 ? Math.round((subtaskCompleted! / subtaskCount) * 100) : 0;
+  const cardProgress = cardManualProgress !== null ? cardManualProgress : autoProgressPct;
+  const showProgress = (visibleFields.subtasks && subtaskCount != null && subtaskCount > 0) || cardManualProgress !== null;
   const showSubtasks = visibleFields.subtasks && subtaskCount != null && subtaskCount > 0;
   const showDescription = visibleFields.description && card.description;
   const showAttachments = attachmentCount != null && attachmentCount > 0;
@@ -105,26 +109,26 @@ export function KanbanCard({
       <p className="text-sm font-medium text-foreground leading-snug mb-1.5">{card.title}</p>
 
       {/* Progress bar */}
-      {showSubtasks && subtaskCount! > 0 && (
+      {showProgress && cardProgress > 0 && (
         <div className="flex items-center gap-2 mb-1">
           <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
             <div
               className={cn(
                 "h-full rounded-full transition-all duration-300",
-                subtaskCompleted === subtaskCount
+                cardProgress === 100
                   ? "bg-green-500"
-                  : (subtaskCompleted! / subtaskCount!) >= 0.5
+                  : cardProgress >= 50
                     ? "bg-primary"
                     : "bg-orange-400"
               )}
-              style={{ width: `${Math.round((subtaskCompleted! / subtaskCount!) * 100)}%` }}
+              style={{ width: `${cardProgress}%` }}
             />
           </div>
           <span className={cn(
             "text-[10px] font-semibold tabular-nums min-w-[28px] text-right",
-            subtaskCompleted === subtaskCount ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
+            cardProgress === 100 ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
           )}>
-            {Math.round((subtaskCompleted! / subtaskCount!) * 100)}%
+            {cardProgress}%
           </span>
         </div>
       )}

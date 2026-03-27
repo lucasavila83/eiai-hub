@@ -309,6 +309,16 @@ export function CardDetailModal({
   const [showProgressWarning, setShowProgressWarning] = useState(false);
   const [checklistToggledInSession, setChecklistToggledInSession] = useState(false);
 
+  // Manual progress (interactive bar)
+  const [manualProgress, setManualProgress] = useState<number | null>(
+    typeof (card.metadata as any)?.manual_progress === "number" ? (card.metadata as any).manual_progress : null
+  );
+  const [editingPercent, setEditingPercent] = useState(false);
+  const [percentInput, setPercentInput] = useState("");
+  const [isDraggingProgress, setIsDraggingProgress] = useState(false);
+  const progressBarRef = useRef<HTMLDivElement>(null);
+  const percentInputRef = useRef<HTMLInputElement>(null);
+
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const activityEndRef = useRef<HTMLDivElement>(null);
@@ -914,7 +924,11 @@ export function CardDetailModal({
     );
     setChecklistToggledInSession(true);
     setProgressAcknowledged(true);
+    setManualProgress(null); // Clear manual override — let auto-calculation take over
     await supabase.from("subtasks").update({ is_completed: !currentState }).eq("id", subtaskId);
+    // Clear manual_progress in DB
+    const newMeta = { ...((card.metadata as any) || {}), manual_progress: undefined };
+    await supabase.from("cards").update({ metadata: newMeta }).eq("id", card.id);
     if (subtask) {
       logActivity(!currentState ? "subtask_completed" : "subtask_uncompleted", { title: subtask.title });
     }
@@ -1068,7 +1082,11 @@ export function CardDetailModal({
     );
     setChecklistToggledInSession(true);
     setProgressAcknowledged(true);
+    setManualProgress(null); // Clear manual override — let auto-calculation take over
     await supabase.from("checklist_items").update({ is_completed: !current }).eq("id", itemId);
+    // Clear manual_progress in DB
+    const newMetaCl = { ...((card.metadata as any) || {}), manual_progress: undefined };
+    await supabase.from("cards").update({ metadata: newMetaCl }).eq("id", card.id);
     if (item) {
       logActivity(!current ? "checklist_item_completed" : "checklist_item_uncompleted", { title: item.title, checklist: cl?.name });
     }
@@ -1258,7 +1276,10 @@ export function CardDetailModal({
   const allChecklistItems = checklists.flatMap((cl) => cl.items);
   const totalItems = subtasks.length + allChecklistItems.length;
   const completedItems = completedSubtasks + allChecklistItems.filter((i) => i.is_completed).length;
-  const totalProgress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+  const autoProgress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+
+  // Effective progress: manual overrides auto
+  const effectiveProgress = manualProgress !== null ? manualProgress : autoProgress;
 
   // Find the done column (is_done_column flag, or last column by position)
   const doneColumn = columns.find((c) => c.is_done_column)
@@ -1273,7 +1294,7 @@ export function CardDetailModal({
     }
 
     // If progress is 100% and card is NOT already in done column, move it
-    if (totalProgress === 100 && doneColumn && columnId !== doneColumn.id) {
+    if (effectiveProgress === 100 && doneColumn && columnId !== doneColumn.id) {
       const supabase = createClient();
       await supabase.from("cards").update({
         column_id: doneColumn.id,
@@ -1290,6 +1311,69 @@ export function CardDetailModal({
   function acknowledgeProgress() {
     setProgressAcknowledged(true);
     setShowProgressWarning(false);
+  }
+
+  // ─── Interactive progress bar ──────────────────────────────────────────
+
+  function snapTo5(value: number): number {
+    return Math.min(100, Math.max(0, Math.round(value / 5) * 5));
+  }
+
+  function calcProgressFromEvent(e: React.MouseEvent | MouseEvent) {
+    const bar = progressBarRef.current;
+    if (!bar) return 0;
+    const rect = bar.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    return snapTo5((x / rect.width) * 100);
+  }
+
+  async function saveManualProgress(value: number) {
+    setManualProgress(value);
+    setProgressAcknowledged(true);
+    setShowProgressWarning(false);
+    const supabase = createClient();
+    const newMeta = { ...((card.metadata as any) || {}), manual_progress: value };
+    await supabase.from("cards").update({ metadata: newMeta }).eq("id", card.id);
+    logActivity("progress_updated", { progress: value });
+  }
+
+  function handleBarClick(e: React.MouseEvent) {
+    const val = calcProgressFromEvent(e);
+    saveManualProgress(val);
+  }
+
+  function handleBarMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    setIsDraggingProgress(true);
+    const val = calcProgressFromEvent(e);
+    setManualProgress(val);
+    setProgressAcknowledged(true);
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      const v = calcProgressFromEvent(ev);
+      setManualProgress(v);
+    };
+    const handleMouseUp = (ev: MouseEvent) => {
+      setIsDraggingProgress(false);
+      const finalVal = calcProgressFromEvent(ev);
+      saveManualProgress(finalVal);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }
+
+  function handlePercentDoubleClick() {
+    setEditingPercent(true);
+    setPercentInput(String(effectiveProgress));
+    setTimeout(() => percentInputRef.current?.select(), 50);
+  }
+
+  function handlePercentSubmit() {
+    const val = snapTo5(parseInt(percentInput) || 0);
+    saveManualProgress(val);
+    setEditingPercent(false);
   }
 
   const descriptionIsLong = description.length > 300;
@@ -1365,39 +1449,75 @@ export function CardDetailModal({
           </div>
         </div>
 
-        {/* Progress acknowledgment bar */}
+        {/* Interactive progress bar */}
         <div className="px-6 pt-3 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex-1">
               <div
+                ref={progressBarRef}
                 className={cn(
-                  "relative h-2.5 rounded-full overflow-hidden cursor-pointer transition-all",
+                  "relative h-3 rounded-full overflow-hidden transition-all select-none",
+                  isDraggingProgress ? "cursor-grabbing" : "cursor-pointer",
                   progressAcknowledged ? "bg-muted" : "bg-muted ring-2 ring-primary/40 ring-offset-1 ring-offset-card animate-pulse"
                 )}
-                onClick={acknowledgeProgress}
-                title="Clique para confirmar o progresso"
+                onClick={handleBarClick}
+                onMouseDown={handleBarMouseDown}
+                title="Clique ou arraste para ajustar o progresso (5 em 5%)"
               >
                 <div
                   className={cn(
-                    "h-full rounded-full transition-all duration-300",
-                    totalProgress === 100 ? "bg-green-500" : totalProgress >= 50 ? "bg-primary" : "bg-orange-400"
+                    "h-full rounded-full pointer-events-none",
+                    isDraggingProgress ? "transition-none" : "transition-all duration-300",
+                    effectiveProgress === 100 ? "bg-green-500" : effectiveProgress >= 50 ? "bg-primary" : "bg-orange-400"
                   )}
-                  style={{ width: `${totalProgress}%` }}
+                  style={{ width: `${effectiveProgress}%` }}
                 />
+                {/* Drag handle indicator */}
+                {effectiveProgress > 0 && effectiveProgress < 100 && (
+                  <div
+                    className="absolute top-0 h-full w-1.5 bg-white/80 rounded-full shadow pointer-events-none"
+                    style={{ left: `calc(${effectiveProgress}% - 3px)` }}
+                  />
+                )}
               </div>
             </div>
-            <button
-              onClick={acknowledgeProgress}
-              className={cn(
-                "text-xs font-bold tabular-nums px-2 py-1 rounded-md transition-all min-w-[48px] text-center",
-                progressAcknowledged
-                  ? totalProgress === 100 ? "text-green-600 bg-green-50" : "text-muted-foreground bg-muted"
-                  : "text-primary bg-primary/10 hover:bg-primary/20 ring-1 ring-primary/30 cursor-pointer"
-              )}
-            >
-              {totalProgress}%
-            </button>
-            {progressAcknowledged && (
+
+            {/* Percentage display / editable input */}
+            {editingPercent ? (
+              <form
+                onSubmit={(e) => { e.preventDefault(); handlePercentSubmit(); }}
+                className="flex items-center"
+              >
+                <input
+                  ref={percentInputRef}
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={percentInput}
+                  onChange={(e) => setPercentInput(e.target.value)}
+                  onBlur={handlePercentSubmit}
+                  onKeyDown={(e) => { if (e.key === "Escape") setEditingPercent(false); }}
+                  className="w-14 text-xs font-bold tabular-nums px-2 py-1 rounded-md border border-primary text-center bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                  autoFocus
+                />
+              </form>
+            ) : (
+              <button
+                onClick={() => { acknowledgeProgress(); }}
+                onDoubleClick={handlePercentDoubleClick}
+                className={cn(
+                  "text-xs font-bold tabular-nums px-2 py-1 rounded-md transition-all min-w-[48px] text-center",
+                  progressAcknowledged
+                    ? effectiveProgress === 100 ? "text-green-600 bg-green-50 dark:bg-green-500/10" : "text-muted-foreground bg-muted"
+                    : "text-primary bg-primary/10 hover:bg-primary/20 ring-1 ring-primary/30 cursor-pointer"
+                )}
+                title="Clique duplo para digitar o valor"
+              >
+                {effectiveProgress}%
+              </button>
+            )}
+            {progressAcknowledged && !editingPercent && (
               <span className="text-[10px] text-green-500 font-medium">✓</span>
             )}
           </div>
