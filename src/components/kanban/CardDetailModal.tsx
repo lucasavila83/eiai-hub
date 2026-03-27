@@ -1304,8 +1304,8 @@ export function CardDetailModal({
   const completedItems = completedSubtasks + allChecklistItems.filter((i) => i.is_completed).length;
   const autoProgress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
-  // Effective progress: hybrid — the higher of auto (checklists) and manual wins
-  const effectiveProgress = Math.max(autoProgress, manualProgress ?? 0);
+  // Effective progress: manual override when set, otherwise auto from checklists
+  const effectiveProgress = manualProgress !== null ? manualProgress : autoProgress;
 
   // Find the done column (is_done_column flag, or last column by position)
   const doneColumn = columns.find((c) => c.is_done_column)
