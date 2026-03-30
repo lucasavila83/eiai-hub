@@ -586,6 +586,13 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
         }
       }
 
+      // Mirror to hub boards (fire-and-forget)
+      fetch("/api/cards/mirror", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ card_id: card.id, board_id: targetBoardId }),
+      }).catch(() => {});
+
       // Send confirmation message in chat
       await sendMessage(`📋 Tarefa criada: **${title}**`);
     }

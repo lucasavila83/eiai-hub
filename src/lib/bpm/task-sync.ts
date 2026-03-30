@@ -215,6 +215,16 @@ export async function createBoardTaskFromBpm(
     is_active: true,
   });
 
+  // Mirror to hub boards (server-side call)
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    await fetch(`${baseUrl}/api/cards/mirror`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ card_id: boardCard.id, board_id: targetBoard.id }),
+    });
+  } catch {}
+
   return boardCard.id;
 }
 

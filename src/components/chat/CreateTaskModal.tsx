@@ -217,6 +217,13 @@ export function CreateTaskModal({
       }
     }
 
+    // Mirror to hub boards (fire-and-forget)
+    fetch("/api/cards/mirror", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ card_id: card.id, board_id: selectedBoardId }),
+    }).catch(() => {});
+
     const board = boards.find((b) => b.id === selectedBoardId);
     const column = columns.find((c) => c.id === selectedColumnId);
 
