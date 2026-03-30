@@ -122,6 +122,56 @@ export async function POST(req: NextRequest) {
 
       if (mirrorErr || !mirrorCard) continue;
 
+      // Copy attachments from source card to mirror
+      const { data: attachments } = await supabase
+        .from("card_attachments")
+        .select("file_url, file_name, file_size, file_type, uploaded_by")
+        .eq("card_id", card_id);
+
+      if (attachments && attachments.length > 0) {
+        await supabase.from("card_attachments").insert(
+          attachments.map((a: any) => ({
+            card_id: mirrorCard.id,
+            file_url: a.file_url,
+            file_name: a.file_name,
+            file_size: a.file_size,
+            file_type: a.file_type,
+            uploaded_by: a.uploaded_by,
+          }))
+        );
+      }
+
+      // Copy checklists from source card to mirror
+      const { data: checklists } = await supabase
+        .from("checklists")
+        .select("id, name, position, created_by")
+        .eq("card_id", card_id)
+        .order("position");
+
+      if (checklists && checklists.length > 0) {
+        for (const cl of checklists) {
+          const { data: newCl } = await supabase
+            .from("checklists")
+            .insert({ card_id: mirrorCard.id, name: cl.name, position: cl.position, created_by: cl.created_by })
+            .select("id")
+            .single();
+
+          if (newCl) {
+            const { data: items } = await supabase
+              .from("checklist_items")
+              .select("title, is_completed, due_date, assigned_to, position")
+              .eq("checklist_id", cl.id)
+              .order("position");
+
+            if (items && items.length > 0) {
+              await supabase.from("checklist_items").insert(
+                items.map((item: any) => ({ ...item, checklist_id: newCl.id }))
+              );
+            }
+          }
+        }
+      }
+
       // Assign the hub user to the mirror card
       await supabase.from("card_assignees").insert({
         card_id: mirrorCard.id,
@@ -270,6 +320,87 @@ export async function PATCH(req: NextRequest) {
     }
 
     return NextResponse.json({ synced: true });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+/**
+ * PUT /api/cards/mirror
+ * Syncs a new attachment to the linked card (mirror→source or source→mirror).
+ * Called after an attachment is uploaded to a mirrored card.
+ *
+ * Body: { card_id: string, attachment: { file_url, file_name, file_size, file_type, uploaded_by } }
+ */
+export async function PUT(req: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { card_id, attachment } = await req.json();
+    if (!card_id || !attachment?.file_url) {
+      return NextResponse.json({ error: "card_id and attachment required" }, { status: 400 });
+    }
+
+    const synced: string[] = [];
+
+    // If this card is a mirror → sync attachment to source
+    const { data: asMirror } = await supabase
+      .from("card_mirrors")
+      .select("source_card_id")
+      .eq("mirror_card_id", card_id);
+
+    for (const m of asMirror || []) {
+      // Check if attachment already exists on source (avoid duplicates by file_url)
+      const { data: existing } = await supabase
+        .from("card_attachments")
+        .select("id")
+        .eq("card_id", m.source_card_id)
+        .eq("file_url", attachment.file_url)
+        .single();
+
+      if (!existing) {
+        await supabase.from("card_attachments").insert({
+          card_id: m.source_card_id,
+          file_url: attachment.file_url,
+          file_name: attachment.file_name,
+          file_size: attachment.file_size,
+          file_type: attachment.file_type,
+          uploaded_by: attachment.uploaded_by || user.id,
+        });
+        synced.push(m.source_card_id);
+      }
+    }
+
+    // If this card is a source → sync attachment to all mirrors
+    const { data: asSource } = await supabase
+      .from("card_mirrors")
+      .select("mirror_card_id")
+      .eq("source_card_id", card_id);
+
+    for (const m of asSource || []) {
+      const { data: existing } = await supabase
+        .from("card_attachments")
+        .select("id")
+        .eq("card_id", m.mirror_card_id)
+        .eq("file_url", attachment.file_url)
+        .single();
+
+      if (!existing) {
+        await supabase.from("card_attachments").insert({
+          card_id: m.mirror_card_id,
+          file_url: attachment.file_url,
+          file_name: attachment.file_name,
+          file_size: attachment.file_size,
+          file_type: attachment.file_type,
+          uploaded_by: attachment.uploaded_by || user.id,
+        });
+        synced.push(m.mirror_card_id);
+      }
+    }
+
+    return NextResponse.json({ synced: synced.length > 0, synced_to: synced });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

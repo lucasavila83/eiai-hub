@@ -1236,6 +1236,22 @@ export function CardDetailModal({
 
         if (!error) {
           logActivity("attachment_added", { file_name: file.name });
+
+          // Sync attachment to linked mirror/source cards
+          fetch("/api/cards/mirror", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              card_id: card.id,
+              attachment: {
+                file_url: fileUrl,
+                file_name: file.name,
+                file_size: file.size,
+                file_type: file.type || "application/octet-stream",
+                uploaded_by: currentUserId,
+              },
+            }),
+          }).catch(() => {});
         }
       }
     }
