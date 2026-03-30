@@ -3,11 +3,11 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
-import { X, Loader2, Users, Settings, UserPlus, Trash2, Globe, Lock, UsersRound } from "lucide-react";
+import { X, Loader2, Users, Settings, UserPlus, Trash2, Globe, Lock, UsersRound, Crown } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 
 interface Props {
-  board: { id: string; name: string; org_id: string; description?: string; visibility?: string };
+  board: { id: string; name: string; org_id: string; description?: string; visibility?: string; hub_user_id?: string | null };
   currentUserId: string;
   onClose: () => void;
   onUpdated?: () => void;
@@ -41,6 +41,7 @@ export function BoardSettingsModal({
   const [name, setName] = useState(board.name);
   const [description, setDescription] = useState(board.description || "");
   const [visibility, setVisibility] = useState(board.visibility || "team");
+  const [hubUserId, setHubUserId] = useState<string | null>(board.hub_user_id || null);
   const [boardMembers, setBoardMembers] = useState<MemberRow[]>([]);
   const [orgMembers, setOrgMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +89,7 @@ export function BoardSettingsModal({
     setSaveSuccess(false);
     const { error } = await supabase
       .from("boards")
-      .update({ name: name.trim(), description: description.trim() || null, visibility } as any)
+      .update({ name: name.trim(), description: description.trim() || null, visibility, hub_user_id: hubUserId } as any)
       .eq("id", board.id);
     setSaving(false);
     if (!error) {
@@ -233,6 +234,29 @@ export function BoardSettingsModal({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Hub Board */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+              <Crown className="w-4 h-4 text-yellow-500" />
+              Board Hub (centraliza tarefas)
+            </label>
+            <p className="text-[11px] text-muted-foreground">
+              Tarefas atribuidas ao responsavel do Hub em outros boards serao espelhadas automaticamente aqui.
+            </p>
+            <select
+              value={hubUserId || ""}
+              onChange={(e) => setHubUserId(e.target.value || null)}
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              <option value="">Desativado</option>
+              {orgMembers.map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {m.profiles?.full_name || m.profiles?.email || m.user_id}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Save board info */}

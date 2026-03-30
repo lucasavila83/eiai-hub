@@ -7,7 +7,7 @@ import { CardDetailModal } from "./CardDetailModal";
 import { LabelManagerModal } from "./LabelManagerModal";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
-import { Plus, Settings, Tags, SlidersHorizontal, Filter, X, FileText, LayoutGrid, ArrowLeft } from "lucide-react";
+import { Plus, Settings, Tags, SlidersHorizontal, Filter, X, FileText, LayoutGrid, ArrowLeft, Crown } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import Link from "next/link";
 import { BoardSettingsModal } from "./BoardSettingsModal";
@@ -296,7 +296,15 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h2 className="font-bold text-foreground text-lg">{board.name}</h2>
+          <h2 className="font-bold text-foreground text-lg flex items-center gap-2">
+            {board.name}
+            {(board as any).hub_user_id && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-yellow-500/10 text-yellow-500">
+                <Crown className="w-2.5 h-2.5" />
+                Hub
+              </span>
+            )}
+          </h2>
           {/* View tabs */}
           <div className="flex items-center bg-muted rounded-lg p-0.5">
             <button

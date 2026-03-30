@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Kanban, Loader2, Lock, Users, Globe } from "lucide-react";
+import { Kanban, Loader2, Lock, Users, Globe, Crown } from "lucide-react";
 import { CreateBoardButton } from "@/components/kanban/CreateBoardButton";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { usePermissions } from "@/lib/hooks/usePermissions";
@@ -145,7 +145,15 @@ export default function BoardsPage() {
                     <Kanban className="w-5 h-5 text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-foreground truncate">{board.name}</h3>
+                    <h3 className="font-semibold text-foreground truncate flex items-center gap-1.5">
+                      {board.name}
+                      {board.hub_user_id && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-yellow-500/10 text-yellow-500 shrink-0">
+                          <Crown className="w-2.5 h-2.5" />
+                          Hub
+                        </span>
+                      )}
+                    </h3>
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <VisIcon className="w-3 h-3" />
                       {visibilityLabels[board.visibility] || board.visibility}

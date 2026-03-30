@@ -327,6 +327,9 @@ export function CardDetailModal({
 
   const cardIsBpmTask = isBpmTask(card.metadata);
   const cardLinkedToBpm = !!(card.metadata as any)?.linked_to_bpm;
+  const cardIsMirror = !!(card.metadata as any)?.is_mirror;
+  const cardMirrorSourceBoard = (card.metadata as any)?.source_board_name;
+  const cardMirrorCreatedBy = (card.metadata as any)?.mirror_created_by;
 
   async function loadAvailablePipes() {
     if (loadingPipes) return;
@@ -800,6 +803,13 @@ export function CardDetailModal({
     setCompletedAt(newVal);
     await updateCard({ completed_at: newVal });
     logActivity(newVal ? "completed" : "uncompleted");
+
+    // Sync mirror status (fire-and-forget)
+    fetch("/api/cards/mirror", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ card_id: card.id, completed: !!newVal }),
+    }).catch(() => {});
   }
 
   // ─── Labels ──────────────────────────────────────────────────────────────
@@ -1354,6 +1364,12 @@ export function CardDetailModal({
       }).eq("id", card.id);
       logActivity("moved", { to_column: doneColumn.name });
       logActivity("completed", {});
+      // Sync mirror
+      fetch("/api/cards/mirror", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ card_id: card.id, completed: true }),
+      }).catch(() => {});
       onUpdated({ ...card, column_id: doneColumn.id, completed_at: new Date().toISOString() });
     }
 
@@ -1664,6 +1680,17 @@ export function CardDetailModal({
                 </h2>
               )}
             </div>
+
+            {/* Mirror badge */}
+            {cardIsMirror && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-sm">
+                <span className="text-yellow-500 font-medium">Espelho</span>
+                <span className="text-muted-foreground">
+                  de <span className="text-foreground font-medium">{cardMirrorSourceBoard || "outro board"}</span>
+                  {cardMirrorCreatedBy && <> · criado por <span className="text-foreground">{cardMirrorCreatedBy}</span></>}
+                </span>
+              </div>
+            )}
 
             {/* Properties grid */}
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">

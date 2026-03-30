@@ -252,6 +252,13 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
         );
       }
       addCard({ ...data, card_assignees: newCardAssigneeIds.map((uid) => ({ user_id: uid })) } as any);
+
+      // Mirror to hub boards (fire-and-forget)
+      fetch("/api/cards/mirror", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ card_id: (data as any).id, board_id: boardId }),
+      }).catch(() => {});
     }
     resetAddForm();
   }

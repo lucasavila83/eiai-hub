@@ -1,5 +1,5 @@
 import { cn, formatDate, getInitials, generateColor } from "@/lib/utils/helpers";
-import { Calendar, Flag, ListChecks, AlignLeft, Paperclip, Workflow, Clock } from "lucide-react";
+import { Calendar, Flag, ListChecks, AlignLeft, Paperclip, Workflow, Clock, Copy } from "lucide-react";
 import type { Card } from "@/lib/types/database";
 import { isBpmTask } from "@/lib/bpm/task-sync";
 
@@ -66,6 +66,8 @@ export function KanbanCard({
   const isBpm = isBpmTask(card.metadata);
   const bpmPhaseName = (card.metadata as any)?.bpm_phase_name;
   const bpmPipeName = (card.metadata as any)?.bpm_pipe_name;
+  const isMirror = !!(card.metadata as any)?.is_mirror;
+  const mirrorSourceBoard = (card.metadata as any)?.source_board_name;
 
   return (
     <div
@@ -73,7 +75,8 @@ export function KanbanCard({
         "bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all group overflow-hidden",
         isDragging && "shadow-lg rotate-1 scale-105 border-primary/50",
         card.cover_color && "border-t-[3px]",
-        isBpm && "border-l-[3px] border-l-indigo-500"
+        isBpm && "border-l-[3px] border-l-indigo-500",
+        isMirror && !isBpm && "border-l-[3px] border-l-yellow-500"
       )}
       style={card.cover_color ? { borderTopColor: card.cover_color } : undefined}
     >
@@ -83,6 +86,14 @@ export function KanbanCard({
           <Workflow className="w-3 h-3" />
           <span className="font-medium">{bpmPipeName}</span>
           {bpmPhaseName && <span className="text-indigo-400">· {bpmPhaseName}</span>}
+        </div>
+      )}
+
+      {/* Mirror badge */}
+      {isMirror && (
+        <div className="flex items-center gap-1.5 mb-2 text-[10px] text-yellow-500 bg-yellow-500/10 rounded px-2 py-0.5 w-fit">
+          <Copy className="w-3 h-3" />
+          <span className="font-medium">de {mirrorSourceBoard || "outro board"}</span>
         </div>
       )}
 
