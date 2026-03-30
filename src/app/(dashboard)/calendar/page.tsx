@@ -396,6 +396,15 @@ export default function CalendarPage() {
       setShowCreate(false);
       setEditingEvent(null);
       await loadData();
+
+      // Trigger Google Calendar sync (fire-and-forget)
+      if (activeOrgId) {
+        fetch("/api/integrations/google-calendar/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orgId: activeOrgId }),
+        }).catch(() => {});
+      }
     } catch (err: any) {
       setError(err.message || "Erro ao salvar evento.");
     } finally {

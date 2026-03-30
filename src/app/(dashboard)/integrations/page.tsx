@@ -118,6 +118,14 @@ export default function IntegrationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Google Calendar OAuth
+  const [gcalStatus, setGcalStatus] = useState<"loading" | "disconnected" | "connected">("loading");
+  const [gcalCalendarId, setGcalCalendarId] = useState<string | null>(null);
+  const [gcalSyncing, setGcalSyncing] = useState(false);
+  const [gcalSyncStats, setGcalSyncStats] = useState<{ pushed: number; pulled: number; updated: number } | null>(null);
+  const [gcalConnecting, setGcalConnecting] = useState(false);
+  const [gcalDisconnecting, setGcalDisconnecting] = useState(false);
+
   // Webhook URL for receiving
   const webhookReceiveUrl = typeof window !== "undefined"
     ? `${window.location.origin}/api/integrations/webhook/${activeOrgId}`
@@ -140,7 +148,81 @@ export default function IntegrationsPage() {
 
     setIntegrations(data || []);
     setLoading(false);
+
+    // Check Google Calendar status
+    loadGcalStatus();
   }
+
+  async function loadGcalStatus() {
+    if (!activeOrgId) return;
+    try {
+      const res = await fetch(`/api/integrations/google-calendar?orgId=${activeOrgId}`);
+      const data = await res.json();
+      if (data.connected) {
+        setGcalStatus("connected");
+        setGcalCalendarId(data.calendar_id);
+      } else {
+        setGcalStatus("disconnected");
+      }
+    } catch {
+      setGcalStatus("disconnected");
+    }
+  }
+
+  async function handleGcalConnect() {
+    if (!activeOrgId) return;
+    setGcalConnecting(true);
+    try {
+      const res = await fetch(`/api/integrations/google-calendar?orgId=${activeOrgId}`);
+      const data = await res.json();
+      if (data.auth_url) {
+        window.location.href = data.auth_url;
+      }
+    } catch {
+      setGcalConnecting(false);
+    }
+  }
+
+  async function handleGcalDisconnect() {
+    if (!activeOrgId) return;
+    setGcalDisconnecting(true);
+    await fetch("/api/integrations/google-calendar/disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orgId: activeOrgId }),
+    });
+    setGcalStatus("disconnected");
+    setGcalCalendarId(null);
+    setGcalDisconnecting(false);
+  }
+
+  async function handleGcalSync() {
+    if (!activeOrgId) return;
+    setGcalSyncing(true);
+    setGcalSyncStats(null);
+    try {
+      const res = await fetch("/api/integrations/google-calendar/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: activeOrgId }),
+      });
+      const data = await res.json();
+      if (data.stats) setGcalSyncStats(data.stats);
+    } catch {}
+    setGcalSyncing(false);
+  }
+
+  // Handle OAuth callback query params
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gcal_success")) {
+      setGcalStatus("connected");
+      loadGcalStatus();
+      // Clean URL
+      window.history.replaceState({}, "", "/integrations");
+    }
+  }, []);
 
   function openCreate() {
     setEditingId(null);
@@ -281,6 +363,65 @@ export default function IntegrationsPage() {
           <Plus className="w-4 h-4" />
           Nova Integração
         </button>
+      </div>
+
+      {/* Google Calendar Card */}
+      <div className="mb-6 bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-4 flex items-center gap-4">
+          <div className="p-2.5 rounded-lg bg-green-500/10">
+            <Calendar className="w-5 h-5 text-green-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">Google Calendar</h3>
+            <p className="text-xs text-muted-foreground">
+              {gcalStatus === "connected"
+                ? `Conectado · ${gcalCalendarId || "primary"}`
+                : "Sincronize seus eventos com o Google Calendar"}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {gcalStatus === "loading" && (
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+            )}
+            {gcalStatus === "disconnected" && (
+              <button
+                onClick={handleGcalConnect}
+                disabled={gcalConnecting}
+                className="inline-flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+              >
+                {gcalConnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
+                Conectar
+              </button>
+            )}
+            {gcalStatus === "connected" && (
+              <>
+                <button
+                  onClick={handleGcalSync}
+                  disabled={gcalSyncing}
+                  className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                  {gcalSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                  Sincronizar
+                </button>
+                <button
+                  onClick={handleGcalDisconnect}
+                  disabled={gcalDisconnecting}
+                  className="inline-flex items-center gap-1.5 text-destructive hover:bg-destructive/10 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                >
+                  {gcalDisconnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                  Desconectar
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        {gcalSyncStats && (
+          <div className="px-5 py-2 bg-muted/50 border-t border-border flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="text-green-500 font-medium">{gcalSyncStats.pushed} enviados</span>
+            <span className="text-blue-500 font-medium">{gcalSyncStats.pulled} importados</span>
+            <span className="text-yellow-500 font-medium">{gcalSyncStats.updated} atualizados</span>
+          </div>
+        )}
       </div>
 
       {/* Available Integrations Grid */}
