@@ -229,8 +229,8 @@ export default function CalendarPage() {
 
       const { data: cardsData } = await cardsQuery;
 
-      // Filter cards: non-admins only see cards assigned to them
-      if (!isAdmin && currentUserId) {
+      // Filter cards by assignee: non-admins always, admins when "Minha agenda"
+      if (currentUserId && (!isAdmin || showOnlyMine)) {
         const { data: assignedCardIds } = await supabase
           .from("card_assignees")
           .select("card_id")
