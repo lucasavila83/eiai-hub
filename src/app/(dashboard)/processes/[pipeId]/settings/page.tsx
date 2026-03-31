@@ -71,7 +71,7 @@ function PipeSettingsContent() {
         .select("user_id, profiles:user_id(id, full_name, email, avatar_url)")
         .eq("org_id", activeOrgId!),
       supabase
-        .from("bpm_automations")
+        .from("automations")
         .select("*")
         .eq("pipe_id", pipeId)
         .order("created_at"),
@@ -167,10 +167,21 @@ function PipeSettingsContent() {
   }
 
   // Automation handlers
-  async function handleAddAutomation(auto: Omit<Automation, "id" | "pipe_id">) {
+  async function handleAddAutomation(auto: Partial<Automation>) {
     const { data } = await supabase
-      .from("bpm_automations")
-      .insert({ pipe_id: pipeId, ...auto })
+      .from("automations")
+      .insert({
+        org_id: activeOrgId,
+        pipe_id: pipeId,
+        name: auto.name,
+        trigger_type: auto.trigger_type,
+        trigger_config: auto.trigger_config || {},
+        action_type: auto.action_type,
+        action_config: auto.action_config || {},
+        condition: auto.condition || null,
+        phase_id: auto.phase_id || null,
+        is_active: true,
+      })
       .select()
       .single();
     if (data) setAutomations((prev) => [...prev, data]);
@@ -178,19 +189,30 @@ function PipeSettingsContent() {
 
   async function handleSaveAutomation(auto: Automation) {
     await supabase
-      .from("bpm_automations")
-      .update({ name: auto.name, trigger_type: auto.trigger_type, action_type: auto.action_type, phase_id: auto.phase_id, config: auto.config, is_active: auto.is_active, updated_at: new Date().toISOString() })
+      .from("automations")
+      .update({
+        name: auto.name,
+        trigger_type: auto.trigger_type,
+        trigger_config: auto.trigger_config || {},
+        action_type: auto.action_type,
+        action_config: auto.action_config || {},
+        condition: auto.condition || null,
+        phase_id: auto.phase_id || null,
+        is_active: auto.is_active,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", auto.id);
     setAutomations((prev) => prev.map((a) => a.id === auto.id ? auto : a));
   }
 
   async function handleDeleteAutomation(id: string) {
-    await supabase.from("bpm_automations").delete().eq("id", id);
+    await supabase.from("automation_logs").delete().eq("automation_id", id);
+    await supabase.from("automations").delete().eq("id", id);
     setAutomations((prev) => prev.filter((a) => a.id !== id));
   }
 
   async function handleToggleAutomation(id: string, active: boolean) {
-    await supabase.from("bpm_automations").update({ is_active: active, updated_at: new Date().toISOString() }).eq("id", id);
+    await supabase.from("automations").update({ is_active: active, updated_at: new Date().toISOString() }).eq("id", id);
     setAutomations((prev) => prev.map((a) => a.id === id ? { ...a, is_active: active } : a));
   }
 
@@ -395,6 +417,7 @@ function PipeSettingsContent() {
       {activeTab === "automations" && (
         <AutomationBuilder
           automations={automations}
+          context="bpm"
           phases={phases}
           members={members}
           fields={allFields}

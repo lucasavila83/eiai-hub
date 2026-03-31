@@ -363,6 +363,33 @@ function PipeKanbanContent() {
       )
     );
 
+    // Fire automation triggers (fire-and-forget)
+    fetch("/api/automations/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        trigger_type: "card_moved_to_phase",
+        pipe_id: pipeId,
+        phase_id: toPhaseId,
+        bpm_card_id: cardId,
+        org_id: activeOrgId,
+      }),
+    }).catch(() => {});
+
+    if (isEnd) {
+      fetch("/api/automations/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trigger_type: "card_completed",
+          pipe_id: pipeId,
+          phase_id: toPhaseId,
+          bpm_card_id: cardId,
+          org_id: activeOrgId,
+        }),
+      }).catch(() => {});
+    }
+
     return true;
   }
 
@@ -464,6 +491,19 @@ function PipeKanbanContent() {
       setShowCreate(false);
       // Open the card modal immediately so user can fill fields
       setSelectedCard(newCard);
+
+      // Fire card_created automation (fire-and-forget)
+      fetch("/api/automations/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trigger_type: "card_created",
+          pipe_id: pipeId,
+          phase_id: startPhase.id,
+          bpm_card_id: newCard.id,
+          org_id: activeOrgId,
+        }),
+      }).catch(() => {});
     }
     setCreating(false);
   }

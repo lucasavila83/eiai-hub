@@ -4,26 +4,47 @@ import { useState } from "react";
 import {
   Plus, X, Trash2, Loader2, Pencil, Check, Zap,
   Play, ArrowRight, Bell, Mail, User, MoveRight, Globe,
-  Filter,
+  Filter, LayoutGrid, Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import type { Phase } from "./PhaseEditor";
 
-const TRIGGERS = [
-  { value: "card_created", label: "Card criado", icon: Play },
-  { value: "card_moved_to_phase", label: "Card movido para fase", icon: ArrowRight },
-  { value: "card_completed", label: "Card concluido", icon: Check },
-  { value: "field_updated", label: "Campo atualizado", icon: Pencil },
-  { value: "sla_warning", label: "SLA prestes a vencer", icon: Bell },
-  { value: "sla_expired", label: "SLA vencido", icon: Bell },
+// ── All triggers (board + BPM) ──
+const BOARD_TRIGGERS = [
+  { value: "card_moved_to_column", label: "Tarefa movida para coluna", icon: ArrowRight, context: "board" },
+  { value: "card_created", label: "Tarefa criada", icon: Play, context: "board" },
+  { value: "card_overdue", label: "Tarefa atrasada", icon: Bell, context: "board" },
+  { value: "card_completed", label: "Tarefa concluida", icon: Check, context: "board" },
+  { value: "progress_reached", label: "Progresso atingiu %", icon: Play, context: "board" },
 ] as const;
 
-const ACTIONS = [
-  { value: "notify_chat", label: "Enviar notificacao", icon: Bell },
-  { value: "send_email", label: "Enviar e-mail", icon: Mail },
-  { value: "assign_user", label: "Atribuir responsavel", icon: User },
-  { value: "move_to_phase", label: "Mover para fase", icon: MoveRight },
-  { value: "call_webhook", label: "Chamar webhook", icon: Globe },
+const BPM_TRIGGERS = [
+  { value: "card_created", label: "Card criado", icon: Play, context: "bpm" },
+  { value: "card_moved_to_phase", label: "Card movido para fase", icon: ArrowRight, context: "bpm" },
+  { value: "card_completed", label: "Card concluido", icon: Check, context: "bpm" },
+  { value: "field_updated", label: "Campo atualizado", icon: Pencil, context: "bpm" },
+  { value: "sla_warning", label: "SLA prestes a vencer", icon: Bell, context: "bpm" },
+  { value: "sla_expired", label: "SLA vencido", icon: Bell, context: "bpm" },
+] as const;
+
+const BOARD_ACTIONS = [
+  { value: "mark_completed", label: "Marcar como concluida", context: "board" },
+  { value: "set_priority", label: "Definir prioridade", context: "board" },
+  { value: "assign_member", label: "Atribuir membro", context: "board" },
+  { value: "move_to_column", label: "Mover para coluna", context: "board" },
+] as const;
+
+const BPM_ACTIONS = [
+  { value: "assign_user", label: "Atribuir responsavel", context: "bpm" },
+  { value: "move_to_phase", label: "Mover para fase", context: "bpm" },
+] as const;
+
+const SHARED_ACTIONS = [
+  { value: "send_notification", label: "Enviar notificacao", context: "shared" },
+  { value: "notify_chat", label: "Notificar no chat", context: "shared" },
+  { value: "send_email", label: "Enviar e-mail", context: "shared" },
+  { value: "call_webhook", label: "Chamar webhook", context: "shared" },
+  { value: "create_board_task", label: "Criar tarefa no board", context: "shared" },
 ] as const;
 
 const OPERATORS = [
@@ -33,20 +54,38 @@ const OPERATORS = [
   { value: "gte", label: "Maior ou igual a" },
   { value: "lt", label: "Menor que" },
   { value: "lte", label: "Menor ou igual a" },
-  { value: "contains", label: "Contém" },
-  { value: "is_empty", label: "Está vazio" },
-  { value: "is_not_empty", label: "Não está vazio" },
+  { value: "contains", label: "Contem" },
+  { value: "is_empty", label: "Esta vazio" },
+  { value: "is_not_empty", label: "Nao esta vazio" },
 ];
+
+const PRIORITY_OPTIONS = [
+  { value: "urgent", label: "Urgente" },
+  { value: "high", label: "Alta" },
+  { value: "medium", label: "Media" },
+  { value: "low", label: "Baixa" },
+];
+
+const PROGRESS_PRESETS = [10, 25, 50, 75, 100];
 
 export interface Automation {
   id: string;
-  pipe_id: string;
-  phase_id: string | null;
+  org_id?: string;
+  board_id?: string | null;
+  pipe_id?: string | null;
+  phase_id?: string | null;
   name: string;
   trigger_type: string;
+  trigger_config?: Record<string, any>;
   action_type: string;
-  config: Record<string, any>;
+  action_config?: Record<string, any>;
+  condition?: Record<string, any> | null;
+  template_id?: string | null;
   is_active: boolean;
+  run_count?: number;
+  last_run_at?: string | null;
+  // Legacy compat: BPM used "config" instead of action_config
+  config?: Record<string, any>;
 }
 
 interface FieldDef {
@@ -64,28 +103,51 @@ interface OrgMember {
   email: string;
 }
 
+interface BoardOption {
+  id: string;
+  name: string;
+}
+
+interface ColumnOption {
+  id: string;
+  name: string;
+  board_id: string;
+}
+
+/** context: "board" = board-only, "bpm" = process-only, "all" = central page */
 interface Props {
   automations: Automation[];
-  phases: Phase[];
-  members: OrgMember[];
+  context: "board" | "bpm" | "all";
+  // Board data
+  boards?: BoardOption[];
+  columns?: ColumnOption[];
+  // BPM data
+  phases?: Phase[];
   fields?: FieldDef[];
+  // Shared
+  members: OrgMember[];
   onSave: (auto: Automation) => Promise<void>;
-  onAdd: (auto: Omit<Automation, "id" | "pipe_id">) => Promise<void>;
+  onAdd: (auto: Partial<Automation>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onToggle: (id: string, active: boolean) => Promise<void>;
 }
 
-export function AutomationBuilder({ automations, phases, members, fields = [], onSave, onAdd, onDelete, onToggle }: Props) {
+export function AutomationBuilder({
+  automations, context, boards = [], columns = [], phases = [], fields = [], members,
+  onSave, onAdd, onDelete, onToggle,
+}: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  // Form
+  // Form state
   const [formName, setFormName] = useState("");
-  const [formTrigger, setFormTrigger] = useState(TRIGGERS[0].value);
-  const [formAction, setFormAction] = useState(ACTIONS[0].value);
+  const [formTrigger, setFormTrigger] = useState("");
+  const [formAction, setFormAction] = useState("");
+  const [formBoardId, setFormBoardId] = useState("");
   const [formPhaseId, setFormPhaseId] = useState("");
   const [formConfig, setFormConfig] = useState<Record<string, any>>({});
+  const [formTriggerConfig, setFormTriggerConfig] = useState<Record<string, any>>({});
 
   // Condition
   const [hasCondition, setHasCondition] = useState(false);
@@ -93,16 +155,42 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
   const [condOperator, setCondOperator] = useState("eq");
   const [condValue, setCondValue] = useState("");
 
+  // Derive available triggers/actions by context
+  const availableTriggers = context === "board"
+    ? BOARD_TRIGGERS
+    : context === "bpm"
+      ? BPM_TRIGGERS
+      : [...BOARD_TRIGGERS, ...BPM_TRIGGERS.filter((t) => !BOARD_TRIGGERS.some((bt) => bt.value === t.value))];
+
+  const availableActions = context === "board"
+    ? [...BOARD_ACTIONS, ...SHARED_ACTIONS]
+    : context === "bpm"
+      ? [...BPM_ACTIONS, ...SHARED_ACTIONS]
+      : [...BOARD_ACTIONS, ...BPM_ACTIONS, ...SHARED_ACTIONS.filter((s) => !BPM_ACTIONS.some((b) => b.value === s.value) && !BOARD_ACTIONS.some((b) => b.value === s.value))];
+
+  // Determine if current trigger is board or bpm type
+  const isBpmTrigger = BPM_TRIGGERS.some((t) => t.value === formTrigger) && !BOARD_TRIGGERS.some((t) => t.value === formTrigger);
+  const isBoardTrigger = BOARD_TRIGGERS.some((t) => t.value === formTrigger);
+
   function resetForm() {
     setFormName("");
-    setFormTrigger(TRIGGERS[0].value);
-    setFormAction(ACTIONS[0].value);
+    setFormTrigger(availableTriggers[0]?.value || "");
+    setFormAction(availableActions[0]?.value || "");
+    setFormBoardId(boards[0]?.id || "");
     setFormPhaseId("");
     setFormConfig({});
+    setFormTriggerConfig({});
     setHasCondition(false);
     setCondFieldId("");
     setCondOperator("eq");
     setCondValue("");
+  }
+
+  function openAdd() {
+    resetForm();
+    setFormTrigger(availableTriggers[0]?.value || "");
+    setFormAction(availableActions[0]?.value || "");
+    setShowAdd(true);
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -110,23 +198,20 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
     if (!formName.trim()) return;
     setSaving(true);
 
-    const config: Record<string, any> = { ...formConfig };
-
-    // Add condition to config if enabled
-    if (hasCondition && condFieldId) {
-      config.condition = {
-        field_id: condFieldId,
-        operator: condOperator,
-        value: condValue,
-      };
-    }
+    const actionConfig: Record<string, any> = { ...formConfig };
+    const condition = hasCondition && condFieldId
+      ? { field_id: condFieldId, operator: condOperator, value: condValue }
+      : null;
 
     await onAdd({
       name: formName.trim(),
       trigger_type: formTrigger,
+      trigger_config: formTriggerConfig,
       action_type: formAction,
-      phase_id: formPhaseId || null,
-      config,
+      action_config: actionConfig,
+      board_id: (context === "board" || (context === "all" && isBoardTrigger)) ? formBoardId || null : null,
+      phase_id: (context === "bpm" || (context === "all" && isBpmTrigger)) ? formPhaseId || null : null,
+      condition,
       is_active: true,
     });
     resetForm();
@@ -135,23 +220,28 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Remover esta automação?")) return;
+    if (!confirm("Remover esta automacao?")) return;
     setDeleting(id);
     await onDelete(id);
     setDeleting(null);
   }
 
   function getTriggerLabel(type: string) {
-    return TRIGGERS.find((t) => t.value === type)?.label || type;
+    return [...BOARD_TRIGGERS, ...BPM_TRIGGERS].find((t) => t.value === type)?.label || type;
   }
 
   function getActionLabel(type: string) {
-    return ACTIONS.find((a) => a.value === type)?.label || type;
+    return [...BOARD_ACTIONS, ...BPM_ACTIONS, ...SHARED_ACTIONS].find((a) => a.value === type)?.label || type;
   }
 
-  function getPhaseName(id: string | null) {
-    if (!id) return "Todas as fases";
-    return phases.find((p) => p.id === id)?.name || "—";
+  function getBoardName(boardId: string | null | undefined) {
+    if (!boardId) return null;
+    return boards.find((b) => b.id === boardId)?.name || null;
+  }
+
+  function getPhaseName(id: string | null | undefined) {
+    if (!id) return null;
+    return phases.find((p) => p.id === id)?.name || null;
   }
 
   function getFieldLabel(fieldId: string) {
@@ -162,30 +252,77 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
     return OPERATORS.find((o) => o.value === op)?.label || op;
   }
 
-  // Get selected field for condition
   const selectedCondField = fields.find((f) => f.id === condFieldId);
   const needsValue = !["is_empty", "is_not_empty"].includes(condOperator);
+  const boardColumns = columns.filter((c) => c.board_id === formBoardId);
 
-  // Config fields based on action type
-  function renderConfigFields() {
-    switch (formAction) {
-      case "notify_chat":
-        return (
-          <div className="space-y-2">
-            <input
-              value={formConfig.title || ""}
-              onChange={(e) => setFormConfig({ ...formConfig, title: e.target.value })}
-              placeholder="Titulo da notificacao"
-              className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <input
-              value={formConfig.message || ""}
-              onChange={(e) => setFormConfig({ ...formConfig, message: e.target.value })}
-              placeholder="Mensagem da notificacao"
-              className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-            />
+  // Determine if a trigger is BPM-only
+  function isBpmOnlyTrigger(trigger: string) {
+    return ["card_moved_to_phase", "field_updated", "sla_warning", "sla_expired"].includes(trigger);
+  }
+
+  function renderTriggerConfig() {
+    if (formTrigger === "card_moved_to_column" && boardColumns.length > 0) {
+      return (
+        <select
+          value={formTriggerConfig.column_id || ""}
+          onChange={(e) => setFormTriggerConfig({ ...formTriggerConfig, column_id: e.target.value })}
+          className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+        >
+          <option value="">Qualquer coluna</option>
+          {boardColumns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      );
+    }
+    if (formTrigger === "progress_reached") {
+      return (
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="5"
+            max="100"
+            step="5"
+            value={formTriggerConfig.percent || 100}
+            onChange={(e) => setFormTriggerConfig({ ...formTriggerConfig, percent: parseInt(e.target.value) || 100 })}
+            className="w-20 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <span className="text-xs text-muted-foreground">%</span>
+          <div className="flex gap-1 ml-1">
+            {PROGRESS_PRESETS.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setFormTriggerConfig({ ...formTriggerConfig, percent: p })}
+                className={cn(
+                  "px-1.5 py-0.5 text-[10px] rounded border transition-colors cursor-pointer",
+                  (formTriggerConfig.percent || 100) === p
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background border-border text-muted-foreground hover:border-primary/50"
+                )}
+              >
+                {p}%
+              </button>
+            ))}
           </div>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  function renderActionConfig() {
+    switch (formAction) {
+      case "set_priority":
+        return (
+          <select
+            value={formConfig.priority || "high"}
+            onChange={(e) => setFormConfig({ ...formConfig, priority: e.target.value })}
+            className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+          >
+            {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
         );
+      case "assign_member":
       case "assign_user":
         return (
           <select
@@ -199,6 +336,17 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
             ))}
           </select>
         );
+      case "move_to_column":
+        return (
+          <select
+            value={formConfig.column_id || ""}
+            onChange={(e) => setFormConfig({ ...formConfig, column_id: e.target.value })}
+            className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+          >
+            <option value="">Selecionar coluna...</option>
+            {boardColumns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        );
       case "move_to_phase":
         return (
           <select
@@ -207,10 +355,26 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
             className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
           >
             <option value="">Selecionar fase destino...</option>
-            {phases.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
+            {phases.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
+        );
+      case "send_notification":
+      case "notify_chat":
+        return (
+          <div className="space-y-2">
+            <input
+              value={formConfig.title || ""}
+              onChange={(e) => setFormConfig({ ...formConfig, title: e.target.value })}
+              placeholder="Titulo da notificacao"
+              className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <input
+              value={formConfig.message || ""}
+              onChange={(e) => setFormConfig({ ...formConfig, message: e.target.value })}
+              placeholder="Mensagem"
+              className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
         );
       case "call_webhook":
         return (
@@ -236,6 +400,14 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
     }
   }
 
+  function getAutoActionConfig(auto: Automation) {
+    return auto.action_config || auto.config || {};
+  }
+
+  function getAutoCondition(auto: Automation) {
+    return auto.condition || (auto.config || auto.action_config || {}).condition || null;
+  }
+
   return (
     <div className="space-y-3">
       {/* Automation list */}
@@ -244,15 +416,26 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
       )}
 
       {automations.map((auto) => {
-        const cond = auto.config?.condition;
+        const cond = getAutoCondition(auto);
+        const boardName = getBoardName(auto.board_id);
+        const phaseName = getPhaseName(auto.phase_id);
+        const isBpm = !!auto.pipe_id;
         return (
           <div key={auto.id} className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">
             <Zap className={cn("w-4 h-4 shrink-0", auto.is_active ? "text-yellow-500" : "text-muted-foreground")} />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">{auto.name}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium text-foreground truncate">{auto.name}</p>
+                {context === "all" && (
+                  isBpm
+                    ? <span className="shrink-0 text-[10px] bg-violet-500/10 text-violet-500 px-1.5 py-0.5 rounded font-medium">Processo</span>
+                    : <span className="shrink-0 text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-medium">Board</span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 Quando: <strong>{getTriggerLabel(auto.trigger_type)}</strong>
-                {auto.phase_id && <> em <strong>{getPhaseName(auto.phase_id)}</strong></>}
+                {phaseName && <> em <strong>{phaseName}</strong></>}
+                {boardName && <> em <strong>{boardName}</strong></>}
                 {" → "}
                 <strong>{getActionLabel(auto.action_type)}</strong>
               </p>
@@ -262,6 +445,9 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
                   Se {getFieldLabel(cond.field_id)} {getOperatorLabel(cond.operator)}{" "}
                   {!["is_empty", "is_not_empty"].includes(cond.operator) && <strong>{cond.value}</strong>}
                 </p>
+              )}
+              {auto.run_count != null && auto.run_count > 0 && (
+                <span className="text-[10px] text-muted-foreground/60">{auto.run_count}x executada</span>
               )}
             </div>
             <button
@@ -299,31 +485,52 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
             required
           />
 
+          {/* Board selector (for board and all contexts) */}
+          {(context === "board" || (context === "all" && !isBpmOnlyTrigger(formTrigger))) && boards.length > 0 && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Board</label>
+              <select
+                value={formBoardId}
+                onChange={(e) => setFormBoardId(e.target.value)}
+                className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              >
+                <option value="">Selecione o board...</option>
+                {boards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Quando</label>
               <select
                 value={formTrigger}
-                onChange={(e) => setFormTrigger(e.target.value)}
+                onChange={(e) => { setFormTrigger(e.target.value); setFormTriggerConfig({}); }}
                 className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
               >
-                {TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                {availableTriggers.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Fase (opcional)</label>
-              <select
-                value={formPhaseId}
-                onChange={(e) => setFormPhaseId(e.target.value)}
-                className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-              >
-                <option value="">Todas as fases</option>
-                {phases.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
+            {/* Phase selector for BPM triggers */}
+            {(context === "bpm" || (context === "all" && isBpmOnlyTrigger(formTrigger))) && phases.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Fase (opcional)</label>
+                <select
+                  value={formPhaseId}
+                  onChange={(e) => setFormPhaseId(e.target.value)}
+                  className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                >
+                  <option value="">Todas as fases</option>
+                  {phases.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
-          {/* Condition */}
+          {/* Trigger-specific config */}
+          {renderTriggerConfig()}
+
+          {/* Condition (alcada) */}
           {fields.length > 0 && (
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -399,12 +606,12 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
               onChange={(e) => { setFormAction(e.target.value); setFormConfig({}); }}
               className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
             >
-              {ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+              {availableActions.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
             </select>
           </div>
 
-          {/* Action config */}
-          {renderConfigFields()}
+          {/* Action-specific config */}
+          {renderActionConfig()}
 
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => { setShowAdd(false); resetForm(); }} className="px-3 py-1.5 text-xs font-medium text-foreground bg-muted rounded-lg hover:bg-accent cursor-pointer">
@@ -422,7 +629,7 @@ export function AutomationBuilder({ automations, phases, members, fields = [], o
         </form>
       ) : (
         <button
-          onClick={() => setShowAdd(true)}
+          onClick={openAdd}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-border rounded-xl text-sm text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-accent/30 transition-colors cursor-pointer"
         >
           <Plus className="w-4 h-4" />
