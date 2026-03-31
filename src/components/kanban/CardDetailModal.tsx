@@ -1325,6 +1325,12 @@ export function CardDetailModal({
     if (!error) {
       setNewComment("");
       await loadActivityFeed();
+      // Fire-and-forget: notify mirror/assignees about the comment
+      fetch("/api/cards/comment-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ card_id: card.id, comment_preview: trimmed.substring(0, 80) }),
+      }).catch(() => {});
     }
     setSendingComment(false);
   }

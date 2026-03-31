@@ -73,6 +73,8 @@ export default function PublicFormPage() {
         const val = values[f.id];
         if (val === null || val === undefined || val === "") {
           errs[f.id] = "Campo obrigatório";
+        } else if (f.field_type === "multiselect" && Array.isArray(val) && val.length === 0) {
+          errs[f.id] = "Selecione pelo menos uma opção";
         } else if (f.field_type === "checklist" && Array.isArray(val)) {
           const allUnchecked = val.every((i: any) => !i.checked);
           if (allUnchecked) errs[f.id] = "Marque pelo menos um item";
@@ -309,6 +311,42 @@ function PublicDynamicField({
             {(field.options || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         );
+      case "multiselect": {
+        const selected: string[] = Array.isArray(value) ? value : [];
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap gap-1.5">
+              {(field.options || []).map((o) => {
+                const isSelected = selected.includes(o.value);
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => {
+                      onChange(
+                        isSelected
+                          ? selected.filter((v) => v !== o.value)
+                          : [...selected, o.value]
+                      );
+                    }}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer border",
+                      isSelected
+                        ? "bg-blue-50 text-blue-700 border-blue-300"
+                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                    )}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+            {selected.length > 0 && (
+              <p className="text-xs text-gray-400">{selected.length} selecionado{selected.length > 1 ? "s" : ""}</p>
+            )}
+          </div>
+        );
+      }
       case "email":
         return <input type="email" value={value || ""} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder || "email@exemplo.com"} className={baseClass} />;
       case "phone":
@@ -359,6 +397,27 @@ function PublicDynamicField({
           </div>
         );
       }
+      case "file":
+        return (
+          <div>
+            {value && (
+              <div className="mb-2 flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                <span className="text-xs text-gray-700 truncate flex-1">{typeof value === "string" ? value : "Arquivo anexado"}</span>
+                <button type="button" onClick={() => onChange(null)} className="text-xs text-red-500 hover:underline cursor-pointer">Remover</button>
+              </div>
+            )}
+            <input
+              type="file"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onChange(file.name);
+              }}
+              className="w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-600 file:cursor-pointer hover:file:bg-blue-100"
+            />
+          </div>
+        );
+      case "user":
+        return <input type="text" value={value || ""} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder || "Nome da pessoa"} className={baseClass} />;
       case "omie_category":
       case "omie_department":
         return (

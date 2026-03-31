@@ -24,6 +24,7 @@ import {
   CheckCircle,
   Info,
   User,
+  Target,
 } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 
@@ -82,6 +83,7 @@ const PERM_MODULES = [
   { key: "boards", label: "Boards", icon: Kanban, description: "Quadros e tarefas" },
   { key: "calendar", label: "Calendário", icon: Calendar, description: "Agenda e eventos" },
   { key: "chat", label: "Chat", icon: MessageSquare, description: "Mensagens e canais" },
+  { key: "budget_goals", label: "Metas Financeiras", icon: Target, description: "Orçamentos e metas por departamento" },
 ] as const;
 
 // Additional action permissions for user/team
