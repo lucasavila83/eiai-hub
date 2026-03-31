@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
         user_id: user.id,
         action: "created",
         details: {
-          title: sourceCard.title,
+          title: card.title,
           source: "mirror",
           source_board_id: board_id,
           source_card_id: card_id,
@@ -229,12 +229,12 @@ export async function PATCH(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { card_id, completed } = await req.json();
+    const { card_id, completed, sync_edits } = await req.json();
 
     // Check if this card is a mirror (has source in card_mirrors)
     const { data: asMirror } = await supabase
       .from("card_mirrors")
-      .select("*, source_card:source_card_id(id, title, board_id, created_by)")
+      .select("*, source_card:source_card_id(id, title, board_id, created_by, description)")
       .eq("mirror_card_id", card_id)
       .single();
 
@@ -245,10 +245,78 @@ export async function PATCH(req: NextRequest) {
       .eq("source_card_id", card_id);
 
     const now = completed ? new Date().toISOString() : null;
-    const notifications = [];
+    const notifications: string[] = [];
 
-    // If this is a mirror card → sync back to source + notify source board members
-    if (asMirror) {
+    // ── sync_edits: sync description + checklist items from mirror → source ──
+    if (sync_edits && asMirror) {
+      const source = (asMirror as any).source_card;
+      if (source) {
+        // Load mirror card current data
+        const { data: mirrorCard } = await supabase
+          .from("cards")
+          .select("description")
+          .eq("id", card_id)
+          .single();
+
+        // Sync description if changed
+        if (mirrorCard?.description && mirrorCard.description !== source.description) {
+          await supabase.from("cards")
+            .update({ description: mirrorCard.description })
+            .eq("id", source.id);
+        }
+
+        // Sync checklist items completion status mirror → source
+        // Match by checklist name + item title (since IDs differ)
+        const { data: mirrorChecklists } = await supabase
+          .from("checklists")
+          .select("id, name")
+          .eq("card_id", card_id);
+
+        const { data: sourceChecklists } = await supabase
+          .from("checklists")
+          .select("id, name")
+          .eq("card_id", source.id);
+
+        if (mirrorChecklists && sourceChecklists) {
+          for (const mcl of mirrorChecklists) {
+            const scl = sourceChecklists.find((s: any) => s.name === mcl.name);
+            if (!scl) continue;
+
+            const { data: mirrorItems } = await supabase
+              .from("checklist_items")
+              .select("title, is_completed")
+              .eq("checklist_id", mcl.id);
+
+            const { data: sourceItems } = await supabase
+              .from("checklist_items")
+              .select("id, title, is_completed")
+              .eq("checklist_id", scl.id);
+
+            if (mirrorItems && sourceItems) {
+              for (const mi of mirrorItems) {
+                const si = sourceItems.find((s: any) => s.title === mi.title);
+                if (si && si.is_completed !== mi.is_completed) {
+                  await supabase.from("checklist_items")
+                    .update({ is_completed: mi.is_completed })
+                    .eq("id", si.id);
+                }
+              }
+            }
+          }
+        }
+
+        // Log sync on source
+        await supabase.from("activity_logs").insert({
+          card_id: source.id,
+          user_id: user.id,
+          action: "mirror_synced",
+          details: { synced_from: "mirror" },
+        });
+      }
+    }
+
+    // If this is a mirror card → sync completion back to source
+    if (asMirror && completed !== undefined) {
       const source = (asMirror as any).source_card;
       if (source) {
         // Update mirror status
@@ -257,12 +325,48 @@ export async function PATCH(req: NextRequest) {
           .update({ status: completed ? "completed" : "active" })
           .eq("id", asMirror.id);
 
-        // Get hub board name for notification
+        // Get hub board name and user name for notification
         const { data: mirrorBoard } = await supabase
           .from("boards")
           .select("name, org_id")
           .eq("id", asMirror.mirror_board_id)
           .single();
+
+        const { data: doerProfile } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", user.id)
+          .single();
+
+        const doerName = doerProfile?.full_name || "Alguem";
+
+        if (completed) {
+          // ── KEY: Set due_date on source card to NOW so it shows as "needs attention" ──
+          // This signals the requester: "I finished, your turn"
+          await supabase.from("cards")
+            .update({ due_date: new Date().toISOString() })
+            .eq("id", source.id);
+
+          // Log on source card
+          await supabase.from("activity_logs").insert({
+            card_id: source.id,
+            user_id: user.id,
+            action: "mirror_completed",
+            details: {
+              mirror_board: mirrorBoard?.name,
+              completed_by: doerName,
+              completed_at: new Date().toISOString(),
+            },
+          });
+        } else {
+          // Reopened
+          await supabase.from("activity_logs").insert({
+            card_id: source.id,
+            user_id: user.id,
+            action: "mirror_reopened",
+            details: { mirror_board: mirrorBoard?.name },
+          });
+        }
 
         // Notify the source card creator
         if (source.created_by && source.created_by !== user.id) {
@@ -271,9 +375,11 @@ export async function PATCH(req: NextRequest) {
             user_id: source.created_by,
             type: "mirror_completed",
             title: completed
-              ? `Tarefa concluida no board ${mirrorBoard?.name || "Hub"}`
+              ? `${doerName} concluiu a tarefa "${source.title}"`
+              : `${doerName} reabriu a tarefa "${source.title}"`,
+            body: completed
+              ? "Verifique e de seguimento ou finalize."
               : `Tarefa reaberta no board ${mirrorBoard?.name || "Hub"}`,
-            body: source.title,
             link: `/boards/${source.board_id}`,
             is_read: false,
             metadata: { source_card_id: source.id, mirror_card_id: card_id },
@@ -294,28 +400,22 @@ export async function PATCH(req: NextRequest) {
               user_id: a.user_id,
               type: "mirror_completed",
               title: completed
-                ? `Tarefa concluida no board ${mirrorBoard?.name || "Hub"}`
+                ? `${doerName} concluiu a tarefa "${source.title}"`
+                : `${doerName} reabriu a tarefa "${source.title}"`,
+              body: completed
+                ? "Verifique e de seguimento ou finalize."
                 : `Tarefa reaberta no board ${mirrorBoard?.name || "Hub"}`,
-              body: source.title,
               link: `/boards/${source.board_id}`,
               is_read: false,
               metadata: { source_card_id: source.id, mirror_card_id: card_id },
             });
           }
         }
-
-        // Log on source card
-        await supabase.from("activity_logs").insert({
-          card_id: source.id,
-          user_id: user.id,
-          action: completed ? "mirror_completed" : "mirror_reopened",
-          details: { mirror_board: mirrorBoard?.name },
-        });
       }
     }
 
     // If this is a source card → update all its mirrors
-    if (asSource && asSource.length > 0) {
+    if (asSource && asSource.length > 0 && completed !== undefined) {
       for (const mirror of asSource) {
         const mc = (mirror as any).mirror_card;
         if (mc) {

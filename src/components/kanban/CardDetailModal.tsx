@@ -341,6 +341,16 @@ export function CardDetailModal({
   const cardMirrorSourceBoard = (card.metadata as any)?.source_board_name;
   const cardMirrorCreatedBy = (card.metadata as any)?.mirror_created_by;
 
+  // Sync edits from mirror back to source card (fire-and-forget)
+  function syncMirrorEdits() {
+    if (!cardIsMirror) return;
+    fetch("/api/cards/mirror", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ card_id: card.id, sync_edits: true }),
+    }).catch(() => {});
+  }
+
   async function loadAvailablePipes() {
     if (loadingPipes) return;
     setLoadingPipes(true);
@@ -737,6 +747,7 @@ export function CardDetailModal({
     if (trimmed !== current) {
       updateCard({ description: trimmed || null });
       logActivity("description_updated");
+      syncMirrorEdits();
     }
     setEditingDescription(false);
   }
@@ -1174,6 +1185,7 @@ export function CardDetailModal({
     if (item) {
       logActivity(!current ? "checklist_item_completed" : "checklist_item_uncompleted", { title: item.title, checklist: cl?.name });
     }
+    syncMirrorEdits();
     // Fire progress automation with new auto-calculated value
     const subCompleted = subtasks.filter((s) => s.is_completed).length;
     const allItems = checklists.flatMap((c) =>

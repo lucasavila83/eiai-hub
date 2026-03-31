@@ -53,6 +53,32 @@ function isImageFile(fileName: string) {
   return IMAGE_EXTENSIONS.some((ext) => fileName.toLowerCase().endsWith(ext));
 }
 
+// URL regex for linkifying
+const URL_REGEX = /(https?:\/\/[^\s<>"')\]]+)/g;
+
+// Linkify plain text: convert URLs to <a> tags
+function linkify(text: string, keyPrefix: string) {
+  const parts = text.split(URL_REGEX);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) => {
+    if (URL_REGEX.test(part)) {
+      URL_REGEX.lastIndex = 0; // reset regex state
+      return (
+        <a
+          key={`${keyPrefix}-link-${i}`}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline break-all hover:opacity-80"
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+}
+
 // Simple markdown renderer
 function renderContent(text: string) {
   const parts = text.split(/(`[^`]+`)/g);
@@ -69,28 +95,30 @@ function renderContent(text: string) {
     if (boldParts.length > 1) {
       result = boldParts.map((bp, j) => {
         if (bp.startsWith("**") && bp.endsWith("**")) {
-          return <strong key={j}>{bp.slice(2, -2)}</strong>;
+          return <strong key={j}>{linkify(bp.slice(2, -2), `${i}-b${j}`)}</strong>;
         }
         const italicParts = bp.split(/(_[^_]+_)/g);
         if (italicParts.length > 1) {
           return italicParts.map((ip, k) => {
             if (ip.startsWith("_") && ip.endsWith("_")) {
-              return <em key={k}>{ip.slice(1, -1)}</em>;
+              return <em key={k}>{linkify(ip.slice(1, -1), `${i}-b${j}-i${k}`)}</em>;
             }
-            return ip;
+            return linkify(ip, `${i}-b${j}-t${k}`);
           });
         }
-        return bp;
+        return linkify(bp, `${i}-b${j}`);
       });
     } else {
       const italicParts = part.split(/(_[^_]+_)/g);
       if (italicParts.length > 1) {
         result = italicParts.map((ip, j) => {
           if (ip.startsWith("_") && ip.endsWith("_")) {
-            return <em key={j}>{ip.slice(1, -1)}</em>;
+            return <em key={j}>{linkify(ip.slice(1, -1), `${i}-i${j}`)}</em>;
           }
-          return ip;
+          return linkify(ip, `${i}-t${j}`);
         });
+      } else {
+        result = linkify(part, `${i}`);
       }
     }
     return <span key={i}>{result}</span>;
