@@ -92,7 +92,7 @@ export default function AutomationsPage() {
     const pipeIds = pipesList.map((p) => p.id);
     const safePipeIds = pipeIds.length > 0 ? pipeIds : ["00000000-0000-0000-0000-000000000000"];
 
-    const [colsRes, phasesRes, fieldsRes] = await Promise.all([
+    const [colsRes, phasesRes] = await Promise.all([
       supabase
         .from("columns")
         .select("id, name, board_id")
@@ -103,19 +103,11 @@ export default function AutomationsPage() {
         .select("id, name, pipe_id, color, position")
         .in("pipe_id", safePipeIds)
         .order("position"),
-      supabase
-        .from("bpm_fields")
-        .select("id, phase_id, field_key, field_type, label, options")
-        .in("phase_id",
-          (phasesRes?.data || []).length > 0
-            ? []  // placeholder, will be filled below
-            : ["00000000-0000-0000-0000-000000000000"]
-        ),
     ]);
 
     const phasesList = phasesRes?.data || [];
 
-    // Load fields across all phases
+    // Load fields across all phases (sequential — depends on phasesRes)
     let allFields: any[] = [];
     if (phasesList.length > 0) {
       const phaseIds = phasesList.map((p: any) => p.id);
