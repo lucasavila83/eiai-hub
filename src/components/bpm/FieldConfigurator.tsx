@@ -5,6 +5,7 @@ import {
   Plus, X, GripVertical, Loader2, Trash2, Pencil, Check,
   Type, AlignLeft, Hash, DollarSign, CalendarDays, List,
   ListChecks, ToggleLeft, Mail, Phone, Paperclip, User, ClipboardCheck,
+  FolderTree, Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import {
@@ -29,6 +30,8 @@ const FIELD_TYPES = [
   { value: "file", label: "Arquivo", icon: Paperclip },
   { value: "user", label: "Pessoa", icon: User },
   { value: "checklist", label: "Checklist", icon: ClipboardCheck },
+  { value: "omie_category", label: "Categoria OMIE", icon: FolderTree },
+  { value: "omie_department", label: "Departamento OMIE", icon: Building2 },
 ] as const;
 
 function getFieldIcon(type: string) {

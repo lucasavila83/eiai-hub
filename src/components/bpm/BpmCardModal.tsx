@@ -463,6 +463,7 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
                       members={members}
                       disabled={!canEdit}
                       error={fieldErrors[field.id] || null}
+                      orgId={card.org_id}
                     />
                   ))}
                 </div>

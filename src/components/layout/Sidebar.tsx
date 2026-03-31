@@ -8,7 +8,7 @@ import {
   MessageSquare, Kanban, Bell, Settings, Calendar, BarChart3, Zap, Plug, Workflow,
   Hash, Lock, ChevronDown, ChevronRight, ChevronLeft,
   Plus, LogOut, X, Loader2, Users, MessageCircle, Check,
-  MoreHorizontal, Trash2, EyeOff, UserCog,
+  MoreHorizontal, Trash2, EyeOff, UserCog, Target,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
@@ -276,6 +276,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     { href: "/calendar", icon: Calendar, label: "Calendário", visible: perms.canViewCalendar },
     { href: "/dashboard", icon: BarChart3, label: "Dashboard", visible: perms.canViewDashboard || perms.isAdmin },
     { href: "/automations", icon: Zap, label: "Automações", visible: perms.canManageAutomations || perms.isAdmin },
+    { href: "/goals", icon: Target, label: "Metas", visible: perms.canViewDashboard || perms.isAdmin },
     { href: "/integrations", icon: Plug, label: "Integrações", visible: perms.canManageIntegrations || perms.isAdmin },
     { href: "/notifications", icon: Bell, label: "Notificações", visible: true },
     { href: "/settings", icon: Settings, label: "Configurações", visible: perms.canAccessSettings || perms.isAdmin },

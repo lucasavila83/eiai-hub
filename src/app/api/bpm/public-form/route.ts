@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   // Get pipe by slug
   const { data: pipe, error: pipeErr } = await supabase
     .from("bpm_pipes")
-    .select("id, name, icon, color, org_id, public_form_enabled, form_access_type")
+    .select("id, name, icon, color, org_id, public_form_enabled, form_access_type, public_form_fields")
     .eq("public_form_slug", slug)
     .single();
 
@@ -52,11 +52,19 @@ export async function GET(req: NextRequest) {
     .eq("id", pipe.org_id)
     .single();
 
+  // Filter fields by public_form_fields if configured
+  let visibleFields = fields || [];
+  const publicFieldIds: string[] = (pipe as any).public_form_fields || [];
+  if (publicFieldIds.length > 0) {
+    visibleFields = visibleFields.filter((f: any) => publicFieldIds.includes(f.id) || f.is_required);
+  }
+
   return NextResponse.json({
     pipe: { id: pipe.id, name: pipe.name, icon: pipe.icon, color: pipe.color },
+    orgId: pipe.org_id,
     orgName: org?.name || "",
     startPhase: { id: startPhase.id, name: startPhase.name, default_assignee_id: startPhase.default_assignee_id, sla_hours: startPhase.sla_hours },
-    fields: fields || [],
+    fields: visibleFields,
   });
 }
 

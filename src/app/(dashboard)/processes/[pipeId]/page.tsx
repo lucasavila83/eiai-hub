@@ -14,7 +14,7 @@ import type { Phase } from "@/components/bpm/PhaseEditor";
 import { createBoardTaskFromBpm, deactivatePreviousTaskLinks } from "@/lib/bpm/task-sync";
 import {
   ArrowLeft, Loader2, Workflow, Settings2, Plus, X,
-  Link2, Copy, Check, Globe, Lock, Users, ExternalLink,
+  Link2, Copy, Check, Globe, Lock, Users, ExternalLink, ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 
@@ -692,6 +692,59 @@ function ShareFormModal({
   const [copied, setCopied] = useState(false);
   const slug = pipe.public_form_slug;
 
+  // Field selection for public form
+  const [startPhaseFields, setStartPhaseFields] = useState<{ id: string; label: string; field_type: string; is_required: boolean }[]>([]);
+  const [publicFieldIds, setPublicFieldIds] = useState<string[]>(pipe.public_form_fields || []);
+  const [loadingFields, setLoadingFields] = useState(false);
+
+  // Load fields from start phase
+  useState(() => {
+    (async () => {
+      setLoadingFields(true);
+      const { data: phases } = await supabase
+        .from("bpm_phases")
+        .select("id, is_start, position")
+        .eq("pipe_id", pipe.id)
+        .order("position");
+      const startPhase = phases?.find((p: any) => p.is_start) || phases?.[0];
+      if (!startPhase) { setLoadingFields(false); return; }
+
+      const { data: fields } = await supabase
+        .from("bpm_fields")
+        .select("id, label, field_type, is_required")
+        .eq("phase_id", startPhase.id)
+        .order("position");
+      setStartPhaseFields(fields || []);
+
+      // If no public_form_fields set yet, default to all
+      if (!pipe.public_form_fields || pipe.public_form_fields.length === 0) {
+        setPublicFieldIds((fields || []).map((f: any) => f.id));
+      }
+      setLoadingFields(false);
+    })();
+  });
+
+  async function togglePublicField(fieldId: string) {
+    const updated = publicFieldIds.includes(fieldId)
+      ? publicFieldIds.filter((id) => id !== fieldId)
+      : [...publicFieldIds, fieldId];
+    setPublicFieldIds(updated);
+    await supabase.from("bpm_pipes").update({ public_form_fields: updated }).eq("id", pipe.id);
+  }
+
+  async function selectAllFields() {
+    const allIds = startPhaseFields.map((f) => f.id);
+    setPublicFieldIds(allIds);
+    await supabase.from("bpm_pipes").update({ public_form_fields: allIds }).eq("id", pipe.id);
+  }
+
+  async function deselectAllFields() {
+    // Keep only required fields
+    const requiredIds = startPhaseFields.filter((f) => f.is_required).map((f) => f.id);
+    setPublicFieldIds(requiredIds);
+    await supabase.from("bpm_pipes").update({ public_form_fields: requiredIds }).eq("id", pipe.id);
+  }
+
   const formUrl = typeof window !== "undefined"
     ? `${window.location.origin}/form/${slug}`
     : `/form/${slug}`;
@@ -847,6 +900,70 @@ function ShareFormModal({
                   </div>
                 </div>
               )}
+
+              {/* Field selection for public form */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <ListChecks className="w-4 h-4" />
+                    Campos do formulário
+                  </h3>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={selectAllFields}
+                      className="text-[10px] text-primary hover:underline cursor-pointer"
+                    >
+                      Todos
+                    </button>
+                    <span className="text-[10px] text-muted-foreground">|</span>
+                    <button
+                      onClick={deselectAllFields}
+                      className="text-[10px] text-muted-foreground hover:underline cursor-pointer"
+                    >
+                      Apenas obrigatórios
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Selecione quais campos serão exibidos no formulário público. Campos obrigatórios não podem ser removidos.
+                </p>
+                {loadingFields ? (
+                  <div className="flex justify-center py-3">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  </div>
+                ) : startPhaseFields.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-3">
+                    Nenhum campo configurado na fase inicial. Configure campos em Configurar → Campos.
+                  </p>
+                ) : (
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {startPhaseFields.map((field) => (
+                      <label
+                        key={field.id}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
+                          field.is_required ? "opacity-80" : "hover:bg-accent cursor-pointer"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={publicFieldIds.includes(field.id)}
+                          onChange={() => togglePublicField(field.id)}
+                          disabled={field.is_required}
+                          className="accent-primary w-4 h-4"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-foreground truncate">
+                            {field.label}
+                            {field.is_required && <span className="text-destructive ml-1">*</span>}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">{field.field_type}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>

@@ -7,7 +7,7 @@ import { CardDetailModal } from "./CardDetailModal";
 import { LabelManagerModal } from "./LabelManagerModal";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
-import { Plus, Settings, Tags, SlidersHorizontal, Filter, X, FileText, LayoutGrid, ArrowLeft, Crown } from "lucide-react";
+import { Plus, Settings, Tags, SlidersHorizontal, Filter, X, FileText, LayoutGrid, ArrowLeft, Crown, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import Link from "next/link";
 import { BoardSettingsModal } from "./BoardSettingsModal";
@@ -335,10 +335,30 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         </div>
         <div className="flex items-center gap-2">
           {activeView === "kanban" && <>
+          {/* "My tasks" quick filter */}
+          <button
+            onClick={() => {
+              if (filterAssignee === "__me__") {
+                setFilterAssignee("");
+              } else {
+                setFilterAssignee("__me__");
+              }
+            }}
+            className={cn(
+              "flex items-center gap-1.5 text-sm transition-colors px-2.5 py-1 rounded-md cursor-pointer",
+              filterAssignee === "__me__"
+                ? "text-primary bg-primary/10 font-medium"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent"
+            )}
+          >
+            <UserCircle className="w-4 h-4" />
+            Minhas
+          </button>
+
           {/* Filters button (kanban only) */}
           <button
             onClick={() => setShowFilters((v) => !v)}
-            className={`flex items-center gap-1.5 text-sm transition-colors px-2 py-1 rounded-md ${
+            className={`flex items-center gap-1.5 text-sm transition-colors px-2 py-1 rounded-md cursor-pointer ${
               hasActiveFilters
                 ? "text-primary bg-primary/10"
                 : showFilters

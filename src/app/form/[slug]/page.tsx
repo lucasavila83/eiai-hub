@@ -22,6 +22,7 @@ interface FieldDef {
 
 interface FormData {
   pipe: { id: string; name: string; icon: string; color: string };
+  orgId: string;
   orgName: string;
   startPhase: { id: string; name: string };
   fields: FieldDef[];
@@ -210,6 +211,7 @@ export default function PublicFormPage() {
                 key={field.id}
                 field={field}
                 value={values[field.id] ?? null}
+                orgId={formData?.orgId}
                 onChange={(val) => setValues((prev) => ({ ...prev, [field.id]: val }))}
                 error={fieldErrors[field.id] || null}
               />
@@ -250,12 +252,33 @@ function PublicDynamicField({
   value,
   onChange,
   error,
+  orgId,
 }: {
   field: FieldDef;
   value: any;
   onChange: (val: any) => void;
   error: string | null;
+  orgId?: string;
 }) {
+  const [omieOptions, setOmieOptions] = useState<{ value: string; label: string }[]>([]);
+  const [omieLoading, setOmieLoading] = useState(false);
+
+  useEffect(() => {
+    if (!orgId || (field.field_type !== "omie_category" && field.field_type !== "omie_department")) return;
+    const type = field.field_type === "omie_category" ? "categories" : "departments";
+    setOmieLoading(true);
+    fetch(`/api/omie/sync?org_id=${orgId}&type=${type}`)
+      .then((r) => r.json())
+      .then((data: any[]) => {
+        if (type === "categories") {
+          setOmieOptions(data.map((c: any) => ({ value: c.codigo, label: `${c.codigo} — ${c.descricao}` })));
+        } else {
+          setOmieOptions(data.map((d: any) => ({ value: d.omie_id, label: d.descricao })));
+        }
+      })
+      .catch(() => setOmieOptions([]))
+      .finally(() => setOmieLoading(false));
+  }, [orgId, field.field_type]);
   const baseClass = cn(
     "w-full px-3 py-2.5 bg-white border rounded-lg text-sm text-gray-900",
     "focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors",
@@ -336,6 +359,14 @@ function PublicDynamicField({
           </div>
         );
       }
+      case "omie_category":
+      case "omie_department":
+        return (
+          <select value={value || ""} onChange={(e) => onChange(e.target.value)} className={baseClass} disabled={omieLoading}>
+            <option value="">{omieLoading ? "Carregando..." : field.placeholder || (field.field_type === "omie_category" ? "Selecionar categoria..." : "Selecionar departamento...")}</option>
+            {omieOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        );
       default:
         return <input type="text" value={value || ""} onChange={(e) => onChange(e.target.value)} className={baseClass} />;
     }

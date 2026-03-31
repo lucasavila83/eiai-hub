@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils/helpers";
 
 export interface FieldDef {
@@ -25,9 +26,41 @@ interface Props {
   members?: { user_id: string; full_name: string | null; email: string }[];
   disabled?: boolean;
   error?: string | null;
+  orgId?: string;
 }
 
-export function DynamicField({ field, value, onChange, members = [], disabled = false, error }: Props) {
+function useOmieOptions(orgId: string | undefined, type: "categories" | "departments", enabled: boolean) {
+  const [options, setOptions] = useState<{ value: string; label: string; extra?: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!enabled || !orgId) return;
+    setLoading(true);
+    fetch(`/api/omie/sync?org_id=${orgId}&type=${type}`)
+      .then((r) => r.json())
+      .then((data: any[]) => {
+        if (type === "categories") {
+          setOptions(
+            data.map((c: any) => ({ value: c.codigo, label: `${c.codigo} — ${c.descricao}`, extra: c.tipo }))
+          );
+        } else {
+          setOptions(
+            data.map((d: any) => ({ value: d.omie_id, label: d.descricao }))
+          );
+        }
+      })
+      .catch(() => setOptions([]))
+      .finally(() => setLoading(false));
+  }, [orgId, type, enabled]);
+
+  return { options, loading };
+}
+
+export function DynamicField({ field, value, onChange, members = [], disabled = false, error, orgId }: Props) {
+  const isOmieField = field.field_type === "omie_category" || field.field_type === "omie_department";
+  const omieType = field.field_type === "omie_category" ? "categories" : "departments";
+  const { options: omieOptions, loading: omieLoading } = useOmieOptions(orgId, omieType, isOmieField);
+
   const baseInputClass = cn(
     "w-full px-3 py-2 bg-background border rounded-lg text-sm text-foreground",
     "focus:outline-none focus:ring-2 focus:ring-ring transition-colors",
@@ -320,6 +353,63 @@ export function DynamicField({ field, value, onChange, members = [], disabled = 
               </option>
             ))}
           </select>
+        );
+
+      case "omie_category": {
+        // Filter by tipo from field validations if set (e.g. validations.tipo = "despesa")
+        const tipoFilter = field.validations?.tipo;
+        const catOptions = tipoFilter
+          ? omieOptions.filter((o) => o.extra === tipoFilter)
+          : omieOptions;
+
+        return (
+          <div className="relative">
+            <select
+              value={value || ""}
+              onChange={(e) => onChange(e.target.value)}
+              className={cn(baseInputClass, "cursor-pointer")}
+              disabled={disabled || omieLoading}
+              required={field.is_required}
+            >
+              <option value="">
+                {omieLoading ? "Carregando categorias..." : field.placeholder || "Selecionar categoria..."}
+              </option>
+              {catOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            {omieLoading && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      case "omie_department":
+        return (
+          <div className="relative">
+            <select
+              value={value || ""}
+              onChange={(e) => onChange(e.target.value)}
+              className={cn(baseInputClass, "cursor-pointer")}
+              disabled={disabled || omieLoading}
+              required={field.is_required}
+            >
+              <option value="">
+                {omieLoading ? "Carregando departamentos..." : field.placeholder || "Selecionar departamento..."}
+              </option>
+              {omieOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            {omieLoading && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              </div>
+            )}
+          </div>
         );
 
       default:

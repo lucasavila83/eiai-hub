@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   Plus, X, Trash2, Loader2, Pencil, Check, Zap,
   Play, ArrowRight, Bell, Mail, User, MoveRight, Globe,
-  Filter, LayoutGrid, Workflow,
+  Filter, LayoutGrid, Workflow, ShieldCheck, Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import type { Phase } from "./PhaseEditor";
@@ -45,6 +45,8 @@ const SHARED_ACTIONS = [
   { value: "send_email", label: "Enviar e-mail", context: "shared" },
   { value: "call_webhook", label: "Chamar webhook", context: "shared" },
   { value: "create_board_task", label: "Criar tarefa no board", context: "shared" },
+  { value: "require_approval", label: "Exigir aprovação", context: "shared" },
+  { value: "check_budget", label: "Verificar orçamento", context: "shared" },
 ] as const;
 
 const OPERATORS = [
@@ -114,6 +116,30 @@ interface ColumnOption {
   board_id: string;
 }
 
+// ── Condition types ──
+interface SingleCondition {
+  field_id: string;
+  operator: string;
+  value: string;
+}
+
+interface CompositeCondition {
+  logic: "and" | "or";
+  conditions: SingleCondition[];
+}
+
+type ConditionConfig = SingleCondition | CompositeCondition;
+
+function isComposite(c: any): c is CompositeCondition {
+  return c && "logic" in c && Array.isArray(c.conditions);
+}
+
+// ── Approval chain types ──
+interface ApprovalStep {
+  approver_id: string;
+  label: string;
+}
+
 /** context: "board" = board-only, "bpm" = process-only, "all" = central page */
 interface Props {
   automations: Automation[];
@@ -149,11 +175,18 @@ export function AutomationBuilder({
   const [formConfig, setFormConfig] = useState<Record<string, any>>({});
   const [formTriggerConfig, setFormTriggerConfig] = useState<Record<string, any>>({});
 
-  // Condition
+  // ── Composite condition state ──
   const [hasCondition, setHasCondition] = useState(false);
-  const [condFieldId, setCondFieldId] = useState("");
-  const [condOperator, setCondOperator] = useState("eq");
-  const [condValue, setCondValue] = useState("");
+  const [condLogic, setCondLogic] = useState<"and" | "or">("and");
+  const [conditionRows, setConditionRows] = useState<SingleCondition[]>([
+    { field_id: "", operator: "eq", value: "" },
+  ]);
+
+  // ── Approval chain state ──
+  const [approvalSteps, setApprovalSteps] = useState<ApprovalStep[]>([
+    { approver_id: "", label: "" },
+  ]);
+  const [approvalDestPhase, setApprovalDestPhase] = useState("");
 
   // Derive available triggers/actions by context
   const availableTriggers = context === "board"
@@ -181,9 +214,10 @@ export function AutomationBuilder({
     setFormConfig({});
     setFormTriggerConfig({});
     setHasCondition(false);
-    setCondFieldId("");
-    setCondOperator("eq");
-    setCondValue("");
+    setCondLogic("and");
+    setConditionRows([{ field_id: "", operator: "eq", value: "" }]);
+    setApprovalSteps([{ approver_id: "", label: "" }]);
+    setApprovalDestPhase("");
   }
 
   function openAdd() {
@@ -199,9 +233,23 @@ export function AutomationBuilder({
     setSaving(true);
 
     const actionConfig: Record<string, any> = { ...formConfig };
-    const condition = hasCondition && condFieldId
-      ? { field_id: condFieldId, operator: condOperator, value: condValue }
-      : null;
+
+    // Build approval chain into action_config
+    if (formAction === "require_approval") {
+      actionConfig.approval_chain = approvalSteps.filter((s) => s.approver_id);
+      if (approvalDestPhase) actionConfig.destination_phase_id = approvalDestPhase;
+    }
+
+    // Build condition (single or composite)
+    let condition: ConditionConfig | null = null;
+    if (hasCondition) {
+      const validRows = conditionRows.filter((r) => r.field_id);
+      if (validRows.length === 1) {
+        condition = validRows[0];
+      } else if (validRows.length > 1) {
+        condition = { logic: condLogic, conditions: validRows };
+      }
+    }
 
     await onAdd({
       name: formName.trim(),
@@ -252,13 +300,94 @@ export function AutomationBuilder({
     return OPERATORS.find((o) => o.value === op)?.label || op;
   }
 
-  const selectedCondField = fields.find((f) => f.id === condFieldId);
-  const needsValue = !["is_empty", "is_not_empty"].includes(condOperator);
+  function getMemberName(userId: string) {
+    const m = members.find((m) => m.user_id === userId);
+    return m?.full_name || m?.email || userId;
+  }
+
   const boardColumns = columns.filter((c) => c.board_id === formBoardId);
 
   // Determine if a trigger is BPM-only
   function isBpmOnlyTrigger(trigger: string) {
     return ["card_moved_to_phase", "field_updated", "sla_warning", "sla_expired"].includes(trigger);
+  }
+
+  // ── Condition row helpers ──
+  function addConditionRow() {
+    setConditionRows([...conditionRows, { field_id: "", operator: "eq", value: "" }]);
+  }
+
+  function removeConditionRow(idx: number) {
+    setConditionRows(conditionRows.filter((_, i) => i !== idx));
+  }
+
+  function updateConditionRow(idx: number, updates: Partial<SingleCondition>) {
+    setConditionRows(conditionRows.map((r, i) => i === idx ? { ...r, ...updates } : r));
+  }
+
+  // ── Approval step helpers ──
+  function addApprovalStep() {
+    setApprovalSteps([...approvalSteps, { approver_id: "", label: "" }]);
+  }
+
+  function removeApprovalStep(idx: number) {
+    setApprovalSteps(approvalSteps.filter((_, i) => i !== idx));
+  }
+
+  function updateApprovalStep(idx: number, updates: Partial<ApprovalStep>) {
+    setApprovalSteps(approvalSteps.map((s, i) => i === idx ? { ...s, ...updates } : s));
+  }
+
+  // ── Render helpers ──
+  function renderConditionDisplay(cond: any) {
+    if (!cond) return null;
+
+    if (isComposite(cond)) {
+      return (
+        <p className="text-xs text-blue-500 mt-0.5">
+          <Filter className="w-3 h-3 inline mr-0.5" />
+          {cond.conditions.map((c, i) => (
+            <span key={i}>
+              {i > 0 && <span className="font-bold text-blue-400"> {cond.logic.toUpperCase()} </span>}
+              {getFieldLabel(c.field_id)} {getOperatorLabel(c.operator)}{" "}
+              {!["is_empty", "is_not_empty"].includes(c.operator) && <strong>{c.value}</strong>}
+            </span>
+          ))}
+        </p>
+      );
+    }
+
+    // Single condition (legacy)
+    return (
+      <p className="text-xs text-blue-500 mt-0.5">
+        <Filter className="w-3 h-3 inline mr-0.5" />
+        Se {getFieldLabel(cond.field_id)} {getOperatorLabel(cond.operator)}{" "}
+        {!["is_empty", "is_not_empty"].includes(cond.operator) && <strong>{cond.value}</strong>}
+      </p>
+    );
+  }
+
+  function renderApprovalDisplay(config: Record<string, any>) {
+    const chain: ApprovalStep[] = config.approval_chain || [];
+    if (chain.length === 0) return null;
+    return (
+      <div className="flex items-center gap-1 mt-0.5">
+        <ShieldCheck className="w-3 h-3 text-amber-500 shrink-0" />
+        {chain.map((step, i) => (
+          <span key={i} className="text-xs text-amber-600">
+            {i > 0 && <span className="text-muted-foreground mx-0.5">→</span>}
+            {getMemberName(step.approver_id)}
+            {step.label && <span className="text-muted-foreground"> ({step.label})</span>}
+          </span>
+        ))}
+        {config.destination_phase_id && (
+          <>
+            <span className="text-muted-foreground text-xs mx-0.5">→</span>
+            <span className="text-xs text-green-500">{getPhaseName(config.destination_phase_id) || "Fase destino"}</span>
+          </>
+        )}
+      </div>
+    );
   }
 
   function renderTriggerConfig() {
@@ -395,6 +524,106 @@ export function AutomationBuilder({
             className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
           />
         );
+
+      case "require_approval":
+        return (
+          <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 space-y-3">
+            <p className="text-[10px] text-amber-600 font-medium uppercase tracking-wider flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3" />
+              Cadeia de aprovação
+            </p>
+
+            {approvalSteps.map((step, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground w-4 shrink-0 text-center font-bold">
+                  {idx + 1}.
+                </span>
+                <select
+                  value={step.approver_id}
+                  onChange={(e) => updateApprovalStep(idx, { approver_id: e.target.value })}
+                  className="flex-1 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                >
+                  <option value="">Selecionar aprovador...</option>
+                  {members.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>
+                  ))}
+                </select>
+                <input
+                  value={step.label}
+                  onChange={(e) => updateApprovalStep(idx, { label: e.target.value })}
+                  placeholder="Cargo (opcional)"
+                  className="w-28 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                {approvalSteps.length > 1 && (
+                  <button type="button" onClick={() => removeApprovalStep(idx)} className="p-0.5 hover:bg-destructive/10 rounded cursor-pointer">
+                    <X className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                  </button>
+                )}
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={addApprovalStep}
+              className="text-xs text-amber-600 hover:text-amber-500 flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3 h-3" /> Adicionar nivel
+            </button>
+
+            {/* Destination after all approvals */}
+            {phases.length > 0 && (
+              <div>
+                <label className="text-[10px] text-muted-foreground font-medium mb-1 block">Após aprovação total, mover para:</label>
+                <select
+                  value={approvalDestPhase}
+                  onChange={(e) => setApprovalDestPhase(e.target.value)}
+                  className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                >
+                  <option value="">Manter na fase atual</option>
+                  {phases.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+        );
+
+      case "check_budget":
+        return (
+          <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-3 space-y-2">
+            <p className="text-[10px] text-green-600 font-medium uppercase tracking-wider">Verificar orçamento</p>
+            <p className="text-xs text-muted-foreground">
+              Compara o valor da solicitação com a meta orçamentária do departamento/categoria.
+              Se exceder o limite, adiciona um passo extra de aprovação.
+            </p>
+            <div>
+              <label className="text-[10px] text-muted-foreground font-medium mb-1 block">Campo do valor (R$)</label>
+              <select
+                value={formConfig.value_field_id || ""}
+                onChange={(e) => setFormConfig({ ...formConfig, value_field_id: e.target.value })}
+                className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              >
+                <option value="">Selecionar campo...</option>
+                {fields.filter((f) => f.field_type === "currency" || f.field_type === "number").map((f) => (
+                  <option key={f.id} value={f.id}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground font-medium mb-1 block">Aprovador extra (quando exceder)</label>
+              <select
+                value={formConfig.extra_approver_id || ""}
+                onChange={(e) => setFormConfig({ ...formConfig, extra_approver_id: e.target.value })}
+                className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              >
+                <option value="">Selecionar...</option>
+                {members.map((m) => (
+                  <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -417,58 +646,56 @@ export function AutomationBuilder({
 
       {automations.map((auto) => {
         const cond = getAutoCondition(auto);
+        const actionCfg = getAutoActionConfig(auto);
         const boardName = getBoardName(auto.board_id);
         const phaseName = getPhaseName(auto.phase_id);
         const isBpm = !!auto.pipe_id;
         return (
-          <div key={auto.id} className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">
-            <Zap className={cn("w-4 h-4 shrink-0", auto.is_active ? "text-yellow-500" : "text-muted-foreground")} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm font-medium text-foreground truncate">{auto.name}</p>
-                {context === "all" && (
-                  isBpm
-                    ? <span className="shrink-0 text-[10px] bg-violet-500/10 text-violet-500 px-1.5 py-0.5 rounded font-medium">Processo</span>
-                    : <span className="shrink-0 text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-medium">Board</span>
+          <div key={auto.id} className="bg-card border border-border rounded-lg px-4 py-3">
+            <div className="flex items-center gap-3">
+              <Zap className={cn("w-4 h-4 shrink-0", auto.is_active ? "text-yellow-500" : "text-muted-foreground")} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium text-foreground truncate">{auto.name}</p>
+                  {context === "all" && (
+                    isBpm
+                      ? <span className="shrink-0 text-[10px] bg-violet-500/10 text-violet-500 px-1.5 py-0.5 rounded font-medium">Processo</span>
+                      : <span className="shrink-0 text-[10px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-medium">Board</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Quando: <strong>{getTriggerLabel(auto.trigger_type)}</strong>
+                  {phaseName && <> em <strong>{phaseName}</strong></>}
+                  {boardName && <> em <strong>{boardName}</strong></>}
+                  {" → "}
+                  <strong>{getActionLabel(auto.action_type)}</strong>
+                </p>
+                {renderConditionDisplay(cond)}
+                {auto.action_type === "require_approval" && renderApprovalDisplay(actionCfg)}
+                {auto.run_count != null && auto.run_count > 0 && (
+                  <span className="text-[10px] text-muted-foreground/60">{auto.run_count}x executada</span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Quando: <strong>{getTriggerLabel(auto.trigger_type)}</strong>
-                {phaseName && <> em <strong>{phaseName}</strong></>}
-                {boardName && <> em <strong>{boardName}</strong></>}
-                {" → "}
-                <strong>{getActionLabel(auto.action_type)}</strong>
-              </p>
-              {cond && (
-                <p className="text-xs text-blue-500 mt-0.5">
-                  <Filter className="w-3 h-3 inline mr-0.5" />
-                  Se {getFieldLabel(cond.field_id)} {getOperatorLabel(cond.operator)}{" "}
-                  {!["is_empty", "is_not_empty"].includes(cond.operator) && <strong>{cond.value}</strong>}
-                </p>
-              )}
-              {auto.run_count != null && auto.run_count > 0 && (
-                <span className="text-[10px] text-muted-foreground/60">{auto.run_count}x executada</span>
-              )}
+              <button
+                onClick={() => onToggle(auto.id, !auto.is_active)}
+                className={cn(
+                  "relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 cursor-pointer",
+                  auto.is_active ? "bg-primary" : "bg-muted"
+                )}
+              >
+                <span className={cn(
+                  "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
+                  auto.is_active ? "translate-x-4.5" : "translate-x-0.5"
+                )} />
+              </button>
+              <button
+                onClick={() => handleDelete(auto.id)}
+                disabled={deleting === auto.id}
+                className="p-1 rounded-md hover:bg-destructive/10 transition-colors cursor-pointer"
+              >
+                {deleting === auto.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />}
+              </button>
             </div>
-            <button
-              onClick={() => onToggle(auto.id, !auto.is_active)}
-              className={cn(
-                "relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 cursor-pointer",
-                auto.is_active ? "bg-primary" : "bg-muted"
-              )}
-            >
-              <span className={cn(
-                "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
-                auto.is_active ? "translate-x-4.5" : "translate-x-0.5"
-              )} />
-            </button>
-            <button
-              onClick={() => handleDelete(auto.id)}
-              disabled={deleting === auto.id}
-              className="p-1 rounded-md hover:bg-destructive/10 transition-colors cursor-pointer"
-            >
-              {deleting === auto.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />}
-            </button>
           </div>
         );
       })}
@@ -530,7 +757,7 @@ export function AutomationBuilder({
           {/* Trigger-specific config */}
           {renderTriggerConfig()}
 
-          {/* Condition (alcada) */}
+          {/* ── Composite Conditions (AND/OR) ── */}
           {fields.length > 0 && (
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -541,59 +768,114 @@ export function AutomationBuilder({
                   className="rounded border-border"
                 />
                 <Filter className="w-3.5 h-3.5 text-blue-500" />
-                <span className="text-xs font-medium text-muted-foreground">Adicionar condicao (alcada)</span>
+                <span className="text-xs font-medium text-muted-foreground">Adicionar condições (alçada)</span>
               </label>
 
               {hasCondition && (
                 <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3 space-y-2">
-                  <p className="text-[10px] text-blue-500 font-medium uppercase tracking-wider">Executar somente se...</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    <select
-                      value={condFieldId}
-                      onChange={(e) => setCondFieldId(e.target.value)}
-                      className="px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-                    >
-                      <option value="">Campo...</option>
-                      {fields.map((f) => {
-                        const phase = phases.find((p) => p.id === f.phase_id);
-                        return (
-                          <option key={f.id} value={f.id}>
-                            {phase ? `${phase.name} → ` : ""}{f.label}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <select
-                      value={condOperator}
-                      onChange={(e) => setCondOperator(e.target.value)}
-                      className="px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-                    >
-                      {OPERATORS.map((op) => (
-                        <option key={op.value} value={op.value}>{op.label}</option>
-                      ))}
-                    </select>
-                    {needsValue && (
-                      selectedCondField?.field_type === "select" && selectedCondField.options?.length ? (
-                        <select
-                          value={condValue}
-                          onChange={(e) => setCondValue(e.target.value)}
-                          className="px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                  {/* Logic toggle */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-[10px] text-blue-500 font-medium uppercase tracking-wider">Executar somente se</p>
+                    {conditionRows.length > 1 && (
+                      <div className="flex bg-muted rounded-md p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setCondLogic("and")}
+                          className={cn(
+                            "px-2 py-0.5 text-[10px] font-bold rounded transition-colors cursor-pointer",
+                            condLogic === "and" ? "bg-blue-500 text-white" : "text-muted-foreground hover:text-foreground"
+                          )}
                         >
-                          <option value="">Valor...</option>
-                          {selectedCondField.options.map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          value={condValue}
-                          onChange={(e) => setCondValue(e.target.value)}
-                          placeholder="Valor..."
-                          className="px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                      )
+                          E (AND)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCondLogic("or")}
+                          className={cn(
+                            "px-2 py-0.5 text-[10px] font-bold rounded transition-colors cursor-pointer",
+                            condLogic === "or" ? "bg-blue-500 text-white" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          OU (OR)
+                        </button>
+                      </div>
                     )}
                   </div>
+
+                  {conditionRows.map((row, idx) => {
+                    const selectedField = fields.find((f) => f.id === row.field_id);
+                    const showValue = !["is_empty", "is_not_empty"].includes(row.operator);
+                    return (
+                      <div key={idx} className="flex items-center gap-2">
+                        {idx > 0 && (
+                          <span className="text-[10px] font-bold text-blue-400 w-8 text-center shrink-0">
+                            {condLogic.toUpperCase()}
+                          </span>
+                        )}
+                        {idx === 0 && conditionRows.length > 1 && (
+                          <span className="w-8 shrink-0" />
+                        )}
+                        <select
+                          value={row.field_id}
+                          onChange={(e) => updateConditionRow(idx, { field_id: e.target.value })}
+                          className="flex-1 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                        >
+                          <option value="">Campo...</option>
+                          {fields.map((f) => {
+                            const phase = phases.find((p) => p.id === f.phase_id);
+                            return (
+                              <option key={f.id} value={f.id}>
+                                {phase ? `${phase.name} → ` : ""}{f.label}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <select
+                          value={row.operator}
+                          onChange={(e) => updateConditionRow(idx, { operator: e.target.value })}
+                          className="w-32 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                        >
+                          {OPERATORS.map((op) => (
+                            <option key={op.value} value={op.value}>{op.label}</option>
+                          ))}
+                        </select>
+                        {showValue && (
+                          selectedField?.field_type === "select" && selectedField.options?.length ? (
+                            <select
+                              value={row.value}
+                              onChange={(e) => updateConditionRow(idx, { value: e.target.value })}
+                              className="flex-1 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                            >
+                              <option value="">Valor...</option>
+                              {selectedField.options.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              value={row.value}
+                              onChange={(e) => updateConditionRow(idx, { value: e.target.value })}
+                              placeholder="Valor..."
+                              className="flex-1 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          )
+                        )}
+                        {conditionRows.length > 1 && (
+                          <button type="button" onClick={() => removeConditionRow(idx)} className="p-0.5 hover:bg-destructive/10 rounded cursor-pointer">
+                            <X className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={addConditionRow}
+                    className="text-xs text-blue-500 hover:text-blue-400 flex items-center gap-1 cursor-pointer mt-1"
+                  >
+                    <Plus className="w-3 h-3" /> Adicionar condição
+                  </button>
                 </div>
               )}
             </div>

@@ -2344,6 +2344,7 @@ export function CardDetailModal({
                         value={bpmFieldValues[field.id]}
                         onChange={(val) => handleBpmFieldChange(field.id, val)}
                         members={orgMembers.map((m) => ({ user_id: m.user_id, full_name: m.profiles.full_name, email: m.profiles.email }))}
+                        orgId={activeOrgId || undefined}
                       />
                       {savingBpmField === field.id && (
                         <div className="absolute top-0 right-0 mt-1 mr-1">
@@ -2617,6 +2618,7 @@ export function CardDetailModal({
                           value={pipeFieldValues[field.id]}
                           onChange={(val) => setPipeFieldValues((prev) => ({ ...prev, [field.id]: val }))}
                           members={orgMembers.map((m) => ({ user_id: m.user_id, full_name: m.profiles.full_name, email: m.profiles.email }))}
+                          orgId={activeOrgId || undefined}
                         />
                       ))}
                     </div>

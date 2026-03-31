@@ -28,7 +28,7 @@ async function fetchAllPages(endpoint: string, call: string, listKey: string, ap
     const items = data[listKey] || [];
     all.push(...items);
     page++;
-    if (page <= totalPages) await new Promise((r) => setTimeout(r, 1000)); // rate limit
+    if (page <= totalPages) await new Promise((r) => setTimeout(r, 1000));
   }
 
   return all;
@@ -75,15 +75,14 @@ export async function POST(req: NextRequest) {
 
         await admin.from("omie_categories").upsert({
           org_id,
-          omie_app_key: app_key,
+          omie_key: app_key,
           codigo: cat.codigo,
           descricao: cat.descricao,
-          categoria_superior: cat.categoria_superior || null,
+          parent_codigo: cat.categoria_superior || null,
           tipo,
-          totalizadora: cat.totalizadora === "S",
-          conta_inativa: cat.conta_inativa === "S",
+          is_active: cat.conta_inativa !== "S",
           synced_at: new Date().toISOString(),
-        }, { onConflict: "org_id,omie_app_key,codigo" });
+        }, { onConflict: "org_id,omie_key,codigo" });
 
         stats.categories++;
       }
@@ -94,13 +93,12 @@ export async function POST(req: NextRequest) {
       for (const dep of departments) {
         await admin.from("omie_departments").upsert({
           org_id,
-          omie_app_key: app_key,
-          omie_codigo: dep.codigo,
+          omie_id: String(dep.codigo),
+          codigo: dep.estrutura || String(dep.codigo),
           descricao: dep.descricao,
-          estrutura: dep.estrutura || null,
-          inativo: dep.inativo === "S",
+          is_active: dep.inativo !== "S",
           synced_at: new Date().toISOString(),
-        }, { onConflict: "org_id,omie_app_key,omie_codigo" });
+        }, { onConflict: "org_id,omie_id,codigo" });
 
         stats.departments++;
       }
@@ -135,10 +133,10 @@ export async function GET(req: NextRequest) {
     if (type === "departments") {
       const { data } = await admin
         .from("omie_departments")
-        .select("id, omie_codigo, descricao, estrutura, inativo")
+        .select("id, omie_id, codigo, descricao, is_active")
         .eq("org_id", orgId)
-        .eq("inativo", false)
-        .order("estrutura");
+        .eq("is_active", true)
+        .order("codigo");
 
       return NextResponse.json(data || []);
     }
@@ -146,9 +144,9 @@ export async function GET(req: NextRequest) {
     // Default: categories
     const { data } = await admin
       .from("omie_categories")
-      .select("id, codigo, descricao, categoria_superior, tipo, totalizadora, conta_inativa")
+      .select("id, codigo, descricao, parent_codigo, tipo, is_active")
       .eq("org_id", orgId)
-      .eq("conta_inativa", false)
+      .eq("is_active", true)
       .order("codigo");
 
     return NextResponse.json(data || []);
