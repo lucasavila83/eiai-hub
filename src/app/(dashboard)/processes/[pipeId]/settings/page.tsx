@@ -45,6 +45,7 @@ function PipeSettingsContent() {
 
   // Automations state
   const [automations, setAutomations] = useState<Automation[]>([]);
+  const [allFields, setAllFields] = useState<FieldDef[]>([]);
 
   // Boards state
   const [orgBoards, setOrgBoards] = useState<any[]>([]);
@@ -79,7 +80,19 @@ function PipeSettingsContent() {
     ]);
 
     if (pipeRes.data) setPipe(pipeRes.data);
-    if (phasesRes.data) setPhases(phasesRes.data);
+    if (phasesRes.data) {
+      setPhases(phasesRes.data);
+      // Load all fields across all phases for automation conditions
+      const phaseIds = phasesRes.data.map((p: any) => p.id);
+      if (phaseIds.length > 0) {
+        const { data: fieldsData } = await supabase
+          .from("bpm_fields")
+          .select("*")
+          .in("phase_id", phaseIds)
+          .order("position");
+        setAllFields((fieldsData || []).map((f: any) => ({ ...f, options: f.options || [], validations: f.validations || {} })));
+      }
+    }
     if (autoRes.data) setAutomations(autoRes.data);
     if (boardsRes.data) setOrgBoards(boardsRes.data);
     if (linkedRes.data) setLinkedBoardIds(linkedRes.data.map((r: any) => r.board_id));
@@ -384,6 +397,7 @@ function PipeSettingsContent() {
           automations={automations}
           phases={phases}
           members={members}
+          fields={allFields}
           onSave={handleSaveAutomation}
           onAdd={handleAddAutomation}
           onDelete={handleDeleteAutomation}

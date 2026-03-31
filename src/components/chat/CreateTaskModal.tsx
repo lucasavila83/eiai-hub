@@ -182,6 +182,18 @@ export function CreateTaskModal({
       return;
     }
 
+    // Log activity: card created from chat
+    await supabase.from("activity_logs").insert({
+      card_id: card.id,
+      user_id: currentUserId,
+      action: "created",
+      details: {
+        title: card.title,
+        source: "chat",
+        assignees: selectedAssigneeIds.length,
+      },
+    });
+
     // Auto-attach file if task was created from a file message
     if (attachmentFile) {
       await supabase.from("card_attachments").insert({

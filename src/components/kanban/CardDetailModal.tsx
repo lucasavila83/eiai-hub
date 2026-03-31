@@ -180,7 +180,17 @@ function formatFileSize(bytes: number): string {
 
 function getActivityDescription(action: string, details: any): string {
   switch (action) {
-    case "created": return "criou esta tarefa";
+    case "created": {
+      const sourceMap: Record<string, string> = {
+        board: "criou esta tarefa pelo board",
+        chat: "criou esta tarefa pelo chat",
+        chat_command: "criou esta tarefa via /tarefa",
+        bpm: `criou esta tarefa via processo${details?.pipe_name ? ` "${details.pipe_name}"` : ""}`,
+        mirror: "espelhou esta tarefa de outro board",
+      };
+      return sourceMap[details?.source] || "criou esta tarefa";
+    }
+    case "mirrored": return `espelhou para o board "${details?.mirror_board || ""}"`;
     case "moved": return `moveu para ${details?.to_column || "outra coluna"}`;
     case "priority_changed": return `alterou prioridade para ${details?.new_priority || "?"}`;
     case "assigned": return `atribuiu a ${details?.assignee_name || "alguem"}`;

@@ -194,6 +194,19 @@ export async function POST(req: NextRequest) {
         details: { mirror_board: hub.name, mirror_card_id: mirrorCard.id },
       });
 
+      // Log activity on mirror card (so CEO sees who created it)
+      await supabase.from("activity_logs").insert({
+        card_id: mirrorCard.id,
+        user_id: user.id,
+        action: "created",
+        details: {
+          title: sourceCard.title,
+          source: "mirror",
+          source_board_id: board_id,
+          source_card_id: card_id,
+        },
+      });
+
       results.push({ hub_board: hub.name, mirror_card_id: mirrorCard.id });
     }
 

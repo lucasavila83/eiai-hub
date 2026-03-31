@@ -251,6 +251,19 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
           newCardLabelIds.map((lid) => ({ card_id: (data as any).id, label_id: lid })) as any
         );
       }
+      // Log activity: card created
+      await supabase.from("activity_logs").insert({
+        card_id: (data as any).id,
+        user_id: currentUserId,
+        action: "created",
+        details: {
+          title: newCardTitle.trim(),
+          source: "board",
+          assignees: newCardAssigneeIds.length,
+          priority: newCardPriority,
+        },
+      });
+
       addCard({
         ...data,
         card_assignees: newCardAssigneeIds.map((uid) => {

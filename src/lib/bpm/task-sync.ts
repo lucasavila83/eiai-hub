@@ -143,6 +143,19 @@ export async function createBoardTaskFromBpm(
 
   if (!boardCard) return null;
 
+  // Log activity: card created from BPM
+  await supabase.from("activity_logs").insert({
+    card_id: boardCard.id,
+    user_id: assigneeId,
+    action: "created",
+    details: {
+      title: `[${pipeName}] ${phaseName} — ${bpmCardTitle}`,
+      source: "bpm",
+      pipe_name: pipeName,
+      phase_name: phaseName,
+    },
+  });
+
   // Assign to the responsible person
   await supabase.from("card_assignees").insert({
     card_id: boardCard.id,

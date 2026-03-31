@@ -7,6 +7,56 @@ const adminClient = createClient(
 );
 
 /**
+ * Evaluate a condition against card field values.
+ * Condition format: { field_id, operator, value }
+ * Operators: eq, neq, gt, gte, lt, lte, contains, is_empty, is_not_empty
+ */
+async function evaluateCondition(
+  condition: { field_id: string; operator: string; value: any } | undefined,
+  cardId: string
+): Promise<boolean> {
+  if (!condition || !condition.field_id) return true; // No condition = always true
+
+  // Get the field value from bpm_card_values
+  const { data: fieldValue } = await adminClient
+    .from("bpm_card_values")
+    .select("value")
+    .eq("card_id", cardId)
+    .eq("field_id", condition.field_id)
+    .single();
+
+  const actual = fieldValue?.value;
+  const expected = condition.value;
+
+  // Parse numbers for comparison
+  const numActual = typeof actual === "string" ? parseFloat(actual) : (typeof actual === "number" ? actual : NaN);
+  const numExpected = typeof expected === "string" ? parseFloat(expected) : (typeof expected === "number" ? expected : NaN);
+
+  switch (condition.operator) {
+    case "eq":
+      return String(actual) === String(expected);
+    case "neq":
+      return String(actual) !== String(expected);
+    case "gt":
+      return !isNaN(numActual) && !isNaN(numExpected) && numActual > numExpected;
+    case "gte":
+      return !isNaN(numActual) && !isNaN(numExpected) && numActual >= numExpected;
+    case "lt":
+      return !isNaN(numActual) && !isNaN(numExpected) && numActual < numExpected;
+    case "lte":
+      return !isNaN(numActual) && !isNaN(numExpected) && numActual <= numExpected;
+    case "contains":
+      return typeof actual === "string" && actual.toLowerCase().includes(String(expected).toLowerCase());
+    case "is_empty":
+      return actual === null || actual === undefined || actual === "" || actual === "null";
+    case "is_not_empty":
+      return actual !== null && actual !== undefined && actual !== "" && actual !== "null";
+    default:
+      return true;
+  }
+}
+
+/**
  * POST /api/bpm/automation
  * Executa automações associadas a um evento BPM.
  * Body: { trigger, pipeId, phaseId, cardId, orgId }
@@ -49,6 +99,21 @@ export async function POST(req: NextRequest) {
       try {
         const config = auto.config || {};
 
+        // ─── Evaluate condition before executing ───────────────────────
+        if (config.condition && cardId) {
+          const conditionMet = await evaluateCondition(config.condition, cardId);
+          if (!conditionMet) {
+            // Log as skipped
+            await adminClient.from("bpm_automation_logs").insert({
+              automation_id: auto.id,
+              bpm_card_id: cardId,
+              status: "skipped",
+              details: { trigger, action: auto.action_type, reason: "condition_not_met" },
+            });
+            continue;
+          }
+        }
+
         switch (auto.action_type) {
           case "notify_chat": {
             // Send notification to assignee or specific user
@@ -80,19 +145,37 @@ export async function POST(req: NextRequest) {
 
           case "send_email": {
             // Email sending would use Resend - log for now
-            // TODO: integrate with sendInviteEmail or create sendBpmEmail
             break;
           }
 
           case "move_to_phase": {
             // Move card to specific phase
             if (config.target_phase_id && cardId) {
+              // Calculate SLA for target phase
+              const { data: targetPhase } = await adminClient
+                .from("bpm_phases")
+                .select("sla_hours, default_assignee_id")
+                .eq("id", config.target_phase_id)
+                .single();
+
+              const updateData: any = {
+                current_phase_id: config.target_phase_id,
+                updated_at: new Date().toISOString(),
+              };
+
+              if (targetPhase?.sla_hours) {
+                updateData.sla_deadline = new Date(
+                  Date.now() + targetPhase.sla_hours * 3600000
+                ).toISOString();
+              }
+
+              if (targetPhase?.default_assignee_id) {
+                updateData.assignee_id = targetPhase.default_assignee_id;
+              }
+
               await adminClient
                 .from("bpm_cards")
-                .update({
-                  current_phase_id: config.target_phase_id,
-                  updated_at: new Date().toISOString(),
-                })
+                .update(updateData)
                 .eq("id", cardId);
 
               await adminClient.from("bpm_card_history").insert({

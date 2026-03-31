@@ -569,6 +569,14 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       .single();
 
     if (card) {
+      // Log activity: card created from /tarefa command
+      await supabase.from("activity_logs").insert({
+        card_id: card.id,
+        user_id: currentUserId,
+        action: "created",
+        details: { title, source: "chat_command" },
+      });
+
       // If DM, assign to the other person
       if (channel.type === "dm") {
         const { data: members } = await supabase
