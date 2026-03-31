@@ -71,16 +71,18 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // Find the first column in the hub board (inbox)
-      const { data: firstCol } = await supabase
+      // Find the target column: prefer second column (A Fazer) to skip Autorizar,
+      // fall back to first if only one column exists
+      const { data: hubCols } = await supabase
         .from("columns")
-        .select("id")
+        .select("id, name, position")
         .eq("board_id", hub.id)
         .order("position", { ascending: true })
-        .limit(1)
-        .single();
+        .limit(3);
 
-      if (!firstCol) continue;
+      if (!hubCols || hubCols.length === 0) continue;
+      // Use second column if available (skip "Autorizar"), otherwise first
+      const firstCol = hubCols.length > 1 ? hubCols[1] : hubCols[0];
 
       // Get source board name for the mirror card title prefix
       const { data: srcBoard } = await supabase
