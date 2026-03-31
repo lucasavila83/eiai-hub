@@ -224,6 +224,15 @@ export function CreateTaskModal({
       body: JSON.stringify({ card_id: card.id, board_id: selectedBoardId }),
     }).catch(() => {});
 
+    // Sync due date to Google Calendar of assignees (fire-and-forget)
+    if (card.due_date) {
+      fetch("/api/cards/gcal-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardId: card.id }),
+      }).catch(() => {});
+    }
+
     const board = boards.find((b) => b.id === selectedBoardId);
     const column = columns.find((c) => c.id === selectedColumnId);
 

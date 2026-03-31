@@ -225,6 +225,18 @@ export async function createBoardTaskFromBpm(
     });
   } catch {}
 
+  // Sync due date to Google Calendar of assignees
+  if (boardCard.due_date) {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      await fetch(`${baseUrl}/api/cards/gcal-sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardId: boardCard.id }),
+      });
+    } catch {}
+  }
+
   return boardCard.id;
 }
 

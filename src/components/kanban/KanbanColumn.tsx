@@ -259,6 +259,15 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ card_id: (data as any).id, board_id: boardId }),
       }).catch(() => {});
+
+      // Sync due date to Google Calendar of assignees (fire-and-forget)
+      if (dueDateTime) {
+        fetch("/api/cards/gcal-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cardId: (data as any).id }),
+        }).catch(() => {});
+      }
     }
     resetAddForm();
   }

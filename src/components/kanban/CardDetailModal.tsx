@@ -758,6 +758,14 @@ export function CardDetailModal({
     setDueDate(combined);
     await updateCard({ due_date: combined || null });
     logActivity("due_date_changed", { due_date: combined || null });
+    // Sync to Google Calendar
+    if (combined) {
+      fetch("/api/cards/gcal-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardId: card.id }),
+      }).catch(() => {});
+    }
   }
 
   async function handleDueTimeChange(value: string) {
@@ -767,6 +775,12 @@ export function CardDetailModal({
     const combined = value ? `${dateOnly}T${value}` : dateOnly;
     setDueDate(combined);
     await updateCard({ due_date: combined || null });
+    // Sync to Google Calendar
+    fetch("/api/cards/gcal-sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cardId: card.id }),
+    }).catch(() => {});
   }
 
   async function handleStartDateChange(value: string) {
@@ -868,6 +882,14 @@ export function CardDetailModal({
       setAssignees(newAssignees);
       onUpdated({ ...card, card_assignees: newAssignees });
       logActivity("assigned", { assignee_name: member?.profiles?.full_name });
+      // Sync to Google Calendar for new assignee
+      if (card.due_date) {
+        fetch("/api/cards/gcal-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cardId: card.id }),
+        }).catch(() => {});
+      }
     }
     setShowAssigneeDropdown(false);
   }

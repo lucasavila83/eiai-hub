@@ -593,6 +593,15 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
         body: JSON.stringify({ card_id: card.id, board_id: targetBoardId }),
       }).catch(() => {});
 
+      // Sync to Google Calendar if card has due_date (fire-and-forget)
+      if ((card as any).due_date) {
+        fetch("/api/cards/gcal-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cardId: card.id }),
+        }).catch(() => {});
+      }
+
       // Send confirmation message in chat
       await sendMessage(`📋 Tarefa criada: **${title}**`);
     }
