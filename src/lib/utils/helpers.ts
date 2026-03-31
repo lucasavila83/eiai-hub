@@ -6,6 +6,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDate(date: string | Date): string {
+  // For date-only strings (YYYY-MM-DD), parse as local to avoid timezone shift
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date.split("T")[0]) && !date.includes("Z")) {
+    const [y, m, day] = date.split("T")[0].split("-").map(Number);
+    const d = new Date(y, m - 1, day);
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+  }
   const d = new Date(date);
   return d.toLocaleDateString("pt-BR", {
     day: "2-digit",

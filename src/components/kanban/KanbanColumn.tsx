@@ -251,7 +251,17 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
           newCardLabelIds.map((lid) => ({ card_id: (data as any).id, label_id: lid })) as any
         );
       }
-      addCard({ ...data, card_assignees: newCardAssigneeIds.map((uid) => ({ user_id: uid })) } as any);
+      addCard({
+        ...data,
+        card_assignees: newCardAssigneeIds.map((uid) => {
+          const member = boardMembers.find((m) => m.user_id === uid);
+          return { user_id: uid, profiles: member?.profiles || null };
+        }),
+        card_labels: newCardLabelIds.map((lid) => {
+          const label = boardLabels.find((l) => l.id === lid);
+          return { label_id: lid, labels: label || null };
+        }),
+      } as any);
 
       // Mirror to hub boards (fire-and-forget)
       fetch("/api/cards/mirror", {
@@ -693,7 +703,7 @@ export function KanbanColumn({ column, cards, currentUserId, boardId, visibleFie
                   : "Adicionar tags"}
               </button>
               {showLabelDropdown && (
-                <div className="absolute left-0 top-full mt-1 w-full bg-popover border border-border rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
+                <div className="absolute left-0 bottom-full mb-1 w-full bg-popover border border-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
                   {boardLabels.length === 0 ? (
                     <div className="px-3 py-2 text-xs text-muted-foreground text-center">
                       Nenhuma label criada. Use o gerenciador de Labels.
