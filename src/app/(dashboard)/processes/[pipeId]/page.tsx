@@ -698,7 +698,7 @@ function ShareFormModal({
   const [loadingFields, setLoadingFields] = useState(false);
 
   // Load fields from start phase
-  useState(() => {
+  useEffect(() => {
     (async () => {
       setLoadingFields(true);
       const { data: phases } = await supabase
@@ -722,7 +722,7 @@ function ShareFormModal({
       }
       setLoadingFields(false);
     })();
-  });
+  }, [pipe.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function togglePublicField(fieldId: string) {
     const updated = publicFieldIds.includes(fieldId)
