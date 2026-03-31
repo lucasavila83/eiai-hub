@@ -78,6 +78,31 @@ export function toGoogleEvent(event: {
   return base;
 }
 
+/** Convert a board card (with due_date) to a Google Calendar all-day event */
+export function toGoogleCardEvent(card: {
+  title: string;
+  description?: string | null;
+  due_date: string; // "YYYY-MM-DD"
+  board_name?: string;
+}) {
+  const summary = card.board_name
+    ? `[${card.board_name}] ${card.title}`
+    : card.title;
+
+  // All-day event: end = next day (Google Calendar exclusive end)
+  const endDate = new Date(card.due_date + "T00:00:00");
+  endDate.setDate(endDate.getDate() + 1);
+  const endStr = endDate.toISOString().slice(0, 10);
+
+  return {
+    summary,
+    description: card.description || undefined,
+    start: { date: card.due_date },
+    end: { date: endStr },
+    colorId: "11", // Tomato red for tasks/deadlines
+  };
+}
+
 /** Convert Google Calendar event to EIAI event format */
 export function fromGoogleEvent(gEvent: any) {
   const allDay = !!gEvent.start?.date;

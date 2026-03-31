@@ -5,11 +5,13 @@ import {
   refreshIfNeeded,
   toGoogleEvent,
   fromGoogleEvent,
+  toGoogleCardEvent,
 } from "@/lib/google/calendar";
 
 /**
  * POST /api/integrations/google-calendar/sync
  * Bidirectional sync between EIAI events and Google Calendar.
+ * Also pushes card due dates from selected boards.
  * Body: { orgId: string }
  */
 export async function POST(req: NextRequest) {
@@ -60,9 +62,9 @@ export async function POST(req: NextRequest) {
     const timeMax = new Date();
     timeMax.setDate(timeMax.getDate() + 90);
 
-    const stats = { pushed: 0, pulled: 0, updated: 0 };
+    const stats = { pushed: 0, pulled: 0, updated: 0, cards: 0 };
 
-    // ─── PUSH: EIAI → Google ──────────────────────────────────────────────
+    // ─── PUSH: EIAI Events → Google ──────────────────────────────────────
 
     // Get EIAI events not yet synced to Google
     const { data: localEvents } = await supabase
@@ -133,6 +135,124 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ─── PUSH: Card Due Dates → Google ───────────────────────────────────
+
+    const syncedBoardIds: string[] = (tokenRow as any).synced_board_ids || [];
+
+    if (syncedBoardIds.length > 0) {
+      const startStr = timeMin.toISOString().slice(0, 10);
+      const endStr = timeMax.toISOString().slice(0, 10);
+
+      // Get board names for event titles
+      const { data: boards } = await supabase
+        .from("boards")
+        .select("id, name")
+        .in("id", syncedBoardIds);
+
+      const boardMap = new Map((boards || []).map((b) => [b.id, b.name]));
+
+      // Cards with due_date that are NOT yet synced to Google
+      const { data: unsyncedCards } = await supabase
+        .from("cards")
+        .select("*")
+        .in("board_id", syncedBoardIds)
+        .eq("is_archived", false)
+        .not("due_date", "is", null)
+        .is("google_event_id", null)
+        .gte("due_date", startStr)
+        .lte("due_date", endStr);
+
+      for (const card of unsyncedCards || []) {
+        try {
+          const gEvent = toGoogleCardEvent({
+            title: card.title,
+            description: card.description,
+            due_date: card.due_date!,
+            board_name: boardMap.get(card.board_id) || undefined,
+          });
+          const res = await calendar.events.insert({
+            calendarId,
+            requestBody: gEvent,
+          });
+
+          if (res.data.id) {
+            await supabase
+              .from("cards")
+              .update({
+                google_event_id: res.data.id,
+                google_synced_at: new Date().toISOString(),
+              })
+              .eq("id", card.id);
+            stats.cards++;
+          }
+        } catch (err: any) {
+          console.error(`Failed to push card ${card.id}:`, err.message);
+        }
+      }
+
+      // Update already-synced cards where due_date or title changed
+      const { data: syncedCards } = await supabase
+        .from("cards")
+        .select("*")
+        .in("board_id", syncedBoardIds)
+        .eq("is_archived", false)
+        .not("google_event_id", "is", null)
+        .not("due_date", "is", null)
+        .gt("updated_at", "google_synced_at");
+
+      for (const card of syncedCards || []) {
+        try {
+          const gEvent = toGoogleCardEvent({
+            title: card.title,
+            description: card.description,
+            due_date: card.due_date!,
+            board_name: boardMap.get(card.board_id) || undefined,
+          });
+          await calendar.events.update({
+            calendarId,
+            eventId: card.google_event_id!,
+            requestBody: gEvent,
+          });
+
+          await supabase
+            .from("cards")
+            .update({ google_synced_at: new Date().toISOString() })
+            .eq("id", card.id);
+          stats.updated++;
+        } catch (err: any) {
+          if (err.code === 404 || err.code === 410) {
+            await supabase
+              .from("cards")
+              .update({ google_event_id: null, google_synced_at: null })
+              .eq("id", card.id);
+          }
+        }
+      }
+
+      // Remove Google events for completed/archived cards
+      const { data: completedCards } = await supabase
+        .from("cards")
+        .select("id, google_event_id")
+        .in("board_id", syncedBoardIds)
+        .not("google_event_id", "is", null)
+        .not("completed_at", "is", null);
+
+      for (const card of completedCards || []) {
+        try {
+          await calendar.events.delete({
+            calendarId,
+            eventId: card.google_event_id!,
+          });
+          await supabase
+            .from("cards")
+            .update({ google_event_id: null, google_synced_at: null })
+            .eq("id", card.id);
+        } catch {
+          // Ignore if already deleted
+        }
+      }
+    }
+
     // ─── PULL: Google → EIAI ──────────────────────────────────────────────
 
     try {
@@ -147,7 +267,7 @@ export async function POST(req: NextRequest) {
 
       const googleEvents = res.data.items || [];
 
-      // Get all google_event_ids we already know about
+      // Get all google_event_ids we already know about (events + cards)
       const { data: knownEvents } = await supabase
         .from("events")
         .select("google_event_id")
@@ -156,6 +276,16 @@ export async function POST(req: NextRequest) {
         .not("google_event_id", "is", null);
 
       const knownIds = new Set((knownEvents || []).map((e) => e.google_event_id));
+
+      // Also exclude card-synced events
+      if (syncedBoardIds.length > 0) {
+        const { data: knownCards } = await supabase
+          .from("cards")
+          .select("google_event_id")
+          .in("board_id", syncedBoardIds)
+          .not("google_event_id", "is", null);
+        (knownCards || []).forEach((c) => knownIds.add(c.google_event_id));
+      }
 
       for (const gEvent of googleEvents) {
         if (!gEvent.id || knownIds.has(gEvent.id)) continue;

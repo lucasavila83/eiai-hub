@@ -185,11 +185,13 @@ export interface Database {
           completed_at: string | null;
           is_archived: boolean;
           metadata: Json;
+          google_event_id: string | null;
+          google_synced_at: string | null;
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["cards"]["Row"], "id" | "created_at" | "updated_at">;
-        Update: Partial<Database["public"]["Tables"]["cards"]["Insert"]>;
+        Insert: Omit<Database["public"]["Tables"]["cards"]["Row"], "id" | "created_at" | "updated_at" | "google_event_id" | "google_synced_at">;
+        Update: Partial<Database["public"]["Tables"]["cards"]["Insert"]> & { google_event_id?: string | null; google_synced_at?: string | null };
       };
       card_assignees: {
         Row: {
@@ -268,11 +270,13 @@ export interface Database {
           location: string | null;
           created_by: string | null;
           card_id: string | null;
+          google_event_id: string | null;
+          google_synced_at: string | null;
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["events"]["Row"], "id" | "created_at" | "updated_at">;
-        Update: Partial<Database["public"]["Tables"]["events"]["Insert"]>;
+        Insert: Omit<Database["public"]["Tables"]["events"]["Row"], "id" | "created_at" | "updated_at" | "google_event_id" | "google_synced_at">;
+        Update: Partial<Database["public"]["Tables"]["events"]["Insert"]> & { google_event_id?: string | null; google_synced_at?: string | null };
       };
       event_participants: {
         Row: {

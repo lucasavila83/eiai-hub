@@ -23,6 +23,8 @@ import {
   Check,
   ExternalLink,
   ArrowLeft,
+  Settings2,
+  LayoutDashboard,
 } from "lucide-react";
 import { cn, formatDateTime } from "@/lib/utils/helpers";
 
@@ -126,6 +128,12 @@ export default function IntegrationsPage() {
   const [gcalConnecting, setGcalConnecting] = useState(false);
   const [gcalDisconnecting, setGcalDisconnecting] = useState(false);
 
+  // Board sync settings
+  const [gcalShowBoardSettings, setGcalShowBoardSettings] = useState(false);
+  const [gcalUserBoards, setGcalUserBoards] = useState<{ id: string; name: string }[]>([]);
+  const [gcalSyncedBoardIds, setGcalSyncedBoardIds] = useState<string[]>([]);
+  const [gcalSavingBoards, setGcalSavingBoards] = useState(false);
+
   // Webhook URL for receiving
   const webhookReceiveUrl = typeof window !== "undefined"
     ? `${window.location.origin}/api/integrations/webhook/${activeOrgId}`
@@ -161,6 +169,7 @@ export default function IntegrationsPage() {
       if (data.connected) {
         setGcalStatus("connected");
         setGcalCalendarId(data.calendar_id);
+        loadBoardSyncSettings();
       } else {
         setGcalStatus("disconnected");
       }
@@ -210,6 +219,51 @@ export default function IntegrationsPage() {
       if (data.stats) setGcalSyncStats(data.stats);
     } catch {}
     setGcalSyncing(false);
+  }
+
+  async function loadBoardSyncSettings() {
+    if (!activeOrgId) return;
+    try {
+      // Load user's boards (boards they are member of or created)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get boards from org
+      const { data: boards } = await supabase
+        .from("boards")
+        .select("id, name")
+        .eq("org_id", activeOrgId)
+        .eq("is_archived", false)
+        .order("name");
+
+      setGcalUserBoards(boards || []);
+
+      // Get currently synced board ids
+      const res = await fetch(`/api/integrations/google-calendar/boards?orgId=${activeOrgId}`);
+      const data = await res.json();
+      setGcalSyncedBoardIds(data.boardIds || []);
+    } catch {}
+  }
+
+  function toggleBoardSync(boardId: string) {
+    setGcalSyncedBoardIds((prev) =>
+      prev.includes(boardId)
+        ? prev.filter((id) => id !== boardId)
+        : [...prev, boardId]
+    );
+  }
+
+  async function saveBoardSyncSettings() {
+    if (!activeOrgId) return;
+    setGcalSavingBoards(true);
+    try {
+      await fetch("/api/integrations/google-calendar/boards", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: activeOrgId, boardIds: gcalSyncedBoardIds }),
+      });
+    } catch {}
+    setGcalSavingBoards(false);
   }
 
   // Handle OAuth callback query params
@@ -420,6 +474,87 @@ export default function IntegrationsPage() {
             <span className="text-green-500 font-medium">{gcalSyncStats.pushed} enviados</span>
             <span className="text-blue-500 font-medium">{gcalSyncStats.pulled} importados</span>
             <span className="text-yellow-500 font-medium">{gcalSyncStats.updated} atualizados</span>
+            {(gcalSyncStats as any).cards > 0 && (
+              <span className="text-orange-500 font-medium">{(gcalSyncStats as any).cards} tarefas</span>
+            )}
+          </div>
+        )}
+
+        {/* Board Sync Settings */}
+        {gcalStatus === "connected" && (
+          <div className="border-t border-border">
+            <button
+              onClick={() => setGcalShowBoardSettings((v) => !v)}
+              className="w-full px-5 py-3 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            >
+              <Settings2 className="w-4 h-4" />
+              <span className="flex-1 text-left">Sincronizar prazos de Boards</span>
+              {gcalSyncedBoardIds.length > 0 && (
+                <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                  {gcalSyncedBoardIds.length} board{gcalSyncedBoardIds.length !== 1 ? "s" : ""}
+                </span>
+              )}
+              <svg
+                className={cn("w-4 h-4 transition-transform", gcalShowBoardSettings && "rotate-180")}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {gcalShowBoardSettings && (
+              <div className="px-5 pb-4 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Selecione quais boards terão seus prazos de tarefas sincronizados com o Google Calendar.
+                  Cada tarefa com prazo aparecerá como evento no seu calendário.
+                </p>
+
+                {gcalUserBoards.length === 0 ? (
+                  <p className="text-xs text-muted-foreground/60 italic">Nenhum board encontrado</p>
+                ) : (
+                  <div className="space-y-1">
+                    {gcalUserBoards.map((board) => {
+                      const isChecked = gcalSyncedBoardIds.includes(board.id);
+                      return (
+                        <button
+                          key={board.id}
+                          onClick={() => toggleBoardSync(board.id)}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm border transition-all text-left",
+                            isChecked
+                              ? "border-primary bg-primary/5 text-foreground"
+                              : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                          )}
+                        >
+                          {isChecked ? (
+                            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border border-border shrink-0" />
+                          )}
+                          <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
+                          <span className="flex-1 truncate">{board.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={saveBoardSyncSettings}
+                    disabled={gcalSavingBoards}
+                    className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    {gcalSavingBoards ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Check className="w-3 h-3" />
+                    )}
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
