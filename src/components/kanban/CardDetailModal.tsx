@@ -1325,11 +1325,11 @@ export function CardDetailModal({
     if (!error) {
       setNewComment("");
       await loadActivityFeed();
-      // Fire-and-forget: notify mirror/assignees about the comment
+      // Fire-and-forget: sync comment to mirror + notify assignees
       fetch("/api/cards/comment-notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ card_id: card.id, comment_preview: trimmed.substring(0, 80) }),
+        body: JSON.stringify({ card_id: card.id, comment_content: trimmed, comment_preview: trimmed.substring(0, 80) }),
       }).catch(() => {});
     }
     setSendingComment(false);
