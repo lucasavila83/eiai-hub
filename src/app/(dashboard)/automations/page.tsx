@@ -295,6 +295,7 @@ export default function AutomationsPage() {
             <AutomationBuilder
               automations={filteredAutomations}
               context="all"
+              orgId={activeOrgId}
               boards={boards}
               columns={columns}
               phases={phases}

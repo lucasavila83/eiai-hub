@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import type { Phase } from "./PhaseEditor";
+import { TemplateSelector } from "@/components/automations/TemplateSelector";
 
 // ── All triggers (board + BPM) ──
 const BOARD_TRIGGERS = [
@@ -144,6 +145,7 @@ interface ApprovalStep {
 interface Props {
   automations: Automation[];
   context: "board" | "bpm" | "all";
+  orgId?: string;
   // Board data
   boards?: BoardOption[];
   columns?: ColumnOption[];
@@ -159,7 +161,7 @@ interface Props {
 }
 
 export function AutomationBuilder({
-  automations, context, boards = [], columns = [], phases = [], fields = [], members,
+  automations, context, orgId, boards = [], columns = [], phases = [], fields = [], members,
   onSave, onAdd, onDelete, onToggle,
 }: Props) {
   const [showAdd, setShowAdd] = useState(false);
@@ -174,6 +176,7 @@ export function AutomationBuilder({
   const [formPhaseId, setFormPhaseId] = useState("");
   const [formConfig, setFormConfig] = useState<Record<string, any>>({});
   const [formTriggerConfig, setFormTriggerConfig] = useState<Record<string, any>>({});
+  const [formTemplateId, setFormTemplateId] = useState<string | null>(null);
 
   // ── Composite condition state ──
   const [hasCondition, setHasCondition] = useState(false);
@@ -218,6 +221,7 @@ export function AutomationBuilder({
     setConditionRows([{ field_id: "", operator: "eq", value: "" }]);
     setApprovalSteps([{ approver_id: "", label: "" }]);
     setApprovalDestPhase("");
+    setFormTemplateId(null);
   }
 
   function openAdd() {
@@ -260,6 +264,7 @@ export function AutomationBuilder({
       board_id: (context === "board" || (context === "all" && isBoardTrigger)) ? formBoardId || null : null,
       phase_id: (context === "bpm" || (context === "all" && isBpmTrigger)) ? formPhaseId || null : null,
       condition,
+      template_id: formTemplateId || null,
       is_active: true,
     });
     resetForm();
@@ -491,18 +496,30 @@ export function AutomationBuilder({
       case "notify_chat":
         return (
           <div className="space-y-2">
-            <input
-              value={formConfig.title || ""}
-              onChange={(e) => setFormConfig({ ...formConfig, title: e.target.value })}
-              placeholder="Titulo da notificacao"
-              className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <input
-              value={formConfig.message || ""}
-              onChange={(e) => setFormConfig({ ...formConfig, message: e.target.value })}
-              placeholder="Mensagem"
-              className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-            />
+            {orgId && (
+              <TemplateSelector
+                orgId={orgId}
+                selectedTemplateId={formTemplateId}
+                onSelect={setFormTemplateId}
+                filterTypes={formAction === "notify_chat" ? ["chat"] : ["chat", "email"]}
+              />
+            )}
+            {!formTemplateId && (
+              <>
+                <input
+                  value={formConfig.title || ""}
+                  onChange={(e) => setFormConfig({ ...formConfig, title: e.target.value })}
+                  placeholder="Titulo da notificacao"
+                  className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <input
+                  value={formConfig.message || ""}
+                  onChange={(e) => setFormConfig({ ...formConfig, message: e.target.value })}
+                  placeholder="Mensagem"
+                  className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </>
+            )}
           </div>
         );
       case "call_webhook":
@@ -517,12 +534,24 @@ export function AutomationBuilder({
         );
       case "send_email":
         return (
-          <input
-            value={formConfig.email_template || ""}
-            onChange={(e) => setFormConfig({ ...formConfig, email_template: e.target.value })}
-            placeholder="Template do e-mail (assunto)"
-            className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-          />
+          <div className="space-y-2">
+            {orgId && (
+              <TemplateSelector
+                orgId={orgId}
+                selectedTemplateId={formTemplateId}
+                onSelect={setFormTemplateId}
+                filterTypes={["email"]}
+              />
+            )}
+            {!formTemplateId && (
+              <input
+                value={formConfig.email_template || ""}
+                onChange={(e) => setFormConfig({ ...formConfig, email_template: e.target.value })}
+                placeholder="Template do e-mail (assunto)"
+                className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            )}
+          </div>
         );
 
       case "require_approval":

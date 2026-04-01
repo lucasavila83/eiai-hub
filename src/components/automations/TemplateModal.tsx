@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Loader2, Eye, EyeOff } from "lucide-react";
+import {
+  X, Loader2, Eye, EyeOff, Bold, Italic, Underline,
+  Type, Palette, ALargeSmall,
+} from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import {
   resolveTemplate,
@@ -40,6 +43,8 @@ export function TemplateModal({ initial, onSave, onClose }: Props) {
   const [showPreview, setShowPreview] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
   function insertVariable(key: string) {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -48,12 +53,47 @@ export function TemplateModal({ initial, onSave, onClose }: Props) {
     const text = `{{${key}}}`;
     const newBody = body.slice(0, start) + text + body.slice(end);
     setBody(newBody);
-    // Restore cursor position after React re-render
     requestAnimationFrame(() => {
       ta.focus();
       ta.setSelectionRange(start + text.length, start + text.length);
     });
   }
+
+  function wrapSelection(prefix: string, suffix: string) {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = body.slice(start, end);
+    const newBody = body.slice(0, start) + prefix + selected + suffix + body.slice(end);
+    setBody(newBody);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(start + prefix.length, end + prefix.length);
+    });
+  }
+
+  function applyFormat(fmt: string) {
+    switch (fmt) {
+      case "bold": wrapSelection("**", "**"); break;
+      case "italic": wrapSelection("_", "_"); break;
+      case "underline": wrapSelection("<u>", "</u>"); break;
+      case "h1": wrapSelection("<h1>", "</h1>"); break;
+      case "h2": wrapSelection("<h2>", "</h2>"); break;
+      case "big": wrapSelection('<span style="font-size:18px">', "</span>"); break;
+      case "small": wrapSelection('<span style="font-size:11px">', "</span>"); break;
+    }
+  }
+
+  function applyColor(color: string) {
+    wrapSelection(`<span style="color:${color}">`, "</span>");
+    setShowColorPicker(false);
+  }
+
+  const FORMAT_COLORS = [
+    "#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6",
+    "#8b5cf6", "#ec4899", "#000000", "#6b7280", "#ffffff",
+  ];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -179,24 +219,76 @@ export function TemplateModal({ initial, onSave, onClose }: Props) {
             </div>
 
             {showPreview ? (
-              <div className="w-full bg-background border border-border rounded-lg px-3 py-3 text-sm text-foreground min-h-[120px] whitespace-pre-wrap">
-                {type === "email" && previewSubject && (
-                  <div className="font-semibold mb-2 pb-2 border-b border-border">
-                    {previewSubject}
-                  </div>
-                )}
-                {previewBody || <span className="text-muted-foreground italic">Corpo vazio</span>}
-              </div>
-            ) : (
-              <textarea
-                ref={textareaRef}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder={"Ola {{card_assignee}},\n\nA tarefa \"{{card_title}}\" precisa de atencao.\n\nAtt,\nEquipe"}
-                rows={6}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y font-mono"
-                required
+              <div
+                className="w-full bg-background border border-border rounded-lg px-3 py-3 text-sm text-foreground min-h-[120px]"
+                dangerouslySetInnerHTML={{
+                  __html: (() => {
+                    let html = type === "email" && previewSubject
+                      ? `<div style="font-weight:600;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">${previewSubject}</div>`
+                      : "";
+                    // Convert markdown-like formatting to HTML for preview
+                    let bodyHtml = (previewBody || "<em style='opacity:0.5'>Corpo vazio</em>")
+                      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+                      .replace(/_(.+?)_/g, "<em>$1</em>")
+                      .replace(/\n/g, "<br>");
+                    return html + bodyHtml;
+                  })(),
+                }}
               />
+            ) : (
+              <div className="border border-border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-primary/50">
+                {/* Formatting toolbar */}
+                <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30 flex-wrap">
+                  <button type="button" onClick={() => applyFormat("bold")} className="p-1.5 rounded hover:bg-accent transition-colors cursor-pointer" title="Negrito">
+                    <Bold className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                  <button type="button" onClick={() => applyFormat("italic")} className="p-1.5 rounded hover:bg-accent transition-colors cursor-pointer" title="Itálico">
+                    <Italic className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                  <button type="button" onClick={() => applyFormat("underline")} className="p-1.5 rounded hover:bg-accent transition-colors cursor-pointer" title="Sublinhado">
+                    <Underline className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                  <div className="w-px h-4 bg-border mx-1" />
+                  <button type="button" onClick={() => applyFormat("big")} className="p-1.5 rounded hover:bg-accent transition-colors cursor-pointer" title="Fonte grande">
+                    <ALargeSmall className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                  <button type="button" onClick={() => applyFormat("h1")} className="px-1.5 py-0.5 rounded hover:bg-accent transition-colors cursor-pointer text-[10px] font-bold text-muted-foreground" title="Título grande">
+                    H1
+                  </button>
+                  <button type="button" onClick={() => applyFormat("h2")} className="px-1.5 py-0.5 rounded hover:bg-accent transition-colors cursor-pointer text-[10px] font-bold text-muted-foreground" title="Título médio">
+                    H2
+                  </button>
+                  <div className="w-px h-4 bg-border mx-1" />
+                  <div className="relative">
+                    <button type="button" onClick={() => setShowColorPicker(!showColorPicker)} className="p-1.5 rounded hover:bg-accent transition-colors cursor-pointer" title="Cor do texto">
+                      <Palette className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                    {showColorPicker && (
+                      <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-lg shadow-xl p-2 flex gap-1 flex-wrap w-[140px] z-10">
+                        {FORMAT_COLORS.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => applyColor(c)}
+                            className="w-5 h-5 rounded-full border border-border/50 cursor-pointer hover:scale-110 transition-transform"
+                            style={{ backgroundColor: c }}
+                            title={c}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <textarea
+                  ref={textareaRef}
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  placeholder={"Ola {{card_assignee}},\n\nA tarefa \"{{card_title}}\" precisa de atencao.\n\nAtt,\nEquipe"}
+                  rows={6}
+                  className="w-full bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none resize-y font-mono border-0"
+                  required
+                />
+              </div>
             )}
           </div>
 
