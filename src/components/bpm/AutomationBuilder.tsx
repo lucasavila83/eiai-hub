@@ -15,33 +15,33 @@ const BOARD_TRIGGERS = [
   { value: "card_moved_to_column", label: "Tarefa movida para coluna", icon: ArrowRight, context: "board" },
   { value: "card_created", label: "Tarefa criada", icon: Play, context: "board" },
   { value: "card_overdue", label: "Tarefa atrasada", icon: Bell, context: "board" },
-  { value: "card_completed", label: "Tarefa concluida", icon: Check, context: "board" },
+  { value: "card_completed", label: "Tarefa concluída", icon: Check, context: "board" },
   { value: "progress_reached", label: "Progresso atingiu %", icon: Play, context: "board" },
 ] as const;
 
 const BPM_TRIGGERS = [
   { value: "card_created", label: "Card criado", icon: Play, context: "bpm" },
   { value: "card_moved_to_phase", label: "Card movido para fase", icon: ArrowRight, context: "bpm" },
-  { value: "card_completed", label: "Card concluido", icon: Check, context: "bpm" },
+  { value: "card_completed", label: "Card concluído", icon: Check, context: "bpm" },
   { value: "field_updated", label: "Campo atualizado", icon: Pencil, context: "bpm" },
   { value: "sla_warning", label: "SLA prestes a vencer", icon: Bell, context: "bpm" },
   { value: "sla_expired", label: "SLA vencido", icon: Bell, context: "bpm" },
 ] as const;
 
 const BOARD_ACTIONS = [
-  { value: "mark_completed", label: "Marcar como concluida", context: "board" },
+  { value: "mark_completed", label: "Marcar como concluída", context: "board" },
   { value: "set_priority", label: "Definir prioridade", context: "board" },
   { value: "assign_member", label: "Atribuir membro", context: "board" },
   { value: "move_to_column", label: "Mover para coluna", context: "board" },
 ] as const;
 
 const BPM_ACTIONS = [
-  { value: "assign_user", label: "Atribuir responsavel", context: "bpm" },
+  { value: "assign_user", label: "Atribuir responsável", context: "bpm" },
   { value: "move_to_phase", label: "Mover para fase", context: "bpm" },
 ] as const;
 
 const SHARED_ACTIONS = [
-  { value: "send_notification", label: "Enviar notificacao", context: "shared" },
+  { value: "send_notification", label: "Enviar notificação", context: "shared" },
   { value: "notify_chat", label: "Notificar no chat", context: "shared" },
   { value: "send_email", label: "Enviar e-mail", context: "shared" },
   { value: "call_webhook", label: "Chamar webhook", context: "shared" },
@@ -57,9 +57,9 @@ const OPERATORS = [
   { value: "gte", label: "Maior ou igual a" },
   { value: "lt", label: "Menor que" },
   { value: "lte", label: "Menor ou igual a" },
-  { value: "contains", label: "Contem" },
-  { value: "is_empty", label: "Esta vazio" },
-  { value: "is_not_empty", label: "Nao esta vazio" },
+  { value: "contains", label: "Contém" },
+  { value: "is_empty", label: "Está vazio" },
+  { value: "is_not_empty", label: "Não está vazio" },
 ];
 
 const PRIORITY_OPTIONS = [
@@ -167,6 +167,7 @@ export function AutomationBuilder({
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Form state
   const [formName, setFormName] = useState("");
@@ -226,8 +227,49 @@ export function AutomationBuilder({
 
   function openAdd() {
     resetForm();
+    setEditingId(null);
     setFormTrigger(availableTriggers[0]?.value || "");
     setFormAction(availableActions[0]?.value || "");
+    setShowAdd(true);
+  }
+
+  function openEdit(auto: Automation) {
+    const actionCfg = auto.action_config || auto.config || {};
+    setEditingId(auto.id);
+    setFormName(auto.name);
+    setFormTrigger(auto.trigger_type);
+    setFormAction(auto.action_type);
+    setFormBoardId(auto.board_id || "");
+    setFormPhaseId(auto.phase_id || "");
+    setFormConfig({ ...actionCfg });
+    setFormTriggerConfig(auto.trigger_config || {});
+    setFormTemplateId(auto.template_id || null);
+
+    // Restore condition state
+    const cond = auto.condition || (actionCfg as any).condition || null;
+    if (cond) {
+      setHasCondition(true);
+      if (isComposite(cond)) {
+        setCondLogic(cond.logic);
+        setConditionRows(cond.conditions.length > 0 ? cond.conditions : [{ field_id: "", operator: "eq", value: "" }]);
+      } else {
+        setCondLogic("and");
+        setConditionRows([{ field_id: cond.field_id || "", operator: cond.operator || "eq", value: cond.value || "" }]);
+      }
+    } else {
+      setHasCondition(false);
+      setConditionRows([{ field_id: "", operator: "eq", value: "" }]);
+    }
+
+    // Restore approval chain
+    if (auto.action_type === "require_approval" && actionCfg.approval_chain?.length) {
+      setApprovalSteps(actionCfg.approval_chain);
+      setApprovalDestPhase(actionCfg.destination_phase_id || "");
+    } else {
+      setApprovalSteps([{ approver_id: "", label: "" }]);
+      setApprovalDestPhase("");
+    }
+
     setShowAdd(true);
   }
 
@@ -255,7 +297,7 @@ export function AutomationBuilder({
       }
     }
 
-    await onAdd({
+    const payload = {
       name: formName.trim(),
       trigger_type: formTrigger,
       trigger_config: formTriggerConfig,
@@ -266,14 +308,22 @@ export function AutomationBuilder({
       condition,
       template_id: formTemplateId || null,
       is_active: true,
-    });
+    };
+
+    if (editingId) {
+      const existing = automations.find((a) => a.id === editingId);
+      await onSave({ ...existing, ...payload, id: editingId } as Automation);
+    } else {
+      await onAdd(payload);
+    }
+    setEditingId(null);
     resetForm();
     setShowAdd(false);
     setSaving(false);
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Remover esta automacao?")) return;
+    if (!confirm("Remover esta automação?")) return;
     setDeleting(id);
     await onDelete(id);
     setDeleting(null);
@@ -509,7 +559,7 @@ export function AutomationBuilder({
                 <input
                   value={formConfig.title || ""}
                   onChange={(e) => setFormConfig({ ...formConfig, title: e.target.value })}
-                  placeholder="Titulo da notificacao"
+                  placeholder="Título da notificação"
                   className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                 />
                 <input
@@ -670,7 +720,7 @@ export function AutomationBuilder({
     <div className="space-y-3">
       {/* Automation list */}
       {automations.length === 0 && !showAdd && (
-        <p className="text-xs text-muted-foreground text-center py-6">Nenhuma automacao configurada.</p>
+        <p className="text-xs text-muted-foreground text-center py-6">Nenhuma automação configurada.</p>
       )}
 
       {automations.map((auto) => {
@@ -718,6 +768,13 @@ export function AutomationBuilder({
                 )} />
               </button>
               <button
+                onClick={() => openEdit(auto)}
+                className="p-1 rounded-md hover:bg-accent transition-colors cursor-pointer"
+                title="Editar"
+              >
+                <Pencil className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+              </button>
+              <button
                 onClick={() => handleDelete(auto.id)}
                 disabled={deleting === auto.id}
                 className="p-1 rounded-md hover:bg-destructive/10 transition-colors cursor-pointer"
@@ -732,10 +789,13 @@ export function AutomationBuilder({
       {/* Add form */}
       {showAdd ? (
         <form onSubmit={handleAdd} className="bg-card border border-dashed border-primary/30 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            {editingId ? "Editar automação" : "Nova automação"}
+          </p>
           <input
             value={formName}
             onChange={(e) => setFormName(e.target.value)}
-            placeholder="Nome da automacao"
+            placeholder="Nome da automação"
             className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             autoFocus
             required
@@ -911,7 +971,7 @@ export function AutomationBuilder({
           )}
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Acao</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Ação</label>
             <select
               value={formAction}
               onChange={(e) => { setFormAction(e.target.value); setFormConfig({}); }}
@@ -925,7 +985,7 @@ export function AutomationBuilder({
           {renderActionConfig()}
 
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => { setShowAdd(false); resetForm(); }} className="px-3 py-1.5 text-xs font-medium text-foreground bg-muted rounded-lg hover:bg-accent cursor-pointer">
+            <button type="button" onClick={() => { setShowAdd(false); setEditingId(null); resetForm(); }} className="px-3 py-1.5 text-xs font-medium text-foreground bg-muted rounded-lg hover:bg-accent cursor-pointer">
               Cancelar
             </button>
             <button
@@ -934,7 +994,7 @@ export function AutomationBuilder({
               className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
             >
               {saving && <Loader2 className="w-3 h-3 animate-spin" />}
-              Criar automacao
+              {editingId ? "Salvar alterações" : "Criar automação"}
             </button>
           </div>
         </form>
@@ -944,7 +1004,7 @@ export function AutomationBuilder({
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-border rounded-xl text-sm text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-accent/30 transition-colors cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          Adicionar automacao
+          Adicionar automação
         </button>
       )}
     </div>

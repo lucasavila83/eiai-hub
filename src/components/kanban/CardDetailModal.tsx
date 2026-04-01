@@ -42,6 +42,7 @@ import {
   User,
   Sparkles,
   Workflow,
+  LayoutGrid,
 } from "lucide-react";
 import { AIAssistant } from "./AIAssistant";
 import { useUIStore } from "@/lib/stores/ui-store";
@@ -50,9 +51,18 @@ import { isBpmTask } from "@/lib/bpm/task-sync";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+interface BoardCustomField {
+  id: string;
+  label: string;
+  type: "text" | "number" | "date" | "select" | "checkbox" | "currency";
+  options?: string[];
+  is_required?: boolean;
+}
+
 interface Props {
   card: Card & { card_assignees: any[] };
   boardId: string;
+  boardSettings?: { custom_fields?: BoardCustomField[] };
   columns: { id: string; name: string; color: string; is_done_column?: boolean; position?: number }[];
   orgMembers: {
     user_id: string;
@@ -220,6 +230,7 @@ function getActivityDescription(action: string, details: any): string {
 export function CardDetailModal({
   card,
   boardId,
+  boardSettings,
   columns,
   orgMembers,
   boardLabels = [],
@@ -288,6 +299,7 @@ export function CardDetailModal({
   // Activity & Comments
   const [activityFeed, setActivityFeed] = useState<ActivityEntry[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(true);
+  const [activityTab, setActivityTab] = useState<"all" | "chat" | "log">("chat");
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
@@ -718,6 +730,16 @@ export function CardDetailModal({
     if (!error && data) {
       onUpdated({ ...data, card_assignees: assignees });
     }
+  }
+
+  // Custom field values
+  async function saveCustomFieldValue(fieldId: string, value: any) {
+    const meta = (card.metadata as any) || {};
+    const fieldValues = meta.field_values || {};
+    const newFieldValues = { ...fieldValues, [fieldId]: value };
+    const newMeta = { ...meta, field_values: newFieldValues };
+    await supabase.from("cards").update({ metadata: newMeta }).eq("id", card.id);
+    onUpdated({ ...card, metadata: newMeta });
   }
 
   // Title
@@ -1595,7 +1617,7 @@ export function CardDetailModal({
               )}
             >
               <CheckCircle2 className={cn("w-3.5 h-3.5", completedAt && "fill-current")} />
-              {completedAt ? "Concluida" : "Marcar concluida"}
+              {completedAt ? "Concluída" : "Marcar concluída"}
             </button>
           </div>
           <div className="flex items-center gap-2">
@@ -2078,6 +2100,93 @@ export function CardDetailModal({
               </div>
             </div>
 
+            {/* Custom Fields */}
+            {boardSettings?.custom_fields && boardSettings.custom_fields.length > 0 && (
+              <>
+                <div className="border-t border-border" />
+                <div className="space-y-3">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    Campos personalizados
+                  </label>
+                  <div className="space-y-2">
+                    {boardSettings.custom_fields.map((field: BoardCustomField) => {
+                      const fieldValues = ((card.metadata as any)?.field_values || {}) as Record<string, any>;
+                      const val = fieldValues[field.id];
+                      return (
+                        <div key={field.id} className="space-y-1">
+                          <label className="text-[11px] text-muted-foreground font-medium">
+                            {field.label}
+                            {field.is_required && <span className="text-red-400 ml-0.5">*</span>}
+                          </label>
+                          {field.type === "text" && (
+                            <input
+                              type="text"
+                              defaultValue={val || ""}
+                              onBlur={(e) => saveCustomFieldValue(field.id, e.target.value || null)}
+                              placeholder="—"
+                              className="w-full px-2 py-1.5 bg-accent/50 border border-transparent hover:border-border rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring focus:border-primary"
+                            />
+                          )}
+                          {field.type === "number" && (
+                            <input
+                              type="number"
+                              defaultValue={val ?? ""}
+                              onBlur={(e) => saveCustomFieldValue(field.id, e.target.value ? Number(e.target.value) : null)}
+                              placeholder="—"
+                              className="w-full px-2 py-1.5 bg-accent/50 border border-transparent hover:border-border rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring focus:border-primary"
+                            />
+                          )}
+                          {field.type === "currency" && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">R$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                defaultValue={val ?? ""}
+                                onBlur={(e) => saveCustomFieldValue(field.id, e.target.value ? Number(e.target.value) : null)}
+                                placeholder="0,00"
+                                className="flex-1 px-2 py-1.5 bg-accent/50 border border-transparent hover:border-border rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring focus:border-primary"
+                              />
+                            </div>
+                          )}
+                          {field.type === "date" && (
+                            <input
+                              type="date"
+                              defaultValue={val || ""}
+                              onChange={(e) => saveCustomFieldValue(field.id, e.target.value || null)}
+                              className="w-full px-2 py-1.5 bg-accent/50 border border-transparent hover:border-border rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring focus:border-primary cursor-pointer"
+                            />
+                          )}
+                          {field.type === "select" && (
+                            <select
+                              defaultValue={val || ""}
+                              onChange={(e) => saveCustomFieldValue(field.id, e.target.value || null)}
+                              className="w-full px-2 py-1.5 bg-accent/50 border border-transparent hover:border-border rounded-md text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring focus:border-primary cursor-pointer"
+                            >
+                              <option value="">—</option>
+                              {field.options?.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                            </select>
+                          )}
+                          {field.type === "checkbox" && (
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                defaultChecked={!!val}
+                                onChange={(e) => saveCustomFieldValue(field.id, e.target.checked)}
+                                className="accent-primary w-4 h-4"
+                              />
+                              <span className="text-xs text-foreground">{val ? "Sim" : "Não"}</span>
+                            </label>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+
             {/* Divider */}
             <div className="border-t border-border" />
 
@@ -2085,7 +2194,7 @@ export function CardDetailModal({
             <div className="space-y-2">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 <MessageSquare className="w-3.5 h-3.5" />
-                Descricao
+                Descrição
               </label>
               {editingDescription ? (
                 <div className="space-y-2">
@@ -2296,7 +2405,7 @@ export function CardDetailModal({
                           className="w-[100px] shrink-0 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring appearance-none"
                           title="Responsável"
                         >
-                          <option value="">Ninguem</option>
+                          <option value="">Ninguém</option>
                           {orgMembers.map((m) => (
                             <option key={m.user_id} value={m.user_id}>
                               {m.profiles?.full_name || m.profiles?.email}
@@ -2496,9 +2605,9 @@ export function CardDetailModal({
                                 value={item.assigned_to || ""}
                                 onChange={(e) => handleChecklistItemAssignee(cl.id, item.id, e.target.value || null)}
                                 className="w-[100px] shrink-0 px-1 py-0.5 bg-transparent border border-transparent hover:border-border rounded text-[10px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring appearance-none"
-                                title="Responsavel"
+                                title="Responsável"
                               >
-                                <option value="">Ninguem</option>
+                                <option value="">Ninguém</option>
                                 {orgMembers.map((m) => (
                                   <option key={m.user_id} value={m.user_id}>
                                     {m.profiles?.full_name || m.profiles?.email}
@@ -2738,32 +2847,63 @@ export function CardDetailModal({
             className="border-l border-border flex flex-col bg-accent/10 overflow-hidden"
             style={{ flex: "0 0 35%" }}
           >
-            {/* Sidebar header */}
-            <div className="px-4 py-3 border-b border-border shrink-0">
-              <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                <Activity className="w-4 h-4 text-muted-foreground" />
-                Activity
-                {activityFeed.length > 0 && (
-                  <span className="ml-1 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary">
-                    {activityFeed.length}
-                  </span>
-                )}
-              </h3>
+            {/* Sidebar header with tabs */}
+            <div className="border-b border-border shrink-0">
+              <div className="flex px-2 pt-2 gap-0.5">
+                {([
+                  { key: "chat" as const, label: "Chat", count: activityFeed.filter(e => e.type === "comment").length },
+                  { key: "log" as const, label: "Log", count: activityFeed.filter(e => e.type === "activity").length },
+                  { key: "all" as const, label: "Tudo", count: activityFeed.length },
+                ]).map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActivityTab(tab.key)}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-medium border-b-2 transition-colors flex items-center gap-1",
+                      activityTab === tab.key
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {tab.label}
+                    {tab.count > 0 && (
+                      <span className={cn(
+                        "inline-flex items-center justify-center px-1 py-0.5 rounded-full text-[9px] font-medium",
+                        activityTab === tab.key ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                      )}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Activity feed */}
+            {/* Activity feed (filtered by tab) */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
               {loadingActivity ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : activityFeed.length === 0 ? (
-                <div className="text-center py-8">
-                  <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Nenhuma atividade ainda</p>
-                </div>
-              ) : (
-                activityFeed.map((entry) => {
+              ) : (() => {
+                const filtered = activityTab === "all"
+                  ? activityFeed
+                  : activityTab === "chat"
+                  ? activityFeed.filter(e => e.type === "comment")
+                  : activityFeed.filter(e => e.type === "activity");
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-8">
+                      <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">
+                        {activityTab === "chat" ? "Nenhum comentário ainda" : activityTab === "log" ? "Nenhum log ainda" : "Nenhuma atividade ainda"}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return filtered.map((entry) => {
                   const name = entry.profiles?.full_name || entry.profiles?.email || "?";
                   const avatar = entry.profiles?.avatar_url || null;
 
@@ -2796,8 +2936,8 @@ export function CardDetailModal({
                       </div>
                     </div>
                   );
-                })
-              )}
+                });
+              })()}
               <div ref={activityEndRef} />
             </div>
 

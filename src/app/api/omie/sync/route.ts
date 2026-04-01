@@ -93,6 +93,7 @@ export async function POST(req: NextRequest) {
       for (const dep of departments) {
         await admin.from("omie_departments").upsert({
           org_id,
+          omie_key: app_key,
           omie_id: String(dep.codigo),
           codigo: dep.estrutura || String(dep.codigo),
           descricao: dep.descricao,
@@ -125,29 +126,42 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const orgId = searchParams.get("org_id");
     const type = searchParams.get("type") || "categories";
+    const omieKey = searchParams.get("omie_key");
 
     if (!orgId) {
       return NextResponse.json({ error: "org_id required" }, { status: 400 });
     }
 
-    if (type === "departments") {
+    if (type === "configs") {
       const { data } = await admin
+        .from("omie_config")
+        .select("id, company_name, app_key")
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .order("company_name");
+      return NextResponse.json(data || []);
+    }
+
+    if (type === "departments") {
+      let q = admin
         .from("omie_departments")
         .select("id, omie_id, codigo, descricao, is_active")
         .eq("org_id", orgId)
-        .eq("is_active", true)
-        .order("codigo");
+        .eq("is_active", true);
+      if (omieKey) q = q.eq("omie_key", omieKey);
+      const { data } = await q.order("codigo");
 
       return NextResponse.json(data || []);
     }
 
     // Default: categories
-    const { data } = await admin
+    let q = admin
       .from("omie_categories")
       .select("id, codigo, descricao, parent_codigo, tipo, is_active")
       .eq("org_id", orgId)
-      .eq("is_active", true)
-      .order("codigo");
+      .eq("is_active", true);
+    if (omieKey) q = q.eq("omie_key", omieKey);
+    const { data } = await q.order("codigo");
 
     return NextResponse.json(data || []);
   } catch (err: any) {

@@ -3,11 +3,28 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
-import { X, Loader2, Users, Settings, UserPlus, Trash2, Globe, Lock, UsersRound, Crown } from "lucide-react";
+import { X, Loader2, Users, Settings, UserPlus, Trash2, Globe, Lock, UsersRound, Crown, Plus, Pencil, GripVertical, LayoutGrid } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 
+export interface BoardCustomField {
+  id: string;
+  label: string;
+  type: "text" | "number" | "date" | "select" | "checkbox" | "currency";
+  options?: string[];
+  is_required?: boolean;
+}
+
+const FIELD_TYPES = [
+  { value: "text", label: "Texto" },
+  { value: "number", label: "Número" },
+  { value: "currency", label: "Valor (R$)" },
+  { value: "date", label: "Data" },
+  { value: "select", label: "Seleção" },
+  { value: "checkbox", label: "Checkbox" },
+] as const;
+
 interface Props {
-  board: { id: string; name: string; org_id: string; description?: string; visibility?: string; hub_user_id?: string | null };
+  board: { id: string; name: string; org_id: string; description?: string; visibility?: string; hub_user_id?: string | null; settings?: any };
   currentUserId: string;
   onClose: () => void;
   onUpdated?: () => void;
@@ -49,6 +66,19 @@ export function BoardSettingsModal({
   const [showAddDropdown, setShowAddDropdown] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState<"general" | "fields">("general");
+
+  // Custom fields
+  const [customFields, setCustomFields] = useState<BoardCustomField[]>(
+    (board.settings as any)?.custom_fields || []
+  );
+  const [showAddField, setShowAddField] = useState(false);
+  const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+  const [fieldLabel, setFieldLabel] = useState("");
+  const [fieldType, setFieldType] = useState<BoardCustomField["type"]>("text");
+  const [fieldOptions, setFieldOptions] = useState("");
+  const [fieldRequired, setFieldRequired] = useState(false);
+  const [savingFields, setSavingFields] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -143,6 +173,77 @@ export function BoardSettingsModal({
     onUpdated?.();
   }
 
+  function resetFieldForm() {
+    setFieldLabel("");
+    setFieldType("text");
+    setFieldOptions("");
+    setFieldRequired(false);
+    setEditingFieldId(null);
+    setShowAddField(false);
+  }
+
+  function openAddField() {
+    resetFieldForm();
+    setShowAddField(true);
+  }
+
+  function openEditField(field: BoardCustomField) {
+    setEditingFieldId(field.id);
+    setFieldLabel(field.label);
+    setFieldType(field.type);
+    setFieldOptions(field.options?.join(", ") || "");
+    setFieldRequired(field.is_required || false);
+    setShowAddField(true);
+  }
+
+  async function saveField() {
+    if (!fieldLabel.trim()) return;
+    setSavingFields(true);
+
+    let updated: BoardCustomField[];
+    const opts = fieldType === "select" ? fieldOptions.split(",").map((o) => o.trim()).filter(Boolean) : undefined;
+
+    if (editingFieldId) {
+      updated = customFields.map((f) =>
+        f.id === editingFieldId
+          ? { ...f, label: fieldLabel.trim(), type: fieldType, options: opts, is_required: fieldRequired }
+          : f
+      );
+    } else {
+      const newField: BoardCustomField = {
+        id: crypto.randomUUID(),
+        label: fieldLabel.trim(),
+        type: fieldType,
+        options: opts,
+        is_required: fieldRequired,
+      };
+      updated = [...customFields, newField];
+    }
+
+    const currentSettings = (board.settings as any) || {};
+    await supabase
+      .from("boards")
+      .update({ settings: { ...currentSettings, custom_fields: updated } } as any)
+      .eq("id", board.id);
+
+    setCustomFields(updated);
+    resetFieldForm();
+    setSavingFields(false);
+    onUpdated?.();
+  }
+
+  async function deleteField(fieldId: string) {
+    if (!confirm("Remover este campo? Os valores existentes nos cards serão mantidos.")) return;
+    const updated = customFields.filter((f) => f.id !== fieldId);
+    const currentSettings = (board.settings as any) || {};
+    await supabase
+      .from("boards")
+      .update({ settings: { ...currentSettings, custom_fields: updated } } as any)
+      .eq("id", board.id);
+    setCustomFields(updated);
+    onUpdated?.();
+  }
+
   function getMemberName(m: MemberRow): string {
     return m.profiles?.full_name || m.profiles?.email || "?";
   }
@@ -177,6 +278,150 @@ export function BoardSettingsModal({
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-1 bg-muted rounded-lg p-1 mb-5">
+          <button
+            onClick={() => setActiveTab("general")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer",
+              activeTab === "general" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Settings className="w-3.5 h-3.5" />
+            Geral
+          </button>
+          <button
+            onClick={() => setActiveTab("fields")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer",
+              activeTab === "fields" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            Campos ({customFields.length})
+          </button>
+        </div>
+
+        {/* ─── Fields Tab ─── */}
+        {activeTab === "fields" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">Campos personalizados</p>
+                <p className="text-xs text-muted-foreground">Adicione campos extras aos cards deste board</p>
+              </div>
+              <button
+                onClick={openAddField}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Novo campo
+              </button>
+            </div>
+
+            {/* Field list */}
+            {customFields.length === 0 && !showAddField && (
+              <div className="text-center py-8">
+                <LayoutGrid className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-50" />
+                <p className="text-sm text-muted-foreground">Nenhum campo personalizado</p>
+                <p className="text-xs text-muted-foreground mt-1">Clique em "Novo campo" para começar</p>
+              </div>
+            )}
+
+            {customFields.map((field) => (
+              <div key={field.id} className="flex items-center gap-3 px-3 py-2.5 bg-muted/50 rounded-lg group">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">{field.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {FIELD_TYPES.find((t) => t.value === field.type)?.label || field.type}
+                    {field.is_required && <span className="text-red-400 ml-1">*</span>}
+                    {field.options?.length ? ` · ${field.options.length} opções` : ""}
+                  </p>
+                </div>
+                <button
+                  onClick={() => openEditField(field)}
+                  className="p-1 rounded hover:bg-accent transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+                  title="Editar"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                </button>
+                <button
+                  onClick={() => deleteField(field.id)}
+                  className="p-1 rounded hover:bg-destructive/10 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+                  title="Remover"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                </button>
+              </div>
+            ))}
+
+            {/* Add/Edit field form */}
+            {showAddField && (
+              <div className="bg-card border border-dashed border-primary/30 rounded-xl p-4 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  {editingFieldId ? "Editar campo" : "Novo campo"}
+                </p>
+                <input
+                  value={fieldLabel}
+                  onChange={(e) => setFieldLabel(e.target.value)}
+                  placeholder="Nome do campo"
+                  className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  autoFocus
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Tipo</label>
+                    <select
+                      value={fieldType}
+                      onChange={(e) => setFieldType(e.target.value as BoardCustomField["type"])}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm cursor-pointer"
+                    >
+                      {FIELD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <label className="flex items-center gap-2 cursor-pointer pb-2">
+                      <input
+                        type="checkbox"
+                        checked={fieldRequired}
+                        onChange={(e) => setFieldRequired(e.target.checked)}
+                        className="accent-primary w-4 h-4"
+                      />
+                      <span className="text-xs text-muted-foreground">Obrigatório</span>
+                    </label>
+                  </div>
+                </div>
+                {fieldType === "select" && (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Opções (separadas por vírgula)</label>
+                    <input
+                      value={fieldOptions}
+                      onChange={(e) => setFieldOptions(e.target.value)}
+                      placeholder="Opção 1, Opção 2, Opção 3"
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                )}
+                <div className="flex justify-end gap-2">
+                  <button onClick={resetFieldForm} className="px-3 py-1.5 text-xs font-medium text-foreground bg-muted rounded-lg hover:bg-accent cursor-pointer">
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={saveField}
+                    disabled={savingFields || !fieldLabel.trim()}
+                    className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
+                  >
+                    {savingFields && <Loader2 className="w-3 h-3 animate-spin" />}
+                    {editingFieldId ? "Salvar" : "Adicionar"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── General Tab ─── */}
+        {activeTab === "general" && (
         <div className="space-y-5">
           {/* Board Name */}
           <div className="space-y-2">
@@ -409,6 +654,7 @@ export function BoardSettingsModal({
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>,
     document.body

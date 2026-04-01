@@ -225,9 +225,9 @@ export default function AutomationsPage() {
           </button>
           <Zap className="w-6 h-6 text-yellow-500" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-foreground">Automacoes</h1>
+            <h1 className="text-2xl font-bold text-foreground">Automações</h1>
             <p className="text-sm text-muted-foreground">
-              Central de automacoes — boards e processos
+              Central de automações — boards e processos
             </p>
           </div>
         </div>
@@ -243,7 +243,7 @@ export default function AutomationsPage() {
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            Automacoes
+            Automações
           </button>
           <button
             onClick={() => setActiveTab("templates")}
@@ -310,7 +310,7 @@ export default function AutomationsPage() {
             {/* Logs viewer */}
             {filteredAutomations.length > 0 && (
               <div className="mt-6">
-                <h3 className="text-sm font-semibold text-muted-foreground mb-3">Historico de execucoes</h3>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">Histórico de execuções</h3>
                 <div className="space-y-1">
                   {filteredAutomations.slice(0, 10).map((auto) => (
                     <div key={auto.id}>
@@ -329,7 +329,7 @@ export default function AutomationsPage() {
                         <div className="ml-6 mb-2 bg-background/50 border border-border rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
                             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                              Ultimas execucoes
+                              Últimas execuções
                             </p>
                             <button onClick={() => setShowLogs(null)} className="text-muted-foreground hover:text-foreground cursor-pointer">
                               <X className="w-3.5 h-3.5" />
@@ -338,7 +338,7 @@ export default function AutomationsPage() {
                           {loadingLogs ? (
                             <Loader2 className="w-4 h-4 animate-spin text-muted-foreground mx-auto my-3" />
                           ) : logs.length === 0 ? (
-                            <p className="text-xs text-muted-foreground text-center py-3">Nenhuma execucao registrada</p>
+                            <p className="text-xs text-muted-foreground text-center py-3">Nenhuma execução registrada</p>
                           ) : (
                             <div className="space-y-1.5 max-h-40 overflow-y-auto">
                               {logs.map((log) => (
@@ -352,8 +352,8 @@ export default function AutomationsPage() {
                                   )}
                                   <span className="text-muted-foreground flex-1 truncate">
                                     {log.details_json?.reason === "condition_not_met"
-                                      ? "Condicao nao atendida"
-                                      : log.details || (log.status === "success" ? "Executado com sucesso" : "Erro na execucao")}
+                                      ? "Condição não atendida"
+                                      : log.details || (log.status === "success" ? "Executado com sucesso" : "Erro na execução")}
                                   </span>
                                   <span className="text-muted-foreground/60 shrink-0">
                                     {formatDateTime(log.created_at)}

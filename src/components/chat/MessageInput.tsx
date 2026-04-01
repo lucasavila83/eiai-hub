@@ -6,6 +6,7 @@ import {
   Code, ListTodo, AtSign, X, Mic,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
+import { useUIStore } from "@/lib/stores/ui-store";
 import { EmojiPicker } from "./EmojiPicker";
 import { MentionAutocomplete } from "./MentionAutocomplete";
 import { FileUpload } from "./FileUpload";
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelId, orgId, currentUserId, focusTrigger }: Props) {
+  const isMobile = useUIStore((s) => s.isMobile);
   const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
   const [showTaskInput, setShowTaskInput] = useState(false);
@@ -429,42 +431,41 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
 
         <div className="bg-muted border border-border rounded-xl">
           {/* Formatting toolbar */}
-          <div className="flex items-center gap-0.5 px-2 py-1 border-b border-border/50">
+          <div className={cn("flex items-center px-2 border-b border-border/50", isMobile ? "gap-1 py-1.5" : "gap-0.5 py-1")}>
             <button
               onClick={() => insertFormatting("**", "**")}
-              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+              className={cn("text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent", isMobile ? "p-2" : "p-1")}
               title="Negrito"
             >
-              <Bold className="w-3.5 h-3.5" />
+              <Bold className={isMobile ? "w-5 h-5" : "w-3.5 h-3.5"} />
             </button>
             <button
               onClick={() => insertFormatting("_", "_")}
-              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+              className={cn("text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent", isMobile ? "p-2" : "p-1")}
               title="Itálico"
             >
-              <Italic className="w-3.5 h-3.5" />
+              <Italic className={isMobile ? "w-5 h-5" : "w-3.5 h-3.5"} />
             </button>
             <button
               onClick={() => insertFormatting("`", "`")}
-              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+              className={cn("text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent", isMobile ? "p-2" : "p-1")}
               title="Código"
             >
-              <Code className="w-3.5 h-3.5" />
+              <Code className={isMobile ? "w-5 h-5" : "w-3.5 h-3.5"} />
             </button>
-            <div className="w-px h-4 bg-border mx-1" />
+            <div className={cn("w-px bg-border", isMobile ? "h-5 mx-1.5" : "h-4 mx-1")} />
             <button
               onClick={() => {
                 setShowTaskInput(true);
                 setTimeout(() => taskInputRef.current?.focus(), 100);
               }}
-              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+              className={cn("text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent", isMobile ? "p-2" : "p-1")}
               title="Criar tarefa"
             >
-              <ListTodo className="w-3.5 h-3.5" />
+              <ListTodo className={isMobile ? "w-5 h-5" : "w-3.5 h-3.5"} />
             </button>
             <button
               onClick={() => {
-                // Insert @ and trigger mention
                 const ta = textareaRef.current;
                 if (ta) {
                   const start = ta.selectionStart;
@@ -479,46 +480,49 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
                   }, 0);
                 }
               }}
-              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent"
+              className={cn("text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent", isMobile ? "p-2" : "p-1")}
               title="Mencionar"
             >
-              <AtSign className="w-3.5 h-3.5" />
+              <AtSign className={isMobile ? "w-5 h-5" : "w-3.5 h-3.5"} />
             </button>
             <button
               onClick={() => setShowFileUpload(!showFileUpload)}
               className={cn(
-                "text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent",
+                "text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent",
+                isMobile ? "p-2" : "p-1",
                 showFileUpload && "text-primary bg-primary/10"
               )}
               title="Anexar arquivo"
             >
-              <Paperclip className="w-3.5 h-3.5" />
+              <Paperclip className={isMobile ? "w-5 h-5" : "w-3.5 h-3.5"} />
             </button>
             <button
               onClick={() => setShowEmoji(!showEmoji)}
               className={cn(
-                "text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent",
+                "text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent",
+                isMobile ? "p-2" : "p-1",
                 showEmoji && "text-primary bg-primary/10"
               )}
               title="Emoji"
             >
-              <Smile className="w-3.5 h-3.5" />
+              <Smile className={isMobile ? "w-5 h-5" : "w-3.5 h-3.5"} />
             </button>
-            <div className="w-px h-4 bg-border mx-1" />
+            <div className={cn("w-px bg-border", isMobile ? "h-5 mx-1.5" : "h-4 mx-1")} />
             <button
               onClick={() => { setShowAudioRecorder(!showAudioRecorder); setShowFileUpload(false); }}
               className={cn(
-                "text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-accent",
+                "text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent",
+                isMobile ? "p-2" : "p-1",
                 showAudioRecorder && "text-red-500 bg-red-500/10"
               )}
               title="Gravar áudio"
             >
-              <Mic className="w-3.5 h-3.5" />
+              <Mic className={isMobile ? "w-5 h-5" : "w-3.5 h-3.5"} />
             </button>
           </div>
 
           {/* Text area */}
-          <div className="flex items-center gap-2 p-2">
+          <div className={cn("flex items-center gap-2", isMobile ? "p-3" : "p-2")}>
             <textarea
               ref={textareaRef}
               value={content}
@@ -528,27 +532,33 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
               onPaste={handlePaste}
               placeholder={isDM ? `Escreva para ${channelName}...` : `Mensagem em #${channelName}`}
               rows={1}
-              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none max-h-48 py-1"
+              className={cn(
+                "flex-1 bg-transparent text-foreground placeholder:text-muted-foreground resize-none focus:outline-none max-h-48 py-1",
+                isMobile ? "text-base" : "text-sm"
+              )}
             />
 
             <button
               onClick={handleSend}
               disabled={!content.trim() || sending}
               className={cn(
-                "p-2 rounded-lg transition-colors shrink-0 self-center",
+                "rounded-lg transition-colors shrink-0 self-center",
+                isMobile ? "p-3" : "p-2",
                 content.trim()
                   ? "text-primary hover:bg-primary/10"
                   : "text-muted-foreground cursor-not-allowed"
               )}
             >
-              <Send className="w-4 h-4" />
+              <Send className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
             </button>
           </div>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground mt-1 ml-2">
-        Enter enviar &middot; Shift+Enter nova linha &middot; <code className="bg-muted px-1 rounded">/tarefa</code> criar tarefa &middot; <code className="bg-muted px-1 rounded">@</code> mencionar
-      </p>
+      {!isMobile && (
+        <p className="text-xs text-muted-foreground mt-1 ml-2">
+          Enter enviar &middot; Shift+Enter nova linha &middot; <code className="bg-muted px-1 rounded">/tarefa</code> criar tarefa &middot; <code className="bg-muted px-1 rounded">@</code> mencionar
+        </p>
+      )}
     </div>
   );
 }

@@ -278,11 +278,11 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
 
   const fieldToggleItems: { key: keyof VisibleFields; label: string; disabled?: boolean }[] = [
     { key: "labels", label: "Labels" },
-    { key: "assignees", label: "Responsavel" },
+    { key: "assignees", label: "Responsável" },
     { key: "dates", label: "Datas" },
     { key: "priority", label: "Prioridade" },
     { key: "subtasks", label: "Subtarefas" },
-    { key: "description", label: "Descricao" },
+    { key: "description", label: "Descrição" },
   ];
 
   return (
@@ -390,7 +390,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
             {showFieldsPopover && (
               <div className="absolute right-0 top-9 z-50 w-56 bg-popover border border-border rounded-lg shadow-lg py-2">
                 <div className="px-3 pb-2 mb-1 border-b border-border">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Campos visiveis</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Campos visíveis</span>
                 </div>
 
                 {/* Task name - always on */}
@@ -624,6 +624,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         <CardDetailModal
           card={selectedCard}
           boardId={board.id}
+          boardSettings={board.settings as any}
           columns={boardColumns.map((c) => ({ id: c.id, name: c.name, color: c.color, is_done_column: c.is_done_column, position: c.position }))}
           orgMembers={orgMembers}
           boardLabels={boardLabels}

@@ -98,6 +98,8 @@ export default function GoalsPage() {
   const [categories, setCategories] = useState<OmieCategory[]>([]);
   const [departments, setDepartments] = useState<OmieDepartment[]>([]);
   const [members, setMembers] = useState<OrgMember[]>([]);
+  const [omieConfigs, setOmieConfigs] = useState<{ id: string; company_name: string; app_key: string }[]>([]);
+  const [selectedOmieKey, setSelectedOmieKey] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   // Editing state
@@ -118,20 +120,39 @@ export default function GoalsPage() {
   const [addGoalName, setAddGoalName] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Edit modal
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+
   // Viewers modal
   const [viewersGoalId, setViewersGoalId] = useState<string | null>(null);
   const [viewersList, setViewersList] = useState<string[]>([]);
 
+  /* ─── Load OMIE configs once ─── */
+  useEffect(() => {
+    if (!activeOrgId) return;
+    fetch(`/api/omie/sync?org_id=${activeOrgId}&type=configs`)
+      .then((r) => r.json())
+      .then((data) => {
+        const configs = Array.isArray(data) ? data : [];
+        setOmieConfigs(configs);
+        // Auto-select first config (Hannah) if none selected
+        if (configs.length > 0 && !selectedOmieKey) {
+          setSelectedOmieKey(configs[0].app_key);
+        }
+      });
+  }, [activeOrgId]);
+
   /* ─── Data loading ─── */
   const loadData = useCallback(async () => {
-    if (!activeOrgId) return;
+    if (!activeOrgId || !selectedOmieKey) return;
     setLoading(true);
     try {
+      const keyParam = `&omie_key=${selectedOmieKey}`;
       const [budgetRes, memberRes, catRes, deptRes, membRes] = await Promise.all([
         fetch(`/api/goals?org_id=${activeOrgId}&type=budget&year=${year}`),
         fetch(`/api/goals?org_id=${activeOrgId}&type=member&year=${year}`),
-        fetch(`/api/omie/sync?org_id=${activeOrgId}&type=categories`),
-        fetch(`/api/omie/sync?org_id=${activeOrgId}&type=departments`),
+        fetch(`/api/omie/sync?org_id=${activeOrgId}&type=categories${keyParam}`),
+        fetch(`/api/omie/sync?org_id=${activeOrgId}&type=departments${keyParam}`),
         fetch(`/api/goals/members?org_id=${activeOrgId}`),
       ]);
       const [budget, member, cats, depts, memb] = await Promise.all([
@@ -146,7 +167,7 @@ export default function GoalsPage() {
       console.error("Erro ao carregar metas:", e);
     }
     setLoading(false);
-  }, [activeOrgId, year]);
+  }, [activeOrgId, year, selectedOmieKey]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -264,6 +285,7 @@ export default function GoalsPage() {
 
   function resetAddForm() {
     setShowAdd(false);
+    setEditingGoalId(null);
     setAddName("");
     setAddDeptId("");
     setAddCatId("");
@@ -278,6 +300,66 @@ export default function GoalsPage() {
   async function handleDelete(id: string, type: "budget" | "member") {
     if (!confirm("Tem certeza que deseja remover esta meta?")) return;
     await fetch(`/api/goals?id=${id}&type=${type}`, { method: "DELETE" });
+    loadData();
+  }
+
+  function openEditBudget(goal: BudgetGoal) {
+    setEditingGoalId(goal.id);
+    setAddName(goal.name || "");
+    setAddDeptId(goal.department_id || "");
+    setAddCatId(goal.category_id || "");
+    setAddGoalType(goal.goal_type || "amount");
+    setAddViewers(goal.allowed_viewers || []);
+    setShowAdd(true);
+  }
+
+  function openEditMember(goal: MemberGoal) {
+    setEditingGoalId(goal.id);
+    setAddUserId(goal.user_id);
+    setAddMemberGoalType(goal.goal_type);
+    setAddGoalName(goal.goal_name || "");
+    setShowAdd(true);
+  }
+
+  async function handleEditBudget(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingGoalId) return;
+    setSaving(true);
+    await fetch("/api/goals", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingGoalId,
+        type: "budget",
+        name: addName || null,
+        department_id: addDeptId || null,
+        category_id: addCatId || null,
+        goal_type: addGoalType,
+        allowed_viewers: addViewers,
+      }),
+    });
+    resetAddForm();
+    setEditingGoalId(null);
+    loadData();
+  }
+
+  async function handleEditMember(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingGoalId) return;
+    setSaving(true);
+    await fetch("/api/goals", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingGoalId,
+        type: "member",
+        user_id: addUserId,
+        goal_type: addMemberGoalType,
+        goal_name: addGoalName || MEMBER_GOAL_TYPES.find((t) => t.value === addMemberGoalType)?.label || addMemberGoalType,
+      }),
+    });
+    resetAddForm();
+    setEditingGoalId(null);
     loadData();
   }
 
@@ -331,18 +413,36 @@ export default function GoalsPage() {
             </div>
           </div>
 
-          {/* Year picker */}
-          <div className="flex items-center gap-2">
-            <button onClick={() => setYear((y) => y - 1)} className="p-1.5 rounded-md hover:bg-accent transition-colors cursor-pointer text-muted-foreground">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <div className="flex items-center gap-1.5 px-4 py-1.5 bg-muted rounded-lg min-w-[80px] justify-center">
-              <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-sm font-bold text-foreground">{year}</span>
+          <div className="flex items-center gap-4">
+            {/* Company picker */}
+            {omieConfigs.length > 1 && (
+              <div className="flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <select
+                  value={selectedOmieKey}
+                  onChange={(e) => setSelectedOmieKey(e.target.value)}
+                  className="text-sm bg-muted border border-border rounded-lg px-3 py-1.5 text-foreground cursor-pointer"
+                >
+                  {omieConfigs.map((c) => (
+                    <option key={c.app_key} value={c.app_key}>{c.company_name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Year picker */}
+            <div className="flex items-center gap-2">
+              <button onClick={() => setYear((y) => y - 1)} className="p-1.5 rounded-md hover:bg-accent transition-colors cursor-pointer text-muted-foreground">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-1.5 px-4 py-1.5 bg-muted rounded-lg min-w-[80px] justify-center">
+                <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-sm font-bold text-foreground">{year}</span>
+              </div>
+              <button onClick={() => setYear((y) => y + 1)} className="p-1.5 rounded-md hover:bg-accent transition-colors cursor-pointer text-muted-foreground">
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
-            <button onClick={() => setYear((y) => y + 1)} className="p-1.5 rounded-md hover:bg-accent transition-colors cursor-pointer text-muted-foreground">
-              <ChevronRight className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
@@ -502,6 +602,13 @@ export default function GoalsPage() {
                                 <td className="py-2 px-2 text-right">
                                   <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button
+                                      onClick={() => openEditBudget(goal)}
+                                      className="p-1 rounded hover:bg-accent transition-colors cursor-pointer"
+                                      title="Editar"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                                    </button>
+                                    <button
                                       onClick={() => { setViewersGoalId(goal.id); setViewersList(goal.allowed_viewers || []); }}
                                       className="p-1 rounded hover:bg-accent transition-colors cursor-pointer"
                                       title="Gerenciar visualizadores"
@@ -565,12 +672,21 @@ export default function GoalsPage() {
                                 <p className="text-[10px] text-muted-foreground">{totalActual} / {totalTarget}</p>
                               </div>
                               {canEdit && (
-                                <button
-                                  onClick={() => handleDelete(goal.id, "member")}
-                                  className="p-1 rounded hover:bg-destructive/10 transition-colors cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => openEditMember(goal)}
+                                    className="p-1 rounded hover:bg-accent transition-colors cursor-pointer"
+                                    title="Editar"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(goal.id, "member")}
+                                    className="p-1 rounded hover:bg-destructive/10 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -709,15 +825,17 @@ export default function GoalsPage() {
           <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-3 border-b border-border">
               <h2 className="text-sm font-bold text-foreground">
-                {tab === "budget" ? "Nova meta orçamentária" : "Novo KPI individual"}
+                {editingGoalId
+                  ? (tab === "budget" ? "Editar meta orçamentária" : "Editar KPI individual")
+                  : (tab === "budget" ? "Nova meta orçamentária" : "Novo KPI individual")}
               </h2>
-              <button onClick={() => setShowAdd(false)} className="p-1 rounded-md hover:bg-accent cursor-pointer">
+              <button onClick={resetAddForm} className="p-1 rounded-md hover:bg-accent cursor-pointer">
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>
             </div>
 
             {tab === "budget" ? (
-              <form onSubmit={handleAddBudget} className="p-5 space-y-3">
+              <form onSubmit={editingGoalId ? handleEditBudget : handleAddBudget} className="p-5 space-y-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">Nome da meta</label>
                   <input
@@ -790,12 +908,12 @@ export default function GoalsPage() {
                   </button>
                   <button type="submit" disabled={saving} className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 cursor-pointer">
                     {saving && <Loader2 className="w-3 h-3 animate-spin" />}
-                    Criar meta
+                    {editingGoalId ? "Salvar alterações" : "Criar meta"}
                   </button>
                 </div>
               </form>
             ) : (
-              <form onSubmit={handleAddMember} className="p-5 space-y-3">
+              <form onSubmit={editingGoalId ? handleEditMember : handleAddMember} className="p-5 space-y-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">Membro</label>
                   <select value={addUserId} onChange={(e) => setAddUserId(e.target.value)} required className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm cursor-pointer">
@@ -826,7 +944,7 @@ export default function GoalsPage() {
                   </button>
                   <button type="submit" disabled={saving || !addUserId} className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 cursor-pointer">
                     {saving && <Loader2 className="w-3 h-3 animate-spin" />}
-                    Criar KPI
+                    {editingGoalId ? "Salvar alterações" : "Criar KPI"}
                   </button>
                 </div>
               </form>

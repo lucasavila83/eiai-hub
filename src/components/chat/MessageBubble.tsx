@@ -15,6 +15,8 @@ interface Props {
   showHeader: boolean;
   isOwn: boolean;
   isRead?: boolean;
+  readBy?: number;
+  totalOthers?: number;
   onCreateTask?: (messageContent: string) => void;
   onForward?: (messageContent: string, senderName: string) => void;
   onEmail?: (messageContent: string, senderName: string) => void;
@@ -221,7 +223,7 @@ function FileAttachment({ fileName, fileUrl, isOwn }: { fileName: string; fileUr
   );
 }
 
-export function MessageBubble({ message, showHeader, isOwn, isRead, onCreateTask, onForward, onEmail, onMessageEdited, onReply }: Props) {
+export function MessageBubble({ message, showHeader, isOwn, isRead, readBy = 0, totalOthers = 0, onCreateTask, onForward, onEmail, onMessageEdited, onReply }: Props) {
   const profile = message.profiles;
   const name = profile?.full_name || profile?.email || "Usuário";
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -452,9 +454,11 @@ export function MessageBubble({ message, showHeader, isOwn, isRead, onCreateTask
             </span>
             {isOwn && (
               isRead ? (
-                <CheckCheck className="w-3.5 h-3.5 text-blue-400" />
+                <CheckCheck className="w-3.5 h-3.5 text-blue-400" title={totalOthers > 1 ? `Lido por todos (${readBy})` : "Lido"} />
+              ) : readBy > 0 ? (
+                <CheckCheck className="w-3.5 h-3.5 text-blue-400/50" title={`Lido por ${readBy} de ${totalOthers}`} />
               ) : (
-                <CheckCheck className="w-3.5 h-3.5 text-white/40" />
+                <CheckCheck className="w-3.5 h-3.5 text-white/40" title="Não lido" />
               )
             )}
           </div>

@@ -11,8 +11,8 @@ export function resolveTemplate(
 
 /** Available placeholder variables with descriptions */
 export const TEMPLATE_VARIABLES = [
-  { key: "card_title", label: "Titulo da tarefa", contexts: ["kanban", "bpm"] },
-  { key: "card_assignee", label: "Responsavel", contexts: ["kanban", "bpm"] },
+  { key: "card_title", label: "Título da tarefa", contexts: ["kanban", "bpm"] },
+  { key: "card_assignee", label: "Responsável", contexts: ["kanban", "bpm"] },
   { key: "board_name", label: "Nome do board", contexts: ["kanban"] },
   { key: "due_date", label: "Prazo", contexts: ["kanban", "bpm"] },
   { key: "progress", label: "Progresso (%)", contexts: ["kanban"] },

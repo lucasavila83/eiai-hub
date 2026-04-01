@@ -56,6 +56,7 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState("");
+  const [activityTab, setActivityTab] = useState<"chat" | "log" | "all">("chat");
   const [sendingComment, setSendingComment] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editingTitle, setEditingTitle] = useState(false);
@@ -354,78 +355,117 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
               </div>
             )}
 
-            {/* Histórico */}
-            <div className="px-5 py-4 border-b border-border">
-              <h3 className="text-xs font-bold text-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                <History className="w-3.5 h-3.5" /> Histórico
-              </h3>
-              {history.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Nenhuma movimentação.</p>
-              ) : (
+            {/* Activity tabs: Chat / Log / Tudo */}
+            <div className="border-b border-border">
+              <div className="flex px-3 pt-2 gap-0.5">
+                {([
+                  { key: "chat" as const, label: "Chat", icon: <MessageSquare className="w-3 h-3" />, count: comments.length },
+                  { key: "log" as const, label: "Log", icon: <History className="w-3 h-3" />, count: history.length },
+                  { key: "all" as const, label: "Tudo", count: comments.length + history.length },
+                ]).map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActivityTab(tab.key)}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-medium border-b-2 transition-colors flex items-center gap-1 cursor-pointer",
+                      activityTab === tab.key
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {tab.icon}
+                    {tab.label}
+                    {tab.count > 0 && (
+                      <span className={cn(
+                        "inline-flex items-center justify-center px-1 py-0.5 rounded-full text-[9px] font-medium",
+                        activityTab === tab.key ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                      )}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-5 py-4 flex-1 overflow-y-auto">
+              {/* Log entries (shown in Log and Tudo tabs) */}
+              {(activityTab === "log" || activityTab === "all") && (
+                <>
+                  {history.length === 0 && activityTab === "log" ? (
+                    <p className="text-xs text-muted-foreground">Nenhuma movimentação.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {history.map((entry) => {
+                        const mover = getMember(entry.moved_by);
+                        return (
+                          <div key={entry.id} className="flex items-start gap-2">
+                            <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center shrink-0 mt-0.5">
+                              {entry.action === "created" ? (
+                                <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />
+                              ) : (
+                                <ChevronRight className="w-2.5 h-2.5 text-muted-foreground" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs text-foreground">
+                                {entry.action === "created" && <span className="text-primary font-medium">{getPhaseName(entry.to_phase_id)}</span>}
+                                {entry.action === "moved" && (
+                                  <>De <strong>{getPhaseName(entry.from_phase_id)}</strong> → <strong>{getPhaseName(entry.to_phase_id)}</strong></>
+                                )}
+                                {entry.action === "completed" && "Concluído"}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {mover?.full_name || "Sistema"} · {formatDateTime(entry.moved_at)}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {activityTab === "all" && history.length > 0 && comments.length > 0 && (
+                    <div className="border-t border-border my-3" />
+                  )}
+                </>
+              )}
+
+              {/* Comments (shown in Chat and Tudo tabs) */}
+              {(activityTab === "chat" || activityTab === "all") && (
                 <div className="space-y-3">
-                  {history.map((entry) => {
-                    const mover = getMember(entry.moved_by);
+                  {comments.map((comment) => {
+                    const author = getMember(comment.user_id);
                     return (
-                      <div key={entry.id} className="flex items-start gap-2">
-                        <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                          {entry.action === "created" ? (
-                            <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />
-                          ) : (
-                            <ChevronRight className="w-2.5 h-2.5 text-muted-foreground" />
-                          )}
-                        </div>
+                      <div key={comment.id} className="flex items-start gap-2">
+                        {author?.avatar_url ? (
+                          <img src={author.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <div
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
+                            style={{ backgroundColor: generateColor(author?.full_name || author?.email || "?") }}
+                          >
+                            {getInitials(author?.full_name || author?.email || "?")}
+                          </div>
+                        )}
                         <div className="min-w-0">
-                          <p className="text-xs text-foreground">
-                            {entry.action === "created" && <span className="text-primary font-medium">{getPhaseName(entry.to_phase_id)}</span>}
-                            {entry.action === "moved" && (
-                              <>De <strong>{getPhaseName(entry.from_phase_id)}</strong> → <strong>{getPhaseName(entry.to_phase_id)}</strong></>
-                            )}
-                            {entry.action === "completed" && "Concluído"}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {mover?.full_name || "Sistema"} · {formatDateTime(entry.moved_at)}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium text-foreground">{author?.full_name?.split(" ")[0]}</span>
+                            <span className="text-[10px] text-muted-foreground">{formatDateTime(comment.created_at)}</span>
+                          </div>
+                          <p className="text-xs text-foreground mt-0.5">{comment.content}</p>
                         </div>
                       </div>
                     );
                   })}
+                  {comments.length === 0 && activityTab === "chat" && <p className="text-xs text-muted-foreground">Nenhum comentário.</p>}
                 </div>
               )}
-            </div>
 
-            {/* Comentários */}
-            <div className="px-5 py-4">
-              <h3 className="text-xs font-bold text-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5" /> Comentários ({comments.length})
-              </h3>
-              <div className="space-y-3">
-                {comments.map((comment) => {
-                  const author = getMember(comment.user_id);
-                  return (
-                    <div key={comment.id} className="flex items-start gap-2">
-                      {author?.avatar_url ? (
-                        <img src={author.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />
-                      ) : (
-                        <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
-                          style={{ backgroundColor: generateColor(author?.full_name || author?.email || "?") }}
-                        >
-                          {getInitials(author?.full_name || author?.email || "?")}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-medium text-foreground">{author?.full_name?.split(" ")[0]}</span>
-                          <span className="text-[10px] text-muted-foreground">{formatDateTime(comment.created_at)}</span>
-                        </div>
-                        <p className="text-xs text-foreground mt-0.5">{comment.content}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-                {comments.length === 0 && <p className="text-xs text-muted-foreground">Nenhum comentário.</p>}
-              </div>
+              {activityTab === "all" && comments.length === 0 && history.length === 0 && (
+                <p className="text-xs text-muted-foreground">Nenhuma atividade.</p>
+              )}
 
+              {/* Comment input (always visible) */}
               <form onSubmit={handleAddComment} className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
                 <input
                   value={newComment}

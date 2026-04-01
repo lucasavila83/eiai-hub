@@ -8,7 +8,7 @@ import {
   MessageSquare, Kanban, Bell, Settings, Calendar, BarChart3, Zap, Plug, Workflow,
   Hash, Lock, ChevronDown, ChevronRight, ChevronLeft,
   Plus, LogOut, X, Loader2, Users, MessageCircle, Check,
-  MoreHorizontal, Trash2, EyeOff, UserCog, Target,
+  MoreHorizontal, Trash2, EyeOff, UserCog, Target, Pencil, Search,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
@@ -29,7 +29,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const router = useRouter();
   const supabase = createClient();
   const { channels, setChannels, unreadCounts, setUnreadCount, incrementUnread } = useChatStore();
-  const { sidebarOpen, setSidebarOpen, toggleSidebar, setActiveOrgId } = useUIStore();
+  const { sidebarOpen, setSidebarOpen, toggleSidebar, setActiveOrgId, isMobile } = useUIStore();
   const notifUnread = useNotificationStore((s) => s.unreadCount);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(
     organizations[0] || null
@@ -37,6 +37,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const [dmChannels, setDmChannels] = useState<(Channel & { otherUser?: any })[]>([]);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [showCreateDM, setShowCreateDM] = useState(false);
+  const [dmSearch, setDmSearch] = useState("");
   const [orgMembers, setOrgMembers] = useState<any[]>([]);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
@@ -157,6 +158,25 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
           }
         }
       })
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+      }, async (payload: any) => {
+        const msg = payload.new;
+        if (msg.user_id === profileRef.current?.id) return;
+        // Check if this message belongs to an archived DM → un-archive it
+        const { data: ch } = await supabase
+          .from("channels")
+          .select("id, is_archived, type, org_id")
+          .eq("id", msg.channel_id)
+          .single();
+        if (ch?.is_archived && ch.type === "dm" && ch.org_id === activeOrgRef.current?.id) {
+          await supabase.from("channels").update({ is_archived: false }).eq("id", ch.id);
+          const org = activeOrgRef.current;
+          if (org) loadDMs(org.id);
+        }
+      })
       .subscribe((status) => {
         if (status === "CHANNEL_ERROR") {
           setTimeout(() => sub.subscribe(), 3000);
@@ -271,6 +291,23 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
   const perms = usePermissions();
 
+  // Sort DMs: unread first, then alphabetically; also filter by search
+  const sortedDMs = dmChannels
+    .filter((dm) => {
+      if (!dmSearch.trim()) return true;
+      const name = dm.otherUser?.full_name || dm.otherUser?.email || "";
+      return name.toLowerCase().includes(dmSearch.toLowerCase());
+    })
+    .sort((a, b) => {
+      const unreadA = unreadCounts[a.id] || 0;
+      const unreadB = unreadCounts[b.id] || 0;
+      if (unreadA > 0 && unreadB === 0) return -1;
+      if (unreadA === 0 && unreadB > 0) return 1;
+      const nameA = (a.otherUser?.full_name || a.otherUser?.email || "").toLowerCase();
+      const nameB = (b.otherUser?.full_name || b.otherUser?.email || "").toLowerCase();
+      return nameA.localeCompare(nameB, "pt-BR");
+    });
+
   const allNavItems = [
     { href: "/chat", icon: MessageSquare, label: "Chat", visible: true },
     { href: "/boards", icon: Kanban, label: "Boards", visible: true },
@@ -305,11 +342,16 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }, 200);
   }
 
+  // On mobile, close sidebar when navigating
+  function handleMobileNavClose() {
+    if (isMobile) setSidebarOpen(false);
+  }
+
   return (
     <div ref={sidebarRef} className="relative flex h-full shrink-0">
-      {/* ===== 1st COLUMN: Icon bar (always visible w-14) + hover overlay with labels ===== */}
+      {/* ===== 1st COLUMN: Icon bar (hidden on mobile, visible md+) + hover overlay with labels ===== */}
       <div
-        className="relative z-30 shrink-0"
+        className={cn("relative z-30 shrink-0", isMobile && "hidden")}
         onMouseEnter={handleIconBarEnter}
         onMouseLeave={handleIconBarLeave}
       >
@@ -322,7 +364,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
               alt="Lesco"
               width={32}
               height={32}
-              className="w-8 h-8 rounded"
+              className="w-8 h-8 rounded-full bg-white p-0.5 object-contain"
             />
           </div>
 
@@ -426,7 +468,10 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
       {/* ===== 2nd COLUMN: Content panel (ALWAYS FIXED when sidebarOpen) ===== */}
       {sidebarOpen && (
-        <div className="w-56 bg-muted border-r border-border flex flex-col h-full shrink-0 z-10">
+        <div className={cn(
+          "bg-muted border-r border-border flex flex-col h-full shrink-0 z-10",
+          isMobile ? "w-full" : "w-56"
+        )}>
           {/* Header: Org Switcher + Collapse button */}
           <div className="p-3 border-b border-border">
             <div className="flex items-center gap-2">
@@ -480,6 +525,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                     >
                       <Link
                         href={`/chat/${channel.id}`}
+                        onClick={handleMobileNavClose}
                         className={cn(
                           "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
                           isActive
@@ -534,8 +580,26 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                   <Plus className="w-4 h-4" />
                 </button>
               </div>
+              {/* Search filter */}
+              <div className="px-2 pb-1.5">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="text"
+                    value={dmSearch}
+                    onChange={(e) => setDmSearch(e.target.value)}
+                    placeholder="Buscar membro..."
+                    className="w-full pl-7 pr-2 py-1 text-xs bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  {dmSearch && (
+                    <button onClick={() => setDmSearch("")} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
               <div className="space-y-0.5">
-                {dmChannels.map((dm) => {
+                {sortedDMs.map((dm) => {
                   const isActive = pathname === `/chat/${dm.id}`;
                   const unread = unreadCounts[dm.id] || 0;
                   const user = dm.otherUser;
@@ -545,6 +609,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                     <Link
                       key={dm.id}
                       href={`/chat/${dm.id}`}
+                      onClick={handleMobileNavClose}
                       onContextMenu={(e) => handleDMContextMenu(e, dm)}
                       className={cn(
                         "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
@@ -585,9 +650,9 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                     </Link>
                   );
                 })}
-                {dmChannels.length === 0 && (
+                {sortedDMs.length === 0 && (
                   <p className="text-xs text-muted-foreground px-2 py-1">
-                    Nenhuma conversa ainda
+                    {dmSearch ? "Nenhum resultado" : "Nenhuma conversa ainda"}
                   </p>
                 )}
               </div>
@@ -597,8 +662,8 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         </div>
       )}
 
-      {/* Expand button when content panel is collapsed — positioned below TopBar to avoid overlap */}
-      {!sidebarOpen && (
+      {/* Expand button when content panel is collapsed — hidden on mobile (use hamburger in TopBar) */}
+      {!sidebarOpen && !isMobile && (
         <button
           onClick={() => setSidebarOpen(true)}
           className="absolute top-14 left-[60px] z-20 w-6 h-6 flex items-center justify-center rounded-full bg-card border border-border shadow-sm text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
@@ -624,8 +689,8 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                 }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
               >
-                <UserCog className="w-4 h-4" />
-                Gerenciar membros
+                <Pencil className="w-4 h-4" />
+                Editar canal
               </button>
               <button
                 onClick={() => {
@@ -732,6 +797,12 @@ function ChannelSettingsModal({
   const [channelMembers, setChannelMembers] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Channel info editing
+  const [channelName, setChannelName] = useState(channel.name);
+  const [channelDesc, setChannelDesc] = useState((channel as any).description || "");
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [saveInfoSuccess, setSaveInfoSuccess] = useState(false);
+
   useEffect(() => {
     loadChannelMembers();
   }, [channel.id]);
@@ -746,6 +817,20 @@ function ChannelSettingsModal({
       setChannelMembers(new Set(data.map((m: any) => m.user_id)));
     }
     setLoading(false);
+  }
+
+  async function handleSaveChannelInfo() {
+    if (!channelName.trim()) return;
+    setSavingInfo(true);
+    setSaveInfoSuccess(false);
+    await supabase
+      .from("channels")
+      .update({ name: channelName.trim(), description: channelDesc.trim() || null } as any)
+      .eq("id", channel.id);
+    setSavingInfo(false);
+    setSaveInfoSuccess(true);
+    setTimeout(() => setSaveInfoSuccess(false), 2000);
+    onMembersUpdated();
   }
 
   function toggleMember(userId: string) {
@@ -827,6 +912,45 @@ function ChannelSettingsModal({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Channel info editing */}
+        <div className="space-y-3 mb-5">
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Nome do canal</label>
+            <input
+              type="text"
+              value={channelName}
+              onChange={(e) => setChannelName(e.target.value)}
+              placeholder="Nome do canal"
+              className="w-full px-3 py-2 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Descrição (opcional)</label>
+            <textarea
+              value={channelDesc}
+              onChange={(e) => setChannelDesc(e.target.value)}
+              placeholder="Descreva o propósito deste canal..."
+              rows={2}
+              className="w-full px-3 py-2 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+            />
+          </div>
+          <button
+            onClick={handleSaveChannelInfo}
+            disabled={savingInfo || !channelName.trim()}
+            className={cn(
+              "w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors",
+              saveInfoSuccess
+                ? "bg-green-600 text-white"
+                : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            )}
+          >
+            {savingInfo && <Loader2 className="w-4 h-4 animate-spin" />}
+            {saveInfoSuccess ? "Salvo!" : "Salvar informações"}
+          </button>
+        </div>
+
+        <div className="border-t border-border mb-5" />
 
         {/* Member management */}
         <div className="space-y-3 mb-6">

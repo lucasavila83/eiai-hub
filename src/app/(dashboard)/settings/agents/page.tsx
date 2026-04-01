@@ -1074,7 +1074,7 @@ export default function AgentsSettingsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Descricao
+                  Descrição
                 </label>
                 <input
                   type="text"
@@ -1340,7 +1340,7 @@ export default function AgentsSettingsPage() {
               {/* Description */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Descricao
+                  Descrição
                 </label>
                 <textarea
                   value={extDesc}

@@ -10,7 +10,7 @@ import { ForwardMessageModal } from "./ForwardMessageModal";
 import { EmailComposeModal } from "./EmailComposeModal";
 import { useChatStore } from "@/lib/stores/chat-store";
 import {
-  Hash, Lock, MessageSquare, ListTodo,
+  Hash, Lock, MessageSquare, ListTodo, Search,
   Kanban, CheckCircle2, Clock, AlertCircle,
   CheckSquare, Square, X, Mail, Loader2, Reply,
 } from "lucide-react";
@@ -67,7 +67,9 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   const isInitialLoad = useRef(true);
   const [hasMore, setHasMore] = useState(initialHasMore || false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [activeTab, setActiveTab] = useState<"chat" | "tasks">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "tasks" | "search">("chat");
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [lastReadAt, setLastReadAt] = useState<string | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -84,8 +86,8 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [channelMembers, setChannelMembers] = useState<any[]>([]);
-  // Read receipts: track other members' last_read_at
-  const [othersLastRead, setOthersLastRead] = useState<string | null>(null);
+  // Read receipts: per-member last_read_at map (user_id → timestamp)
+  const [membersReadMap, setMembersReadMap] = useState<Record<string, string>>({});
 
   const channelMessages = messages[channel.id] || [];
 
@@ -151,14 +153,13 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       .then(({ data }) => {
         if (data) {
           setChannelMembers(data);
-          // Read receipts: use the most recent last_read_at among OTHER members
+          // Read receipts: build per-member map of last_read_at
           const others = data.filter((m: any) => m.user_id !== currentUserId);
-          if (others.length > 0) {
-            const maxRead = others.reduce((max: string, m: any) => {
-              return m.last_read_at > max ? m.last_read_at : max;
-            }, others[0].last_read_at);
-            setOthersLastRead(maxRead);
+          const readMap: Record<string, string> = {};
+          for (const m of others) {
+            if (m.last_read_at) readMap[m.user_id] = m.last_read_at;
           }
+          setMembersReadMap(readMap);
         }
       });
   }, [channel.id]);
@@ -175,10 +176,10 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       }, (payload: any) => {
         const updated = payload.new;
         if (updated.user_id !== currentUserId && updated.last_read_at) {
-          setOthersLastRead((prev) => {
-            if (!prev || updated.last_read_at > prev) return updated.last_read_at;
-            return prev;
-          });
+          setMembersReadMap((prev) => ({
+            ...prev,
+            [updated.user_id]: updated.last_read_at,
+          }));
         }
       })
       .subscribe();
@@ -751,6 +752,18 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
             <ListTodo className="w-3.5 h-3.5" />
             {tabLabel}
           </button>
+          <button
+            onClick={() => { setActiveTab("search"); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+            className={cn(
+              "px-3 py-1.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5",
+              activeTab === "search"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Search className="w-3.5 h-3.5" />
+            Buscar
+          </button>
           <div className="flex-1" />
           {activeTab === "chat" && channelMessages.length > 0 && !selectMode && (
             <button
@@ -868,7 +881,14 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
                         message={msg}
                         showHeader={showHeader}
                         isOwn={msg.user_id === currentUserId}
-                        isRead={!!(msg.user_id === currentUserId && othersLastRead && msg.created_at <= othersLastRead)}
+                        isRead={(() => {
+                          if (msg.user_id !== currentUserId) return false;
+                          const others = Object.values(membersReadMap);
+                          if (others.length === 0) return false;
+                          return others.every((ts) => msg.created_at <= ts);
+                        })()}
+                        readBy={msg.user_id === currentUserId ? Object.values(membersReadMap).filter((ts) => msg.created_at <= ts).length : 0}
+                        totalOthers={Object.keys(membersReadMap).length}
                         onCreateTask={handleContextCreateTask}
                         onEmail={handleContextEmail}
                         onForward={handleContextForward}
@@ -941,7 +961,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
           </>
           )}
         </>
-      ) : (
+      ) : activeTab === "tasks" ? (
         /* Tasks Tab */
         <div className="flex-1 overflow-y-auto p-4">
           {tasks.length === 0 ? (
@@ -1029,6 +1049,88 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
               })}
             </div>
           )}
+        </div>
+      ) : (
+        /* Search Tab */
+        <div className="flex flex-col h-full">
+          <div className="px-4 pt-3 pb-2 border-b border-border shrink-0">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar no chat..."
+                className="w-full pl-9 pr-8 py-2 bg-muted border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            {searchQuery.trim() && (
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {channelMessages.filter((m: any) => m.content.toLowerCase().includes(searchQuery.toLowerCase())).length} resultado(s)
+              </p>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-1">
+            {!searchQuery.trim() ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <Search className="w-10 h-10 text-muted-foreground mb-2" />
+                <h3 className="font-semibold text-foreground">Buscar no chat</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Digite para buscar mensagens nesta conversa
+                </p>
+              </div>
+            ) : (() => {
+              const filtered = channelMessages.filter((m: any) =>
+                m.content.toLowerCase().includes(searchQuery.toLowerCase())
+              );
+              if (filtered.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <Search className="w-10 h-10 text-muted-foreground mb-2" />
+                    <h3 className="font-semibold text-foreground">Nenhum resultado</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Nenhuma mensagem contém &quot;{searchQuery}&quot;
+                    </p>
+                  </div>
+                );
+              }
+              return filtered.map((msg: any, i: number) => {
+                const prev = filtered[i - 1] as any;
+                const showDateSep = !prev || isDifferentDay(prev.created_at, msg.created_at);
+                return (
+                  <div key={msg.id}>
+                    {showDateSep && (
+                      <div className="flex items-center gap-3 py-3">
+                        <div className="flex-1 border-t border-border" />
+                        <span className="text-xs font-medium text-muted-foreground bg-background px-2">
+                          {getDateLabel(msg.created_at)}
+                        </span>
+                        <div className="flex-1 border-t border-border" />
+                      </div>
+                    )}
+                    <MessageBubble
+                      message={msg}
+                      showHeader={true}
+                      isOwn={msg.user_id === currentUserId}
+                      isRead={false}
+                      readBy={0}
+                      totalOthers={0}
+                      onCreateTask={handleContextCreateTask}
+                      onEmail={handleContextEmail}
+                      onForward={handleContextForward}
+                      onReply={(m) => { setActiveTab("chat"); setReplyTo(m); setFocusTrigger(t => t + 1); }}
+                    />
+                  </div>
+                );
+              });
+            })()}
+          </div>
         </div>
       )}
 
