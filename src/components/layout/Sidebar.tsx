@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { useUIStore } from "@/lib/stores/ui-store";
+import { useNotificationStore } from "@/lib/stores/notification-store";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import type { Profile, Organization, Channel } from "@/lib/types/database";
 // Sound, toast and desktop notifications handled by NotificationListener
@@ -29,6 +30,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const supabase = createClient();
   const { channels, setChannels, unreadCounts, setUnreadCount, incrementUnread } = useChatStore();
   const { sidebarOpen, setSidebarOpen, toggleSidebar, setActiveOrgId } = useUIStore();
+  const notifUnread = useNotificationStore((s) => s.unreadCount);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(
     organizations[0] || null
   );
@@ -327,7 +329,8 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
           {/* Nav Icons */}
           <nav className="flex flex-col items-center gap-1 flex-1">
             {navItems.map(({ href, icon: Icon, label }) => {
-              const hasUnread = href === "/chat" && Object.values(unreadCounts).some(c => c > 0);
+              const hasUnread = (href === "/chat" && Object.values(unreadCounts).some(c => c > 0))
+                || (href === "/notifications" && notifUnread > 0);
               return (
                 <Link
                   key={href}

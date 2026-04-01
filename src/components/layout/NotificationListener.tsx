@@ -58,16 +58,17 @@ export function NotificationListener() {
     };
   }, []);
 
-  // Load initial unread notification count
+  // Load unread notification count + recent notifications
+  // Runs on mount, org change, and polls every 30s as fallback for missed realtime events
   useEffect(() => {
     if (!user?.id || !activeOrgId) return;
 
-    (async () => {
+    async function refreshNotifications() {
       const { count } = await supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .eq("org_id", activeOrgId)
+        .eq("user_id", user!.id)
+        .eq("org_id", activeOrgId!)
         .eq("is_read", false);
 
       if (count !== null) {
@@ -77,15 +78,21 @@ export function NotificationListener() {
       const { data } = await supabase
         .from("notifications")
         .select("id, type, title, body, link, is_read, created_at")
-        .eq("user_id", user.id)
-        .eq("org_id", activeOrgId)
+        .eq("user_id", user!.id)
+        .eq("org_id", activeOrgId!)
         .order("created_at", { ascending: false })
         .limit(15);
 
       if (data) {
         useNotificationStore.getState().setRecentNotifications(data);
       }
-    })();
+    }
+
+    refreshNotifications();
+
+    // Poll every 30 seconds as fallback (lightweight — only count + 15 rows)
+    const interval = setInterval(refreshNotifications, 30000);
+    return () => clearInterval(interval);
   }, [user?.id, activeOrgId]);
 
   // Load channel notification preferences
