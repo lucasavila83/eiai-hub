@@ -35,6 +35,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     organizations[0] || null
   );
   const [dmChannels, setDmChannels] = useState<(Channel & { otherUser?: any })[]>([]);
+  const [lastMessageAt, setLastMessageAt] = useState<Record<string, string>>({});
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [showCreateDM, setShowCreateDM] = useState(false);
   const [dmSearch, setDmSearch] = useState("");
@@ -164,7 +165,13 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         table: "messages",
       }, async (payload: any) => {
         const msg = payload.new;
+        // Update last message timestamp for sorting
+        setLastMessageAt((prev) => ({ ...prev, [msg.channel_id]: msg.created_at }));
         if (msg.user_id === profileRef.current?.id) return;
+        // Increment unread if user is not viewing this channel
+        if (pathnameRef.current !== `/chat/${msg.channel_id}`) {
+          incrementUnread(msg.channel_id);
+        }
         // Check if this message belongs to an archived DM → un-archive it
         const { data: ch } = await supabase
           .from("channels")
@@ -242,6 +249,28 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         };
       });
       setDmChannels(enriched);
+
+      // Load last message timestamp for each DM (for sorting)
+      const dmIds = enriched.map((ch: any) => ch.id);
+      if (dmIds.length > 0) {
+        const lastMsgResults = await Promise.all(
+          dmIds.map((id: string) =>
+            supabase
+              .from("messages")
+              .select("created_at")
+              .eq("channel_id", id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .single()
+              .then((res) => ({ channelId: id, at: res.data?.created_at || null }))
+          )
+        );
+        const map: Record<string, string> = {};
+        lastMsgResults.forEach(({ channelId, at }) => {
+          if (at) map[channelId] = at;
+        });
+        setLastMessageAt(map);
+      }
     }
   }
 
@@ -291,7 +320,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
   const perms = usePermissions();
 
-  // Sort DMs: unread first, then alphabetically; also filter by search
+  // Sort DMs: unread first, then by last message (most recent), then alphabetically
   const sortedDMs = dmChannels
     .filter((dm) => {
       if (!dmSearch.trim()) return true;
@@ -301,8 +330,16 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     .sort((a, b) => {
       const unreadA = unreadCounts[a.id] || 0;
       const unreadB = unreadCounts[b.id] || 0;
+      // 1. Unread first
       if (unreadA > 0 && unreadB === 0) return -1;
       if (unreadA === 0 && unreadB > 0) return 1;
+      // 2. Most recent message first
+      const lastA = lastMessageAt[a.id] || "";
+      const lastB = lastMessageAt[b.id] || "";
+      if (lastA && lastB && lastA !== lastB) return lastB.localeCompare(lastA);
+      if (lastA && !lastB) return -1;
+      if (!lastA && lastB) return 1;
+      // 3. Alphabetical
       const nameA = (a.otherUser?.full_name || a.otherUser?.email || "").toLowerCase();
       const nameB = (b.otherUser?.full_name || b.otherUser?.email || "").toLowerCase();
       return nameA.localeCompare(nameB, "pt-BR");
