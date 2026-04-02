@@ -340,7 +340,7 @@ export default function CalendarPage() {
       // Find which board the card belongs to
       const card = cardDues.find((c) => c.id === event.card_id);
       if (card) {
-        router.push(`/boards/${card.board_id}`);
+        router.push(`/boards/${card.board_id}?card=${card.id}`);
         return;
       }
     }
@@ -348,7 +348,7 @@ export default function CalendarPage() {
   }
 
   function handleCardClick(card: CardDue) {
-    router.push(`/boards/${card.board_id}`);
+    router.push(`/boards/${card.board_id}?card=${card.id}`);
   }
 
   async function handleSaveEvent(e: React.FormEvent) {
@@ -902,7 +902,7 @@ export default function CalendarPage() {
                 <button
                   onClick={() => {
                     const card = cardDues.find((c) => c.id === showDetail.card_id);
-                    if (card) router.push(`/boards/${card.board_id}`);
+                    if (card) router.push(`/boards/${card.board_id}?card=${card.id}`);
                   }}
                   className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 hover:bg-primary/5 px-2 py-1 rounded-md transition-colors"
                 >

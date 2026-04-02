@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { KanbanColumn } from "./KanbanColumn";
 import { CardDetailModal } from "./CardDetailModal";
@@ -24,6 +25,7 @@ interface Props {
 
 export function BoardView({ board, initialColumns, initialCards, currentUserId }: Props) {
   const supabase = createClient();
+  const searchParams = useSearchParams();
   const { columns, cards, setColumns, setCards, moveCard, updateCard, removeCard } = useKanbanStore();
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
@@ -117,6 +119,13 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
     loadLabels();
     loadSubtaskCounts();
     loadAttachmentCounts();
+
+    // Auto-open card from URL query param (e.g. ?card=abc-123)
+    const cardId = searchParams.get("card");
+    if (cardId) {
+      const card = initialCards.find((c) => c.id === cardId);
+      if (card) setSelectedCard(card);
+    }
   }, [board.id]);
 
   async function loadLabels() {
