@@ -103,14 +103,29 @@ function linkify(text: string, keyPrefix: string) {
   return result;
 }
 
-// Simple markdown renderer
+// Simple markdown renderer — URLs are extracted first to prevent
+// italic/bold regex from breaking links that contain underscores or asterisks.
 function renderContent(text: string) {
-  const parts = text.split(/(`[^`]+`)/g);
+  // Step 1: Extract URLs and replace with placeholders
+  const urlMap: Record<string, string> = {};
+  const urlRegex = new RegExp(URL_REGEX.source, "g");
+  let urlIdx = 0;
+  const safeText = text.replace(urlRegex, (match) => {
+    const cleaned = cleanUrl(match);
+    const key = `\x00URL${urlIdx++}\x00`;
+    urlMap[key] = cleaned;
+    // Preserve trailing chars that were cleaned off
+    const trailing = match.slice(cleaned.length);
+    return key + trailing;
+  });
+
+  // Step 2: Process markdown on safe text (no URLs to break)
+  const parts = safeText.split(/(`[^`]+`)/g);
   return parts.map((part, i) => {
     if (part.startsWith("`") && part.endsWith("`")) {
       return (
         <code key={i} className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-primary">
-          {part.slice(1, -1)}
+          {restoreUrls(part.slice(1, -1), urlMap, `${i}-c`)}
         </code>
       );
     }
@@ -119,34 +134,65 @@ function renderContent(text: string) {
     if (boldParts.length > 1) {
       result = boldParts.map((bp, j) => {
         if (bp.startsWith("**") && bp.endsWith("**")) {
-          return <strong key={j}>{linkify(bp.slice(2, -2), `${i}-b${j}`)}</strong>;
+          return <strong key={j}>{restoreUrls(bp.slice(2, -2), urlMap, `${i}-b${j}`)}</strong>;
         }
         const italicParts = bp.split(/(_[^_]+_)/g);
         if (italicParts.length > 1) {
           return italicParts.map((ip, k) => {
             if (ip.startsWith("_") && ip.endsWith("_")) {
-              return <em key={k}>{linkify(ip.slice(1, -1), `${i}-b${j}-i${k}`)}</em>;
+              return <em key={k}>{restoreUrls(ip.slice(1, -1), urlMap, `${i}-b${j}-i${k}`)}</em>;
             }
-            return linkify(ip, `${i}-b${j}-t${k}`);
+            return restoreUrls(ip, urlMap, `${i}-b${j}-t${k}`);
           });
         }
-        return linkify(bp, `${i}-b${j}`);
+        return restoreUrls(bp, urlMap, `${i}-b${j}`);
       });
     } else {
       const italicParts = part.split(/(_[^_]+_)/g);
       if (italicParts.length > 1) {
         result = italicParts.map((ip, j) => {
           if (ip.startsWith("_") && ip.endsWith("_")) {
-            return <em key={j}>{linkify(ip.slice(1, -1), `${i}-i${j}`)}</em>;
+            return <em key={j}>{restoreUrls(ip.slice(1, -1), urlMap, `${i}-i${j}`)}</em>;
           }
-          return linkify(ip, `${i}-t${j}`);
+          return restoreUrls(ip, urlMap, `${i}-t${j}`);
         });
       } else {
-        result = linkify(part, `${i}`);
+        result = restoreUrls(part, urlMap, `${i}`);
       }
     }
     return <span key={i}>{result}</span>;
   });
+}
+
+// Restore URL placeholders back to clickable links
+function restoreUrls(text: string, urlMap: Record<string, string>, keyPrefix: string): any {
+  const placeholderRegex = /\x00URL\d+\x00/g;
+  const parts = text.split(placeholderRegex);
+  const placeholders = text.match(placeholderRegex);
+  if (!placeholders || placeholders.length === 0) return linkify(text, keyPrefix);
+
+  const result: any[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i]) result.push(...[].concat(linkify(parts[i], `${keyPrefix}-p${i}`) as any));
+    if (i < placeholders.length) {
+      const url = urlMap[placeholders[i]];
+      if (url) {
+        result.push(
+          <a
+            key={`${keyPrefix}-url${i}`}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline break-all hover:opacity-80"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {url}
+          </a>
+        );
+      }
+    }
+  }
+  return result;
 }
 
 // Audio Player component
