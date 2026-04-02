@@ -39,7 +39,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [orgMembers, setOrgMembers] = useState<any[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [droppedFile, setDroppedFile] = useState<File | null>(null);
+  const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
@@ -300,7 +300,8 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
 
     const files = e.dataTransfer.files;
     if (files.length > 0 && channelId) {
-      setDroppedFile(files[0]);
+      const fileList = Array.from(files).slice(0, 5);
+      setDroppedFiles(fileList);
       setShowFileUpload(true);
     }
   }
@@ -368,8 +369,8 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
           <FileUpload
             channelId={channelId}
             onFileUploaded={handleFileUploaded}
-            onClose={() => { setShowFileUpload(false); setDroppedFile(null); }}
-            droppedFile={droppedFile}
+            onClose={() => { setShowFileUpload(false); setDroppedFiles([]); }}
+            droppedFiles={droppedFiles}
           />
         </div>
       )}

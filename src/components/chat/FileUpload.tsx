@@ -14,10 +14,11 @@ interface Props {
   channelId: string;
   onFileUploaded: (fileUrl: string, fileName: string, fileType: string) => void;
   onClose: () => void;
-  droppedFile?: File | null;
+  droppedFiles?: File[];
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILES = 5;
 
 const ACCEPTED_TYPES = [
   // Imagens
@@ -56,89 +57,115 @@ function isImageType(type: string): boolean {
   return type.startsWith("image/");
 }
 
-export function FileUpload({ channelId, onFileUploaded, onClose, droppedFile }: Props) {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+interface FileEntry {
+  file: File;
+  preview: string | null;
+  error: string | null;
+}
+
+export function FileUpload({ channelId, onFileUploaded, onClose, droppedFiles }: Props) {
+  const [files, setFiles] = useState<FileEntry[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-populate when a file is dropped from drag & drop
-  const processFile = useCallback((selected: File) => {
-    setError(null);
-    if (selected.size > MAX_FILE_SIZE) {
-      setError("Arquivo muito grande (max. 10MB)");
-      setFile(null);
-      setPreview(null);
-      return;
-    }
-    setFile(selected);
-    if (isImageType(selected.type)) {
-      const reader = new FileReader();
-      reader.onload = (ev) => setPreview(ev.target?.result as string);
-      reader.readAsDataURL(selected);
-    } else {
-      setPreview(null);
-    }
+  const addFiles = useCallback((newFiles: File[]) => {
+    setGlobalError(null);
+    setFiles((prev) => {
+      const remaining = MAX_FILES - prev.length;
+      if (remaining <= 0) {
+        setGlobalError(`Máximo de ${MAX_FILES} arquivos`);
+        return prev;
+      }
+      const toAdd = newFiles.slice(0, remaining);
+      if (newFiles.length > remaining) {
+        setGlobalError(`Apenas ${remaining} arquivo(s) adicionado(s) (máximo ${MAX_FILES})`);
+      }
+      const entries: FileEntry[] = toAdd.map((file) => {
+        if (file.size > MAX_FILE_SIZE) {
+          return { file, preview: null, error: "Muito grande (max. 10MB)" };
+        }
+        return { file, preview: null, error: null };
+      });
+      // Generate previews for images
+      entries.forEach((entry, i) => {
+        if (!entry.error && isImageType(entry.file.type)) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            setFiles((curr) => {
+              const idx = prev.length + i;
+              if (idx >= curr.length) return curr;
+              const updated = [...curr];
+              updated[idx] = { ...updated[idx], preview: ev.target?.result as string };
+              return updated;
+            });
+          };
+          reader.readAsDataURL(entry.file);
+        }
+      });
+      return [...prev, ...entries];
+    });
   }, []);
 
   useEffect(() => {
-    if (droppedFile) {
-      processFile(droppedFile);
+    if (droppedFiles && droppedFiles.length > 0) {
+      addFiles(droppedFiles);
     }
-  }, [droppedFile, processFile]);
+  }, [droppedFiles, addFiles]);
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const selected = e.target.files?.[0];
-      if (!selected) return;
-      processFile(selected);
+      const selected = e.target.files;
+      if (!selected || selected.length === 0) return;
+      addFiles(Array.from(selected));
+      if (inputRef.current) inputRef.current.value = "";
     },
-    [processFile]
+    [addFiles]
   );
 
   const handleUpload = useCallback(async () => {
-    if (!file) return;
+    const validFiles = files.filter((f) => !f.error);
+    if (validFiles.length === 0) return;
 
     setUploading(true);
-    setError(null);
+    setGlobalError(null);
 
     try {
       const supabase = createClient();
-      const timestamp = Date.now();
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const path = `${channelId}/${timestamp}_${safeName}`;
+      for (const entry of validFiles) {
+        const timestamp = Date.now();
+        const safeName = entry.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = `${channelId}/${timestamp}_${safeName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("chat-files")
-        .upload(path, file, {
-          contentType: file.type,
-          upsert: false,
-        });
+        const { error: uploadError } = await supabase.storage
+          .from("chat-files")
+          .upload(path, entry.file, {
+            contentType: entry.file.type,
+            upsert: false,
+          });
 
-      if (uploadError) {
-        throw uploadError;
+        if (uploadError) throw uploadError;
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("chat-files").getPublicUrl(path);
+
+        onFileUploaded(publicUrl, entry.file.name, entry.file.type);
       }
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("chat-files").getPublicUrl(path);
-
-      onFileUploaded(publicUrl, file.name, file.type);
       onClose();
     } catch (err: any) {
-      setError(err?.message || "Erro ao enviar arquivo. Tente novamente.");
+      setGlobalError(err?.message || "Erro ao enviar arquivo. Tente novamente.");
     } finally {
       setUploading(false);
     }
-  }, [file, channelId, onFileUploaded, onClose]);
+  }, [files, channelId, onFileUploaded, onClose]);
 
-  const handleRemoveFile = useCallback(() => {
-    setFile(null);
-    setPreview(null);
-    setError(null);
-    if (inputRef.current) inputRef.current.value = "";
+  const removeFile = useCallback((index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setGlobalError(null);
   }, []);
+
+  const validCount = files.filter((f) => !f.error).length;
 
   return (
     <div className="mx-4 mb-2 bg-card border border-border rounded-xl p-3 animate-in slide-in-from-bottom-2 duration-200">
@@ -146,8 +173,13 @@ export function FileUpload({ channelId, onFileUploaded, onClose, droppedFile }: 
         <div className="flex items-center gap-2">
           <Paperclip className="w-4 h-4 text-primary" />
           <span className="text-sm font-medium text-foreground">
-            Anexar arquivo
+            Anexar arquivo{files.length > 1 ? "s" : ""}
           </span>
+          {files.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              ({files.length}/{MAX_FILES})
+            </span>
+          )}
         </div>
         <button
           onClick={onClose}
@@ -161,75 +193,87 @@ export function FileUpload({ channelId, onFileUploaded, onClose, droppedFile }: 
         ref={inputRef}
         type="file"
         accept={ACCEPTED_TYPES}
+        multiple
         onChange={handleFileSelect}
         className="hidden"
       />
 
-      {!file ? (
+      {files.length === 0 ? (
         <button
           onClick={() => inputRef.current?.click()}
           className="w-full flex flex-col items-center justify-center gap-2 py-6 border-2 border-dashed border-border rounded-lg hover:border-primary/50 hover:bg-accent/50 transition-colors cursor-pointer"
         >
           <Paperclip className="w-6 h-6 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">
-            Clique para selecionar um arquivo
+            Clique para selecionar ou arraste arquivos
           </span>
           <span className="text-xs text-muted-foreground/70">
-            Imagens, PDFs, documentos (max. 10MB)
+            Até {MAX_FILES} arquivos, max. 10MB cada
           </span>
         </button>
       ) : (
-        <div className="space-y-3">
-          {/* File preview */}
-          <div className="flex items-center gap-3 bg-muted rounded-lg p-3">
-            {preview ? (
-              <img
-                src={preview}
-                alt={file.name}
-                className="w-12 h-12 object-cover rounded-md border border-border"
-              />
-            ) : isImageType(file.type) ? (
-              <div className="w-12 h-12 flex items-center justify-center bg-primary/5 rounded-md border border-border">
-                <ImageIcon className="w-6 h-6 text-primary" />
-              </div>
-            ) : (
-              <div className="w-12 h-12 flex items-center justify-center bg-orange-50 rounded-md border border-border">
-                <FileText className="w-6 h-6 text-orange-500" />
-              </div>
-            )}
-
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">
-                {file.name}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {formatFileSize(file.size)}
-              </p>
-            </div>
-
-            {!uploading && (
-              <button
-                onClick={handleRemoveFile}
-                className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+        <div className="space-y-2">
+          {/* File list */}
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {files.map((entry, i) => (
+              <div
+                key={i}
+                className={`flex items-center gap-3 rounded-lg p-2 ${
+                  entry.error ? "bg-red-500/5 border border-red-500/20" : "bg-muted"
+                }`}
               >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+                {entry.preview ? (
+                  <img
+                    src={entry.preview}
+                    alt={entry.file.name}
+                    className="w-10 h-10 object-cover rounded-md border border-border"
+                  />
+                ) : isImageType(entry.file.type) ? (
+                  <div className="w-10 h-10 flex items-center justify-center bg-primary/5 rounded-md border border-border">
+                    <ImageIcon className="w-5 h-5 text-primary" />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 flex items-center justify-center bg-orange-50 dark:bg-orange-500/10 rounded-md border border-border">
+                    <FileText className="w-5 h-5 text-orange-500" />
+                  </div>
+                )}
+
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {entry.file.name}
+                  </p>
+                  <p className={`text-xs ${entry.error ? "text-red-500" : "text-muted-foreground"}`}>
+                    {entry.error || formatFileSize(entry.file.size)}
+                  </p>
+                </div>
+
+                {!uploading && (
+                  <button
+                    onClick={() => removeFile(i)}
+                    className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
 
           {/* Actions */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => inputRef.current?.click()}
-              disabled={uploading}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            >
-              Trocar arquivo
-            </button>
+            {files.length < MAX_FILES && (
+              <button
+                onClick={() => inputRef.current?.click()}
+                disabled={uploading}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                + Adicionar mais
+              </button>
+            )}
             <div className="flex-1" />
             <button
               onClick={handleUpload}
-              disabled={uploading}
+              disabled={uploading || validCount === 0}
               className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {uploading ? (
@@ -238,15 +282,15 @@ export function FileUpload({ channelId, onFileUploaded, onClose, droppedFile }: 
                   Enviando...
                 </>
               ) : (
-                "Enviar"
+                `Enviar${validCount > 1 ? ` (${validCount})` : ""}`
               )}
             </button>
           </div>
         </div>
       )}
 
-      {error && (
-        <p className="text-sm text-red-500 mt-2">{error}</p>
+      {globalError && (
+        <p className="text-sm text-red-500 mt-2">{globalError}</p>
       )}
     </div>
   );
