@@ -789,7 +789,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       {activeTab === "chat" ? (
         <>
           {/* Messages */}
-          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-1">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-1">
             {/* Load more indicator */}
             {loadingMore && (
               <div className="flex items-center justify-center py-3">
