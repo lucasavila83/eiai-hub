@@ -55,30 +55,52 @@ function isImageFile(fileName: string) {
   return IMAGE_EXTENSIONS.some((ext) => fileName.toLowerCase().endsWith(ext));
 }
 
-// URL regex for linkifying
-const URL_REGEX = /(https?:\/\/[^\s<>"')\]]+)/g;
+// URL regex for linkifying — captures full URLs including query strings and fragments
+const URL_REGEX = /(https?:\/\/[^\s<>"]+)/g;
+
+// Clean trailing punctuation that is likely not part of the URL
+function cleanUrl(url: string): string {
+  // Remove trailing punctuation that's probably sentence-ending, not URL
+  return url.replace(/[.,;:!?'")\]]+$/, "");
+}
 
 // Linkify plain text: convert URLs to <a> tags
 function linkify(text: string, keyPrefix: string) {
-  const parts = text.split(URL_REGEX);
-  if (parts.length === 1) return text;
-  return parts.map((part, i) => {
-    if (URL_REGEX.test(part)) {
-      URL_REGEX.lastIndex = 0; // reset regex state
-      return (
-        <a
-          key={`${keyPrefix}-link-${i}`}
-          href={part}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline break-all hover:opacity-80"
-        >
-          {part}
-        </a>
-      );
-    }
-    return part;
-  });
+  const matches: { index: number; url: string; cleaned: string }[] = [];
+  const regex = new RegExp(URL_REGEX.source, "g");
+  let m;
+  while ((m = regex.exec(text)) !== null) {
+    const cleaned = cleanUrl(m[1]);
+    matches.push({ index: m.index, url: m[1], cleaned });
+  }
+  if (matches.length === 0) return text;
+
+  const result: (string | React.ReactElement)[] = [];
+  let lastEnd = 0;
+  for (let i = 0; i < matches.length; i++) {
+    const { index, url, cleaned } = matches[i];
+    // Text before this URL
+    if (index > lastEnd) result.push(text.slice(lastEnd, index));
+    // The link
+    result.push(
+      <a
+        key={`${keyPrefix}-link-${i}`}
+        href={cleaned}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline break-all hover:opacity-80"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {cleaned}
+      </a>
+    );
+    // Any trailing chars that were cleaned off
+    const trailing = url.slice(cleaned.length);
+    if (trailing) result.push(trailing);
+    lastEnd = index + url.length;
+  }
+  if (lastEnd < text.length) result.push(text.slice(lastEnd));
+  return result;
 }
 
 // Simple markdown renderer
