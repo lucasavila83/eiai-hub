@@ -320,30 +320,33 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
   const perms = usePermissions();
 
-  // Sort DMs: unread first, then by last message (most recent), then alphabetically
-  const sortedDMs = dmChannels
-    .filter((dm) => {
-      if (!dmSearch.trim()) return true;
-      const name = dm.otherUser?.full_name || dm.otherUser?.email || "";
-      return name.toLowerCase().includes(dmSearch.toLowerCase());
-    })
+  // Split DMs into unread (sorted by most recent message) and read (alphabetical)
+  const filteredDMs = dmChannels.filter((dm) => {
+    if (!dmSearch.trim()) return true;
+    const name = dm.otherUser?.full_name || dm.otherUser?.email || "";
+    return name.toLowerCase().includes(dmSearch.toLowerCase());
+  });
+
+  const unreadDMs = filteredDMs
+    .filter((dm) => (unreadCounts[dm.id] || 0) > 0)
     .sort((a, b) => {
-      const unreadA = unreadCounts[a.id] || 0;
-      const unreadB = unreadCounts[b.id] || 0;
-      // 1. Unread first
-      if (unreadA > 0 && unreadB === 0) return -1;
-      if (unreadA === 0 && unreadB > 0) return 1;
-      // 2. Most recent message first
       const lastA = lastMessageAt[a.id] || "";
       const lastB = lastMessageAt[b.id] || "";
       if (lastA && lastB && lastA !== lastB) return lastB.localeCompare(lastA);
       if (lastA && !lastB) return -1;
       if (!lastA && lastB) return 1;
-      // 3. Alphabetical
+      return 0;
+    });
+
+  const readDMs = filteredDMs
+    .filter((dm) => (unreadCounts[dm.id] || 0) === 0)
+    .sort((a, b) => {
       const nameA = (a.otherUser?.full_name || a.otherUser?.email || "").toLowerCase();
       const nameB = (b.otherUser?.full_name || b.otherUser?.email || "").toLowerCase();
       return nameA.localeCompare(nameB, "pt-BR");
     });
+
+  const sortedDMs = [...unreadDMs, ...readDMs];
 
   const allNavItems = [
     { href: "/chat", icon: MessageSquare, label: "Chat", visible: true },
@@ -636,55 +639,61 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                 </div>
               </div>
               <div className="space-y-0.5">
-                {sortedDMs.map((dm) => {
+                {sortedDMs.map((dm, idx) => {
                   const isActive = pathname === `/chat/${dm.id}`;
                   const unread = unreadCounts[dm.id] || 0;
                   const user = dm.otherUser;
                   const name = user?.full_name || user?.email || "Usuário";
                   const isOnline = user?.status === "online";
+                  // Show divider between unread and read sections
+                  const showDivider = unreadDMs.length > 0 && idx === unreadDMs.length;
                   return (
-                    <Link
-                      key={dm.id}
-                      href={`/chat/${dm.id}`}
-                      onClick={handleMobileNavClose}
-                      onContextMenu={(e) => handleDMContextMenu(e, dm)}
-                      className={cn(
-                        "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
-                        isActive
-                          ? "bg-primary/10 text-primary font-medium"
-                          : unread > 0
-                          ? "text-foreground font-semibold hover:bg-accent"
-                          : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                    <div key={dm.id}>
+                      {showDivider && (
+                        <div className="border-t border-border my-1.5 mx-2" />
                       )}
-                    >
-                      <div className="relative shrink-0">
-                        {user?.avatar_url ? (
-                          <img src={user.avatar_url} alt={name} className="w-5 h-5 rounded-full object-cover" />
-                        ) : (
+                      <Link
+                        href={`/chat/${dm.id}`}
+                        onClick={handleMobileNavClose}
+                        onContextMenu={(e) => handleDMContextMenu(e, dm)}
+                        className={cn(
+                          "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
+                          isActive
+                            ? "bg-primary/10 text-primary font-medium"
+                            : unread > 0
+                            ? "text-foreground font-semibold hover:bg-accent"
+                            : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                        )}
+                      >
+                        <div className="relative shrink-0">
+                          {user?.avatar_url ? (
+                            <img src={user.avatar_url} alt={name} className="w-5 h-5 rounded-full object-cover" />
+                          ) : (
+                            <div
+                              className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                              style={{ backgroundColor: generateColor(name) }}
+                            >
+                              {getInitials(name)}
+                            </div>
+                          )}
                           <div
-                            className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-                            style={{ backgroundColor: generateColor(name) }}
-                          >
-                            {getInitials(name)}
+                            className={cn(
+                              "absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-gray-50",
+                              isOnline ? "bg-green-500" : "bg-gray-400"
+                            )}
+                          />
+                        </div>
+                        <span className="flex-1 truncate">{name}</span>
+                        {unread > 0 && !isActive && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <MessageSquare className="w-3.5 h-3.5 text-pink-500 fill-pink-500" />
+                            <span className="bg-pink-500 text-white text-[10px] rounded-full min-w-[16px] h-[16px] flex items-center justify-center font-bold px-1">
+                              {unread > 99 ? "99+" : unread}
+                            </span>
                           </div>
                         )}
-                        <div
-                          className={cn(
-                            "absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-gray-50",
-                            isOnline ? "bg-green-500" : "bg-gray-400"
-                          )}
-                        />
-                      </div>
-                      <span className="flex-1 truncate">{name}</span>
-                      {unread > 0 && !isActive && (
-                        <div className="flex items-center gap-1 shrink-0">
-                          <MessageSquare className="w-3.5 h-3.5 text-pink-500 fill-pink-500" />
-                          <span className="bg-pink-500 text-white text-[10px] rounded-full min-w-[16px] h-[16px] flex items-center justify-center font-bold px-1">
-                            {unread > 99 ? "99+" : unread}
-                          </span>
-                        </div>
-                      )}
-                    </Link>
+                      </Link>
+                    </div>
                   );
                 })}
                 {sortedDMs.length === 0 && (
