@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Plus, Clock, User, AlertTriangle, CheckCircle2, Loader2, Filter, X, ChevronDown,
-  Calendar, Mail, Phone, AtSign, FileText,
+  Calendar, Mail, Phone, AtSign, FileText, ArrowUpDown,
 } from "lucide-react";
 import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 import {
@@ -163,6 +163,52 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
   // Per-column date filters: phaseId -> "all" | "today" | "week" | "month" | "overdue"
   const [columnDateFilters, setColumnDateFilters] = useState<Record<string, string>>({});
 
+  // Sort
+  type SortKey = "" | "title" | "priority" | "sla_deadline" | "created_at" | "assignee";
+  const [sortBy, setSortBy] = useState<SortKey>("");
+  const [showSortPopover, setShowSortPopover] = useState(false);
+  const sortPopoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (sortPopoverRef.current && !sortPopoverRef.current.contains(e.target as Node)) setShowSortPopover(false);
+    }
+    if (showSortPopover) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showSortPopover]);
+
+  const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
+
+  function sortCards(list: BpmCard[]) {
+    if (!sortBy) return list;
+    return [...list].sort((a, b) => {
+      switch (sortBy) {
+        case "title":
+          return (a.title || "").localeCompare(b.title || "", "pt-BR");
+        case "priority":
+          return (PRIORITY_ORDER[a.priority] ?? 5) - (PRIORITY_ORDER[b.priority] ?? 5);
+        case "sla_deadline":
+          if (!a.sla_deadline && !b.sla_deadline) return 0;
+          if (!a.sla_deadline) return 1;
+          if (!b.sla_deadline) return -1;
+          return a.sla_deadline.localeCompare(b.sla_deadline);
+        case "created_at":
+          return (b.created_at || "").localeCompare(a.created_at || "");
+        case "assignee": {
+          const nameA = getMember(a.assignee_id)?.full_name || "";
+          const nameB = getMember(b.assignee_id)?.full_name || "";
+          if (!nameA && !nameB) return 0;
+          if (!nameA) return 1;
+          if (!nameB) return -1;
+          return nameA.localeCompare(nameB, "pt-BR");
+        }
+        default: return 0;
+      }
+    });
+  }
+
   const hasActiveFilters = filterAssignee !== "all" || filterPriority !== "all" || filterSla !== "all";
 
   function clearFilters() {
@@ -233,7 +279,7 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
 
   function getPhaseCards(phaseId: string) {
     const dateFilter = columnDateFilters[phaseId] || "all";
-    return cards
+    const filtered = cards
       .filter((c) => c.current_phase_id === phaseId && !c.is_archived)
       .filter((c) => {
         // Assignee filter
@@ -256,6 +302,7 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
         if (!matchesDateFilter(c, dateFilter)) return false;
         return true;
       });
+    return sortCards(filtered);
   }
 
   async function handleDragEnd(result: DropResult) {
@@ -293,6 +340,51 @@ export function ProcessKanban({ phases, cards, members, fields = [], cardValues 
             </span>
           )}
         </button>
+
+        {/* Sort button */}
+        <div className="relative" ref={sortPopoverRef}>
+          <button
+            onClick={() => setShowSortPopover((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer",
+              sortBy
+                ? "bg-primary/10 border-primary/30 text-primary"
+                : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+            )}
+          >
+            <ArrowUpDown className="w-3.5 h-3.5" />
+            Classificar
+            {sortBy && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+          </button>
+          {showSortPopover && (
+            <div className="absolute left-0 top-9 z-50 w-52 bg-popover border border-border rounded-lg shadow-lg py-1">
+              <div className="px-3 pb-1.5 pt-1 mb-1 border-b border-border">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Classificar por</span>
+              </div>
+              {([
+                { key: "", label: "Padrão" },
+                { key: "title", label: "Nome" },
+                { key: "assignee", label: "Responsável" },
+                { key: "priority", label: "Prioridade" },
+                { key: "sla_deadline", label: "Prazo SLA" },
+                { key: "created_at", label: "Data criada" },
+              ] as { key: SortKey; label: string }[]).map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => { setSortBy(opt.key); setShowSortPopover(false); }}
+                  className={cn(
+                    "w-full text-left px-3 py-1.5 text-sm transition-colors",
+                    sortBy === opt.key
+                      ? "text-primary bg-primary/10 font-medium"
+                      : "text-popover-foreground hover:bg-accent"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {(hasActiveFilters || hasColumnDateFilters) && (
           <button

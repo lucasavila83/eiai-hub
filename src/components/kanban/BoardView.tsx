@@ -8,7 +8,7 @@ import { CardDetailModal } from "./CardDetailModal";
 import { LabelManagerModal } from "./LabelManagerModal";
 import { createClient } from "@/lib/supabase/client";
 import { useKanbanStore } from "@/lib/stores/kanban-store";
-import { Plus, Settings, Tags, SlidersHorizontal, Filter, X, FileText, LayoutGrid, ArrowLeft, Crown, UserCircle } from "lucide-react";
+import { Plus, Settings, Tags, SlidersHorizontal, Filter, X, FileText, LayoutGrid, ArrowLeft, Crown, UserCircle, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import Link from "next/link";
 import { BoardSettingsModal } from "./BoardSettingsModal";
@@ -52,6 +52,12 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
   const [filterDue, setFilterDue] = useState<string>(""); // "overdue" | "today" | "this_week" | ""
   const [showFilters, setShowFilters] = useState(false);
 
+  // Sort
+  type SortKey = "" | "title" | "priority" | "due_date" | "created_at" | "updated_at" | "assignee";
+  const [sortBy, setSortBy] = useState<SortKey>("");
+  const [showSortPopover, setShowSortPopover] = useState(false);
+  const sortPopoverRef = useRef<HTMLDivElement>(null);
+
   const hasActiveFilters = filterPriority || filterAssignee || filterDue;
 
   function filterCards(columnCards: (Card & { card_assignees: any[] })[]) {
@@ -93,6 +99,39 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
     setFilterDue("");
   }
 
+  const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
+
+  function sortCards(list: (Card & { card_assignees: any[] })[]) {
+    if (!sortBy) return list;
+    return [...list].sort((a, b) => {
+      switch (sortBy) {
+        case "title":
+          return (a.title || "").localeCompare(b.title || "", "pt-BR");
+        case "priority":
+          return (PRIORITY_ORDER[a.priority] ?? 5) - (PRIORITY_ORDER[b.priority] ?? 5);
+        case "due_date":
+          if (!a.due_date && !b.due_date) return 0;
+          if (!a.due_date) return 1;
+          if (!b.due_date) return -1;
+          return a.due_date.localeCompare(b.due_date);
+        case "created_at":
+          return (b.created_at || "").localeCompare(a.created_at || "");
+        case "updated_at":
+          return (b.updated_at || "").localeCompare(a.updated_at || "");
+        case "assignee": {
+          const nameA = a.card_assignees?.[0]?.profiles?.full_name || "";
+          const nameB = b.card_assignees?.[0]?.profiles?.full_name || "";
+          if (!nameA && !nameB) return 0;
+          if (!nameA) return 1;
+          if (!nameB) return -1;
+          return nameA.localeCompare(nameB, "pt-BR");
+        }
+        default:
+          return 0;
+      }
+    });
+  }
+
   // Close fields popover on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -105,6 +144,19 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [showFieldsPopover]);
+
+  // Close sort popover on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (sortPopoverRef.current && !sortPopoverRef.current.contains(e.target as Node)) {
+        setShowSortPopover(false);
+      }
+    }
+    if (showSortPopover) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showSortPopover]);
 
   function toggleField(field: keyof VisibleFields) {
     setVisibleFields((prev) => ({ ...prev, [field]: !prev[field] }));
@@ -382,6 +434,54 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
             )}
           </button>
 
+          {/* Sort button */}
+          <div className="relative" ref={sortPopoverRef}>
+            <button
+              onClick={() => setShowSortPopover((v) => !v)}
+              className={`flex items-center gap-1.5 text-sm transition-colors px-2 py-1 rounded-md cursor-pointer ${
+                sortBy
+                  ? "text-primary bg-primary/10"
+                  : showSortPopover
+                  ? "text-foreground bg-accent"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              }`}
+            >
+              <ArrowUpDown className="w-4 h-4" />
+              Classificar
+              {sortBy && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+            </button>
+
+            {showSortPopover && (
+              <div className="absolute right-0 top-9 z-50 w-52 bg-popover border border-border rounded-lg shadow-lg py-1">
+                <div className="px-3 pb-1.5 pt-1 mb-1 border-b border-border">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Classificar por</span>
+                </div>
+                {([
+                  { key: "", label: "Posição (padrão)" },
+                  { key: "title", label: "Nome da tarefa" },
+                  { key: "assignee", label: "Responsável" },
+                  { key: "priority", label: "Prioridade" },
+                  { key: "due_date", label: "Data de vencimento" },
+                  { key: "created_at", label: "Data criada" },
+                  { key: "updated_at", label: "Data de atualização" },
+                ] as { key: SortKey; label: string }[]).map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => { setSortBy(opt.key); setShowSortPopover(false); }}
+                    className={cn(
+                      "w-full text-left px-3 py-1.5 text-sm transition-colors",
+                      sortBy === opt.key
+                        ? "text-primary bg-primary/10 font-medium"
+                        : "text-popover-foreground hover:bg-accent"
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Field visibility button */}
           <div className="relative" ref={fieldsPopoverRef}>
             <button
@@ -542,7 +642,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
                 >
                   <KanbanColumn
                     column={column}
-                    cards={filterCards(cards[column.id] || []).map((c) => ({
+                    cards={sortCards(filterCards(cards[column.id] || [])).map((c) => ({
                       ...c,
                       labels: cardLabelsMap[c.id] || [],
                       subtaskCount: subtaskCounts[c.id]?.total,
