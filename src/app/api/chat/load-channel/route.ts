@@ -112,6 +112,20 @@ export async function POST(req: NextRequest) {
     const messages = (messagesRes.data || []).reverse();
     const hasMore = messages.length >= 30;
 
+    // For DM channels, resolve the correct display name (other user's name)
+    if (channel.type === "dm") {
+      const { data: members } = await adminClient
+        .from("channel_members")
+        .select("user_id, profiles:user_id(id, full_name, email, avatar_url)")
+        .eq("channel_id", channelId);
+      if (members) {
+        const otherMember = members.find((m: any) => m.user_id !== userId);
+        if (otherMember?.profiles) {
+          channel.dm_other_user = otherMember.profiles;
+        }
+      }
+    }
+
     return NextResponse.json({ channel, messages, hasMore });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

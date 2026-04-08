@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
     }
 
-    // Check if DM already exists between these two users
+    // Check if DM already exists between these two users IN THIS ORG
     const { data: userChannels } = await adminClient
       .from("channel_members")
       .select("channel_id")
@@ -70,11 +70,23 @@ export async function POST(req: NextRequest) {
           .from("channels")
           .select("*")
           .eq("type", "dm")
+          .eq("org_id", orgId)
           .in("id", shared.map((s: any) => s.channel_id))
           .limit(1);
 
         if (existingDM && existingDM.length > 0) {
-          return NextResponse.json({ channel: existingDM[0] });
+          const dm = existingDM[0];
+          // ALWAYS un-archive when opening a DM (user explicitly wants to chat)
+          if (dm.is_archived) {
+            await adminClient
+              .from("channels")
+              .update({ is_archived: false })
+              .eq("id", dm.id);
+            dm.is_archived = false;
+          }
+          // Override name with the target user's name (from caller's perspective)
+          dm.name = dmName;
+          return NextResponse.json({ channel: dm });
         }
       }
     }

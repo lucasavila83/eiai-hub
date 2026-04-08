@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cn, getInitials, generateColor, formatDateTime } from "@/lib/utils/helpers";
 import { DynamicField, type FieldDef } from "./DynamicField";
+import { BpmDocumentsSection } from "./BpmDocumentsSection";
 import type { BpmCard } from "./ProcessKanban";
 import type { Phase } from "./PhaseEditor";
 
@@ -508,6 +509,16 @@ export function BpmCardModal({ card, phases, members, currentUserId, canEdit, on
                   ))}
                 </div>
               )}
+
+              {/* Documents section */}
+              <div className="mt-6 pt-5 border-t border-border">
+                <BpmDocumentsSection
+                  cardId={card.id}
+                  orgId={card.org_id}
+                  currentUserId={currentUserId}
+                  canEdit={canEdit}
+                />
+              </div>
             </div>
           </div>
 

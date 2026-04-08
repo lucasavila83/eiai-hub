@@ -94,9 +94,19 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   // Get the other user's name for DMs
   const otherUserName = useMemo(() => {
     if (channel.type !== "dm") return null;
+    // Prefer server-resolved other user (from load-channel API)
+    if (channel.dm_other_user) {
+      return channel.dm_other_user.full_name || channel.dm_other_user.email || channel.name;
+    }
+    // Prefer channel members (always accurate, even with no messages)
+    const otherMember = channelMembers?.find((m: any) => m.user_id !== currentUserId);
+    if (otherMember?.profiles) {
+      return otherMember.profiles.full_name || otherMember.profiles.email || channel.name;
+    }
+    // Fallback: from messages
     const otherMsg = channelMessages.find((m: any) => m.user_id !== currentUserId);
     return otherMsg?.profiles?.full_name || otherMsg?.profiles?.email || channel.name;
-  }, [channel, channelMessages, currentUserId]);
+  }, [channel, channelMembers, channelMessages, currentUserId]);
 
   // Load initial data
   useEffect(() => {
@@ -148,7 +158,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
     // Fetch channel members (for DM other-user detection + read receipts)
     supabase
       .from("channel_members")
-      .select("user_id, last_read_at")
+      .select("user_id, last_read_at, profiles:user_id(id, full_name, email, avatar_url)")
       .eq("channel_id", channel.id)
       .then(({ data }) => {
         if (data) {
@@ -987,7 +997,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
                   <div
                     key={task.id}
                     onClick={() => {
-                      if (task.board_id) router.push(`/boards/${task.board_id}`);
+                      if (task.board_id) router.push(`/boards/${task.board_id}?card=${task.id}`);
                     }}
                     className={cn(
                       "bg-card border border-border rounded-xl p-3 hover:border-primary/50 transition-all cursor-pointer",

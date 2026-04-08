@@ -696,9 +696,78 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                     </div>
                   );
                 })}
-                {sortedDMs.length === 0 && (
+                {/* Show matching org members not in current DMs when searching */}
+                {dmSearch.trim() && (() => {
+                  const dmUserIds = new Set(dmChannels.map((dm: any) => dm.otherUser?.id).filter(Boolean));
+                  const matchingMembers = orgMembers.filter((m: any) => {
+                    if (m.user_id === profile?.id) return false;
+                    if (dmUserIds.has(m.user_id)) return false;
+                    const name = m.profiles?.full_name || m.profiles?.email || "";
+                    return name.toLowerCase().includes(dmSearch.toLowerCase());
+                  });
+                  if (matchingMembers.length === 0) return null;
+                  return (
+                    <>
+                      {sortedDMs.length > 0 && <div className="border-t border-border my-1.5 mx-2" />}
+                      <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Iniciar conversa
+                      </div>
+                      {matchingMembers.map((m: any) => {
+                        const p = m.profiles;
+                        const name = p?.full_name || p?.email || "?";
+                        const isOnline = p?.status === "online";
+                        return (
+                          <button
+                            key={m.user_id}
+                            onClick={async () => {
+                              const dmName = p?.full_name || p?.email || "DM";
+                              const res = await fetch("/api/chat/create-dm", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ orgId: activeOrg?.id, targetUserId: m.user_id, dmName }),
+                              });
+                              if (res.ok) {
+                                const { channel } = await res.json();
+                                if (channel) {
+                                  setDmSearch("");
+                                  // Add to DM list immediately with profile data
+                                  const enriched = { ...channel, otherUser: p || null };
+                                  setDmChannels((prev) => {
+                                    const filtered = prev.filter((dm) => dm.id !== channel.id);
+                                    return [enriched, ...filtered];
+                                  });
+                                  router.push(`/chat/${channel.id}`);
+                                  // Delayed refresh to avoid overwriting the direct injection
+                                  setTimeout(() => loadDMs(activeOrg?.id || ""), 2000);
+                                }
+                              }
+                            }}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-left"
+                          >
+                            <div className="relative shrink-0">
+                              {p?.avatar_url ? (
+                                <img src={p.avatar_url} alt={name} className="w-5 h-5 rounded-full object-cover" />
+                              ) : (
+                                <div
+                                  className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                                  style={{ backgroundColor: generateColor(name) }}
+                                >
+                                  {getInitials(name)}
+                                </div>
+                              )}
+                              <div className={cn("absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-gray-50", isOnline ? "bg-green-500" : "bg-gray-400")} />
+                            </div>
+                            <span className="flex-1 truncate">{name}</span>
+                            <Plus className="w-3 h-3 text-muted-foreground" />
+                          </button>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
+                {sortedDMs.length === 0 && !dmSearch && (
                   <p className="text-xs text-muted-foreground px-2 py-1">
-                    {dmSearch ? "Nenhum resultado" : "Nenhuma conversa ainda"}
+                    Nenhuma conversa ainda
                   </p>
                 )}
               </div>
@@ -810,8 +879,19 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
           onClose={() => setShowCreateDM(false)}
           onCreated={(ch) => {
             setShowCreateDM(false);
+            // Build enriched channel with otherUser for immediate sidebar display
+            const enriched = {
+              ...ch,
+              otherUser: ch._otherUser || null,
+            };
+            // Add to DM list immediately (avoid duplicates)
+            setDmChannels((prev) => {
+              const filtered = prev.filter((dm) => dm.id !== ch.id);
+              return [enriched, ...filtered];
+            });
             router.push(`/chat/${ch.id}`);
-            loadDMs(activeOrg?.id || "");
+            // Delayed refresh to avoid overwriting the direct injection
+            setTimeout(() => loadDMs(activeOrg?.id || ""), 2000);
           }}
         />
       )}
@@ -1376,18 +1456,9 @@ function CreateDMModal({
     });
 
   async function startDM(targetUserId: string) {
-    // Check frontend cache first
-    const existing = existingDMs.find(
-      (dm: any) => dm.otherUser?.id === targetUserId
-    );
-    if (existing) {
-      onCreated(existing);
-      return;
-    }
-
     setLoading(true);
 
-    // All DM logic goes through server API (bypasses RLS issues)
+    // Always go through the server API — it handles un-archiving and deduplication
     const targetProfile = freshMembers.find((m: any) => m.user_id === targetUserId)?.profiles;
     const dmName = targetProfile?.full_name || targetProfile?.email || "DM";
 
@@ -1399,7 +1470,11 @@ function CreateDMModal({
 
     if (res.ok) {
       const { channel } = await res.json();
-      if (channel) onCreated(channel);
+      if (channel) {
+        // Enrich channel with otherUser profile so sidebar can display it immediately
+        channel._otherUser = targetProfile || null;
+        onCreated(channel);
+      }
     }
     setLoading(false);
   }

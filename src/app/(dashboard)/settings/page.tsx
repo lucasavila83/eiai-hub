@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { UserCircle, Users, UserCog, Bot, Shield, ChevronRight, ArrowLeft } from "lucide-react";
+import { UserCircle, Users, UserCog, Bot, Shield, Key, ChevronRight, ArrowLeft } from "lucide-react";
 import { PermissionGuard } from "@/components/layout/PermissionGuard";
 
 export default function SettingsPage() {
@@ -11,6 +11,7 @@ export default function SettingsPage() {
     { href: "/settings/teams", icon: UserCog, label: "Times", description: "Organize em times e equipes" },
     { href: "/settings/permissions", icon: Shield, label: "Permissões", description: "Configure o que cada papel pode fazer" },
     { href: "/settings/agents", icon: Bot, label: "Agentes IA", description: "Configure agentes de inteligência artificial" },
+    { href: "/settings/api-keys", icon: Key, label: "API Keys", description: "Gerencie chaves de acesso à API para integrações externas" },
   ];
 
   return (

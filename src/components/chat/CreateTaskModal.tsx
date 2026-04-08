@@ -51,6 +51,7 @@ export function CreateTaskModal({
 
   const [title, setTitle] = useState(cleanTitle);
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
   const [selectedBoardId, setSelectedBoardId] = useState("");
   const [selectedColumnId, setSelectedColumnId] = useState("");
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>(defaultAssigneeId ? [defaultAssigneeId] : []);
@@ -161,13 +162,17 @@ export function CreateTaskModal({
       ? existingCards[0].position + 1
       : 0;
 
+    const dueDateValue = dueDate
+      ? dueTime ? `${dueDate}T${dueTime}:00` : dueDate
+      : null;
+
     const { data: card, error } = await supabase
       .from("cards")
       .insert({
         column_id: selectedColumnId,
         board_id: selectedBoardId,
         title: title.trim(),
-        due_date: dueDate || null,
+        due_date: dueDateValue,
         priority: "none",
         created_by: currentUserId,
         position,
@@ -312,7 +317,12 @@ export function CreateTaskModal({
     msg += `\n**${card.title}**`;
     if (board) msg += `\n📌 Board: ${board.name}`;
     if (column) msg += `\n📊 Coluna: ${column.name}`;
-    if (card.due_date) msg += `\n📅 Prazo: ${new Date(card.due_date).toLocaleDateString("pt-BR")}`;
+    if (card.due_date) {
+      const d = new Date(card.due_date);
+      const dateStr = d.toLocaleDateString("pt-BR");
+      const timeStr = dueTime ? ` às ${dueTime}` : "";
+      msg += `\n📅 Prazo: ${dateStr}${timeStr}`;
+    }
 
     await supabase.from("messages").insert({
       channel_id: dmChannelId,
@@ -427,22 +437,31 @@ export function CreateTaskModal({
             </div>
           </div>
 
-          {/* Due Date (required) */}
+          {/* Due Date (required) + Time (optional) */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
               <Calendar className="w-4 h-4 text-muted-foreground" />
               Prazo de entrega <span className="text-destructive">*</span>
             </label>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              required
-              className={cn(
-                "w-full px-3 py-2 bg-background border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring",
-                !dueDate ? "border-destructive/50" : "border-input"
-              )}
-            />
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                required
+                className={cn(
+                  "flex-1 px-3 py-2 bg-background border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring",
+                  !dueDate ? "border-destructive/50" : "border-input"
+                )}
+              />
+              <input
+                type="time"
+                value={dueTime}
+                onChange={(e) => setDueTime(e.target.value)}
+                placeholder="Hora"
+                className="w-28 px-3 py-2 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
             {!dueDate && (
               <p className="text-xs text-destructive">Obrigatório</p>
             )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, getInitials, generateColor } from "@/lib/utils/helpers";
 import {
@@ -302,13 +302,20 @@ export function MessageBubble({ message, showHeader, isOwn, isRead, readBy = 0, 
   const editRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Focus edit textarea
+  // Auto-resize & focus edit textarea
+  const autoResize = useCallback((el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }, []);
+
   useEffect(() => {
     if (editing && editRef.current) {
       editRef.current.focus();
       editRef.current.selectionStart = editRef.current.value.length;
+      autoResize(editRef.current);
     }
-  }, [editing]);
+  }, [editing, autoResize]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -443,30 +450,29 @@ export function MessageBubble({ message, showHeader, isOwn, isRead, readBy = 0, 
 
           {/* Message content */}
           {editing ? (
-            <div className="space-y-1">
+            <div>
               <textarea
                 ref={editRef}
                 value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
+                onChange={(e) => { setEditContent(e.target.value); autoResize(e.target); }}
                 onKeyDown={handleEditKeyDown}
-                className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                rows={Math.min(editContent.split("\n").length, 5)}
+                className={`w-full text-sm resize-none overflow-hidden ${isOwn ? "text-white" : "text-foreground"}`}
+                style={{ minHeight: "1.25rem", background: "transparent", border: "none", padding: 0, outline: "none", boxShadow: "none" }}
               />
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-end gap-1 mt-0.5">
+                <button
+                  onClick={() => { setEditing(false); setEditContent(message.content); }}
+                  className={`flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded transition-colors ${isOwn ? "text-white/60 hover:text-white/90" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <X className="w-3 h-3" />
+                  Cancelar
+                </button>
                 <button
                   onClick={handleSaveEdit}
                   disabled={saving}
-                  className="flex items-center gap-1 text-xs text-primary hover:bg-accent px-2 py-1 rounded transition-colors disabled:opacity-50"
+                  className={`flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded transition-colors disabled:opacity-50 ${isOwn ? "text-white/80 hover:text-white" : "text-primary hover:text-primary/80"}`}
                 >
-                  <Check className="w-3.5 h-3.5" />
-                  Salvar
-                </button>
-                <button
-                  onClick={() => { setEditing(false); setEditContent(message.content); }}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent px-2 py-1 rounded transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  Cancelar
+                  <Check className="w-3 h-3" />
                 </button>
               </div>
             </div>
