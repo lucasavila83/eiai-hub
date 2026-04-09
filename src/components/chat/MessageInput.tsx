@@ -3,15 +3,29 @@
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import {
   Send, Paperclip, Smile, Bold, Italic,
-  Code, ListTodo, AtSign, X, Mic,
+  Code, ListTodo, AtSign, X, Mic, FileText, Image as ImageIcon, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils/helpers";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { EmojiPicker } from "./EmojiPicker";
 import { MentionAutocomplete } from "./MentionAutocomplete";
-import { FileUpload } from "./FileUpload";
 import { AudioRecorder } from "./AudioRecorder";
 import { createClient } from "@/lib/supabase/client";
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_PENDING_FILES = 5;
+
+interface PendingFile {
+  file: File;
+  preview: string | null;
+  error: string | null;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 interface Props {
   onSend: (content: string) => Promise<void>;
@@ -35,13 +49,13 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
   const [showEmoji, setShowEmoji] = useState(false);
   const [showMention, setShowMention] = useState(false);
   const [mentionSearch, setMentionSearch] = useState("");
-  const [showFileUpload, setShowFileUpload] = useState(false);
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [orgMembers, setOrgMembers] = useState<any[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
 
   // Auto-focus textarea when switching channels or when reply is triggered
@@ -64,9 +78,45 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
       });
   }, [orgId]);
 
+  function addPendingFiles(newFiles: File[]) {
+    setPendingFiles((prev) => {
+      const remaining = MAX_PENDING_FILES - prev.length;
+      if (remaining <= 0) return prev;
+      const toAdd = newFiles.slice(0, remaining);
+      const entries: PendingFile[] = toAdd.map((file) => {
+        if (file.size > MAX_FILE_SIZE) {
+          return { file, preview: null, error: "Muito grande (max. 10MB)" };
+        }
+        return { file, preview: null, error: null };
+      });
+      // Generate previews for images
+      entries.forEach((entry, i) => {
+        if (!entry.error && entry.file.type.startsWith("image/")) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            setPendingFiles((curr) => {
+              const idx = prev.length + i;
+              if (idx >= curr.length) return curr;
+              const updated = [...curr];
+              updated[idx] = { ...updated[idx], preview: ev.target?.result as string };
+              return updated;
+            });
+          };
+          reader.readAsDataURL(entry.file);
+        }
+      });
+      return [...prev, ...entries];
+    });
+  }
+
+  function removePendingFile(index: number) {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function handleSend() {
     const trimmed = content.trim();
-    if (!trimmed || sending) return;
+    const validFiles = pendingFiles.filter((f) => !f.error);
+    if ((!trimmed && validFiles.length === 0) || sending) return;
 
     // Check for /tarefa command
     if (trimmed.startsWith("/tarefa ")) {
@@ -83,10 +133,42 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
 
     setSending(true);
     setContent("");
+    setPendingFiles([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-    onSend(trimmed);
-    setSending(false);
-    textareaRef.current?.focus();
+
+    try {
+      // Upload pending files first
+      if (validFiles.length > 0 && channelId) {
+        const supabase = createClient();
+        for (const entry of validFiles) {
+          const timestamp = Date.now();
+          const safeName = entry.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const path = `${channelId}/${timestamp}_${safeName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("chat-files")
+            .upload(path, entry.file, { contentType: entry.file.type, upsert: false });
+
+          if (uploadError) throw uploadError;
+
+          const { data: { publicUrl } } = supabase.storage.from("chat-files").getPublicUrl(path);
+          const label = entry.file.type.startsWith("image/")
+            ? `📎 **${entry.file.name}**\n${publicUrl}`
+            : `📎 Arquivo: **${entry.file.name}**\n${publicUrl}`;
+          await onSend(label);
+        }
+      }
+
+      // Send text message (if any)
+      if (trimmed) {
+        await onSend(trimmed);
+      }
+    } catch (err) {
+      console.error("Erro ao enviar:", err);
+    } finally {
+      setSending(false);
+      textareaRef.current?.focus();
+    }
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -189,15 +271,6 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
     }, 0);
   }
 
-  function handleFileUploaded(fileUrl: string, fileName: string, fileType: string) {
-    setShowFileUpload(false);
-    if (fileType.startsWith("image/")) {
-      onSend(`📎 **${fileName}**\n${fileUrl}`);
-    } else {
-      onSend(`📎 Arquivo: **${fileName}**\n${fileUrl}`);
-    }
-  }
-
   function handleAudioSent(audioUrl: string, transcript: string | null, duration: number) {
     setShowAudioRecorder(false);
     const mins = Math.floor(duration / 60);
@@ -220,44 +293,22 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
     setCreatingTask(false);
   }
 
-  // Handle paste — detect images from clipboard and upload
-  async function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+  // Handle paste — detect files from clipboard and stage them
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const items = e.clipboardData?.items;
     if (!items || !channelId) return;
 
+    const filesToAdd: File[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (item.type.startsWith("image/")) {
-        e.preventDefault();
+      if (item.type.startsWith("image/") || item.type.startsWith("application/") || item.type.startsWith("video/") || item.type.startsWith("audio/")) {
         const file = item.getAsFile();
-        if (!file) return;
-
-        // Max 10MB
-        if (file.size > 10 * 1024 * 1024) return;
-
-        setSending(true);
-        try {
-          const supabase = createClient();
-          const timestamp = Date.now();
-          const ext = file.type.split("/")[1] || "png";
-          const fileName = `screenshot_${timestamp}.${ext}`;
-          const path = `${channelId}/${timestamp}_${fileName}`;
-
-          const { error: uploadError } = await supabase.storage
-            .from("chat-files")
-            .upload(path, file, { contentType: file.type, upsert: false });
-
-          if (uploadError) throw uploadError;
-
-          const { data: { publicUrl } } = supabase.storage.from("chat-files").getPublicUrl(path);
-          await onSend(`📎 **${fileName}**\n${publicUrl}`);
-        } catch (err) {
-          console.error("Erro ao colar imagem:", err);
-        } finally {
-          setSending(false);
-        }
-        return;
+        if (file) filesToAdd.push(file);
       }
+    }
+    if (filesToAdd.length > 0) {
+      e.preventDefault();
+      addPendingFiles(filesToAdd);
     }
   }
 
@@ -300,9 +351,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
 
     const files = e.dataTransfer.files;
     if (files.length > 0 && channelId) {
-      const fileList = Array.from(files).slice(0, 5);
-      setDroppedFiles(fileList);
-      setShowFileUpload(true);
+      addPendingFiles(Array.from(files));
     }
   }
 
@@ -363,17 +412,67 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
         </div>
       )}
 
-      {/* File upload inline */}
-      {showFileUpload && channelId && (
-        <div className="mb-2">
-          <FileUpload
-            channelId={channelId}
-            onFileUploaded={handleFileUploaded}
-            onClose={() => { setShowFileUpload(false); setDroppedFiles([]); }}
-            droppedFiles={droppedFiles}
-          />
+      {/* Pending files preview */}
+      {pendingFiles.length > 0 && (
+        <div className="mb-2 bg-card border border-border rounded-xl p-2">
+          <div className="flex flex-wrap gap-2">
+            {pendingFiles.map((entry, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "relative group flex items-center gap-2 rounded-lg p-1.5 pr-7 max-w-[220px]",
+                  entry.error ? "bg-red-500/10 border border-red-500/20" : "bg-muted"
+                )}
+              >
+                {entry.preview ? (
+                  <img src={entry.preview} alt={entry.file.name} className="w-10 h-10 object-cover rounded-md border border-border" />
+                ) : entry.file.type.startsWith("image/") ? (
+                  <div className="w-10 h-10 flex items-center justify-center bg-primary/5 rounded-md border border-border shrink-0">
+                    <ImageIcon className="w-5 h-5 text-primary" />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 flex items-center justify-center bg-orange-50 dark:bg-orange-500/10 rounded-md border border-border shrink-0">
+                    <FileText className="w-5 h-5 text-orange-500" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-foreground truncate">{entry.file.name}</p>
+                  <p className={cn("text-[10px]", entry.error ? "text-red-500" : "text-muted-foreground")}>
+                    {entry.error || formatFileSize(entry.file.size)}
+                  </p>
+                </div>
+                <button
+                  onClick={() => removePendingFile(i)}
+                  className="absolute top-1 right-1 w-4 h-4 flex items-center justify-center rounded-full bg-foreground/10 hover:bg-foreground/20 text-foreground/70 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            {pendingFiles.length < MAX_PENDING_FILES && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-10 h-10 flex items-center justify-center border-2 border-dashed border-border rounded-lg hover:border-primary/50 hover:bg-accent/50 transition-colors text-muted-foreground hover:text-primary"
+                title="Adicionar mais arquivos"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       )}
+
+      {/* Hidden file input for paperclip / add more */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        onChange={(e) => {
+          if (e.target.files) addPendingFiles(Array.from(e.target.files));
+          e.target.value = "";
+        }}
+        className="hidden"
+      />
 
       {/* Audio recorder inline */}
       {showAudioRecorder && channelId && (
@@ -487,11 +586,11 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
               <AtSign className={isMobile ? "w-5 h-5" : "w-3.5 h-3.5"} />
             </button>
             <button
-              onClick={() => setShowFileUpload(!showFileUpload)}
+              onClick={() => fileInputRef.current?.click()}
               className={cn(
                 "text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent",
                 isMobile ? "p-2" : "p-1",
-                showFileUpload && "text-primary bg-primary/10"
+                pendingFiles.length > 0 && "text-primary bg-primary/10"
               )}
               title="Anexar arquivo"
             >
@@ -510,7 +609,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
             </button>
             <div className={cn("w-px bg-border", isMobile ? "h-5 mx-1.5" : "h-4 mx-1")} />
             <button
-              onClick={() => { setShowAudioRecorder(!showAudioRecorder); setShowFileUpload(false); }}
+              onClick={() => setShowAudioRecorder(!showAudioRecorder)}
               className={cn(
                 "text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent",
                 isMobile ? "p-2" : "p-1",
@@ -541,16 +640,20 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
 
             <button
               onClick={handleSend}
-              disabled={!content.trim() || sending}
+              disabled={(!content.trim() && pendingFiles.filter(f => !f.error).length === 0) || sending}
               className={cn(
                 "rounded-lg transition-colors shrink-0 self-center",
                 isMobile ? "p-3" : "p-2",
-                content.trim()
+                (content.trim() || pendingFiles.filter(f => !f.error).length > 0)
                   ? "text-primary hover:bg-primary/10"
                   : "text-muted-foreground cursor-not-allowed"
               )}
             >
-              <Send className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
+              {sending ? (
+                <Loader2 className={cn("animate-spin", isMobile ? "w-5 h-5" : "w-4 h-4")} />
+              ) : (
+                <Send className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
+              )}
             </button>
           </div>
         </div>
