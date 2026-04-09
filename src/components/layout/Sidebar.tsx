@@ -110,6 +110,8 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   useEffect(() => { profileRef.current = profile; }, [profile]);
   const activeOrgRef = useRef(activeOrg);
   useEffect(() => { activeOrgRef.current = activeOrg; }, [activeOrg]);
+  const dmChannelsRef = useRef(dmChannels);
+  useEffect(() => { dmChannelsRef.current = dmChannels; }, [dmChannels]);
 
   // Stable IDs for subscription deps (avoid object reference changes)
   const profileId = profile?.id;
@@ -172,14 +174,11 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         if (pathnameRef.current !== `/chat/${msg.channel_id}`) {
           incrementUnread(msg.channel_id);
         }
-        // Check if this message belongs to an archived DM → un-archive it
-        const { data: ch } = await supabase
-          .from("channels")
-          .select("id, is_archived, type, org_id")
-          .eq("id", msg.channel_id)
-          .single();
-        if (ch?.is_archived && ch.type === "dm" && ch.org_id === activeOrgRef.current?.id) {
-          await supabase.from("channels").update({ is_archived: false }).eq("id", ch.id);
+        // If this channel is NOT in the sidebar DM list, reload DMs
+        // (the DB trigger auto_unarchive_dm_on_message already un-archived it)
+        const currentDMs = dmChannelsRef.current;
+        const isInSidebar = currentDMs.some((dm: any) => dm.id === msg.channel_id);
+        if (!isInSidebar) {
           const org = activeOrgRef.current;
           if (org) loadDMs(org.id);
         }
