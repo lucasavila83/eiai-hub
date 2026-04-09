@@ -192,14 +192,15 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     return () => { supabase.removeChannel(sub); };
   }, [orgId, profileId]); // Only string IDs — stable across re-renders
 
-  // Poll unread counts every 3s for instant badge updates
+  // Poll unread counts + DM list every few seconds for instant updates
   useEffect(() => {
-    if (!profileId) return;
+    if (!profileId || !orgId) return;
     const interval = setInterval(() => {
       loadUnreadCounts();
-    }, 3000);
+      loadDMs(orgId);
+    }, 5000);
     return () => clearInterval(interval);
-  }, [profileId, loadUnreadCounts]);
+  }, [profileId, orgId, loadUnreadCounts]);
 
   async function loadChannels(orgId: string) {
     const { data } = await supabase
