@@ -76,14 +76,12 @@ export async function POST(req: NextRequest) {
 
         if (existingDM && existingDM.length > 0) {
           const dm = existingDM[0];
-          // ALWAYS un-archive when opening a DM (user explicitly wants to chat)
-          if (dm.is_archived) {
-            await adminClient
-              .from("channels")
-              .update({ is_archived: false })
-              .eq("id", dm.id);
-            dm.is_archived = false;
-          }
+          // Un-hide for the CURRENT user only (per-user visibility)
+          await adminClient
+            .from("channel_members")
+            .update({ is_hidden: false })
+            .eq("channel_id", dm.id)
+            .eq("user_id", userId);
           // Override name with the target user's name (from caller's perspective)
           dm.name = dmName;
           return NextResponse.json({ channel: dm });

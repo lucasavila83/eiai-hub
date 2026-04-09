@@ -198,7 +198,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     const interval = setInterval(() => {
       loadUnreadCounts();
       loadDMs(orgId);
-    }, 5000);
+    }, 3000);
     return () => clearInterval(interval);
   }, [profileId, orgId, loadUnreadCounts]);
 
@@ -216,11 +216,12 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   async function loadDMs(orgId: string) {
     if (!profile) return;
 
-    // First get channel IDs where current user is a member
+    // Get channel IDs where current user is a member and NOT hidden (per-user)
     const { data: myChannelMembers } = await supabase
       .from("channel_members")
       .select("channel_id")
-      .eq("user_id", profile.id);
+      .eq("user_id", profile.id)
+      .eq("is_hidden", false);
 
     if (!myChannelMembers || myChannelMembers.length === 0) {
       setDmChannels([]);
@@ -229,13 +230,12 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
     const myChannelIds = myChannelMembers.map((cm: any) => cm.channel_id);
 
-    // Then load only DM channels the user belongs to
+    // Then load only DM channels the user belongs to (no is_archived filter — use is_hidden instead)
     const { data } = await supabase
       .from("channels")
       .select("*, channel_members(user_id, profiles:user_id(id, full_name, avatar_url, email, status))")
       .eq("org_id", orgId)
       .eq("type", "dm")
-      .eq("is_archived", false)
       .in("id", myChannelIds);
 
     if (data) {
@@ -288,7 +288,12 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   }
 
   async function handleArchiveDM(dmId: string) {
-    await supabase.from("channels").update({ is_archived: true }).eq("id", dmId);
+    // Hide only for current user (per-user visibility)
+    await supabase
+      .from("channel_members")
+      .update({ is_hidden: true })
+      .eq("channel_id", dmId)
+      .eq("user_id", profile?.id || "");
     setDmChannels((prev) => prev.filter((dm) => dm.id !== dmId));
     if (pathname === `/chat/${dmId}`) {
       router.push("/chat");
