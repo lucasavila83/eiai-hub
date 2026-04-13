@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime, getInitials, generateColor } from "@/lib/utils/helpers";
 import {
-  Bot, ListTodo, Mail, Forward, ChevronDown, ChevronUp,
+  Bot, ListTodo, Mail, Forward, ChevronDown, ChevronUp, Copy,
   Pencil, Check, CheckCheck, X, FileText, Image as ImageIcon, Download,
   File, FileSpreadsheet, FileArchive, Play, Pause, Reply,
 } from "lucide-react";
@@ -556,6 +556,17 @@ export function MessageBubble({ message, showHeader, isOwn, isRead, readBy = 0, 
           className="fixed z-[100] bg-card border border-border rounded-xl shadow-2xl py-1 w-52 animate-in fade-in zoom-in-95 duration-100"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          <button
+            onClick={() => {
+              const sel = window.getSelection()?.toString();
+              navigator.clipboard.writeText(sel || message.content);
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+          >
+            <Copy className="w-4 h-4 text-muted-foreground" />
+            {window.getSelection()?.toString() ? "Copiar seleção" : "Copiar mensagem"}
+          </button>
           <button
             onClick={() => {
               setContextMenu(null);
