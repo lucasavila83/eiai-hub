@@ -57,25 +57,29 @@ export default function ApiKeysPage() {
     e.preventDefault();
     if (!newKeyName.trim()) return;
     setCreating(true);
+    try {
+      const res = await fetch("/api/v1/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          org_id: orgId,
+          name: newKeyName.trim(),
+          scopes: newKeyScopes,
+        }),
+      });
 
-    const res = await fetch("/api/v1/api-keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        org_id: orgId,
-        name: newKeyName.trim(),
-        scopes: newKeyScopes,
-      }),
-    });
-
-    const json = await res.json();
-    if (json.data?.key) {
-      setCreatedKey(json.data.key);
-      setNewKeyName("");
-      setShowCreate(false);
-      loadKeys();
+      const json = await res.json();
+      if (json.data?.key) {
+        setCreatedKey(json.data.key);
+        setNewKeyName("");
+        setShowCreate(false);
+        loadKeys();
+      }
+    } catch (err) {
+      console.error("Failed to create API key:", err);
+    } finally {
+      setCreating(false);
     }
-    setCreating(false);
   }
 
   async function handleDelete(id: string) {
