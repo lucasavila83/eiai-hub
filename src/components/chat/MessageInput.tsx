@@ -301,7 +301,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
     const filesToAdd: File[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (item.type.startsWith("image/") || item.type.startsWith("application/") || item.type.startsWith("video/") || item.type.startsWith("audio/")) {
+      if (item.kind === "file") {
         const file = item.getAsFile();
         if (file) filesToAdd.push(file);
       }
