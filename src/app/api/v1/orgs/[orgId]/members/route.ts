@@ -28,9 +28,9 @@ export const GET = apiHandler(async (req: NextRequest, auth) => {
   // Fetch page
   const { data, error } = await admin
     .from("org_members")
-    .select("user_id, role, created_at, profiles:user_id(id, full_name, email, avatar_url)")
+    .select("user_id, role, joined_at, profiles:user_id(id, full_name, email, avatar_url)")
     .eq("org_id", auth.orgId)
-    .order("created_at", { ascending: true })
+    .order("joined_at", { ascending: true })
     .range(offset, offset + limit - 1);
 
   if (error) {
@@ -40,7 +40,7 @@ export const GET = apiHandler(async (req: NextRequest, auth) => {
   const members = (data || []).map((m: any) => ({
     user_id: m.user_id,
     role: m.role,
-    created_at: m.created_at,
+    joined_at: m.joined_at,
     profile: m.profiles,
   }));
 
