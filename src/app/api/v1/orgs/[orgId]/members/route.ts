@@ -68,17 +68,23 @@ export const GET = apiHandler(async (req: NextRequest, auth) => {
     }
   }
 
-  // If ?ensure_dm=true, create missing DMs between caller and each listed user
+  // If ?ensure_dm=true, create missing DMs between caller and each listed user (in parallel)
   const ensureDm = new URL(req.url).searchParams.get("ensure_dm") === "true";
   if (ensureDm) {
-    for (const m of data || []) {
-      if (m.user_id === auth.userId) continue;
-      if (dmMap.has(m.user_id)) continue;
-      const profile: any = m.profiles;
-      const name = profile?.full_name || profile?.email || "DM";
-      const id = await ensureDmChannel(admin, auth.orgId, auth.userId, m.user_id, name);
-      if (id) dmMap.set(m.user_id, id);
-    }
+    const missing = (data || []).filter(
+      (m: any) => m.user_id !== auth.userId && !dmMap.has(m.user_id)
+    );
+    const results = await Promise.all(
+      missing.map(async (m: any) => {
+        const profile: any = m.profiles;
+        const name = profile?.full_name || profile?.email || "DM";
+        const id = await ensureDmChannel(admin, auth.orgId, auth.userId, m.user_id, name);
+        return { userId: m.user_id, id };
+      })
+    );
+    results.forEach((r) => {
+      if (r.id) dmMap.set(r.userId, r.id);
+    });
   }
 
   const members = (data || []).map((m: any) => ({
