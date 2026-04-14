@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { apiHandler, apiSuccess, apiPaginated, apiError, ApiErrorCode, requireScope, requireAdmin, parsePagination } from "@/lib/api";
+import { ensureDmChannel } from "@/lib/api/dm-helpers";
 
 /**
  * GET /api/v1/orgs/:orgId/members
@@ -64,6 +65,19 @@ export const GET = apiHandler(async (req: NextRequest, auth) => {
       (otherMembers || []).forEach((m: any) => {
         if (!dmMap.has(m.user_id)) dmMap.set(m.user_id, m.channel_id);
       });
+    }
+  }
+
+  // If ?ensure_dm=true, create missing DMs between caller and each listed user
+  const ensureDm = new URL(req.url).searchParams.get("ensure_dm") === "true";
+  if (ensureDm) {
+    for (const m of data || []) {
+      if (m.user_id === auth.userId) continue;
+      if (dmMap.has(m.user_id)) continue;
+      const profile: any = m.profiles;
+      const name = profile?.full_name || profile?.email || "DM";
+      const id = await ensureDmChannel(admin, auth.orgId, auth.userId, m.user_id, name);
+      if (id) dmMap.set(m.user_id, id);
     }
   }
 

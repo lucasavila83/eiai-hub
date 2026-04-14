@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { apiHandler, apiSuccess, apiError, ApiErrorCode, requireScope } from "@/lib/api";
+import { findDmChannel, ensureDmChannel } from "@/lib/api/dm-helpers";
 
 /**
  * GET /api/v1/users/:userId
@@ -42,34 +43,15 @@ export const GET = apiHandler(async (req: NextRequest, auth) => {
     return apiError(ApiErrorCode.NOT_FOUND, "User profile not found.", 404);
   }
 
-  // Find the DM channel between the caller and this user (if any)
+  // Find (or create, if ?ensure_dm=true) the DM channel between the caller and this user
+  const ensureDm = new URL(req.url).searchParams.get("ensure_dm") === "true";
   let dm_channel_id: string | null = null;
   if (userId !== auth.userId) {
-    const { data: callerChannels } = await admin
-      .from("channel_members")
-      .select("channel_id")
-      .eq("user_id", auth.userId);
-
-    const callerIds = (callerChannels || []).map((c: any) => c.channel_id);
-    if (callerIds.length > 0) {
-      const { data: shared } = await admin
-        .from("channel_members")
-        .select("channel_id")
-        .eq("user_id", userId)
-        .in("channel_id", callerIds);
-
-      const sharedIds = (shared || []).map((s: any) => s.channel_id);
-      if (sharedIds.length > 0) {
-        const { data: dmChannel } = await admin
-          .from("channels")
-          .select("id")
-          .eq("type", "dm")
-          .eq("org_id", auth.orgId)
-          .in("id", sharedIds)
-          .limit(1)
-          .maybeSingle();
-        if (dmChannel) dm_channel_id = dmChannel.id;
-      }
+    if (ensureDm) {
+      const name = profile.full_name || profile.email || "DM";
+      dm_channel_id = await ensureDmChannel(admin, auth.orgId, auth.userId, userId, name);
+    } else {
+      dm_channel_id = await findDmChannel(admin, auth.orgId, auth.userId, userId);
     }
   }
 
