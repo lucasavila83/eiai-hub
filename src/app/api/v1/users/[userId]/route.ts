@@ -42,7 +42,38 @@ export const GET = apiHandler(async (req: NextRequest, auth) => {
     return apiError(ApiErrorCode.NOT_FOUND, "User profile not found.", 404);
   }
 
-  return apiSuccess({ ...profile, role: membership.role });
+  // Find the DM channel between the caller and this user (if any)
+  let dm_channel_id: string | null = null;
+  if (userId !== auth.userId) {
+    const { data: callerChannels } = await admin
+      .from("channel_members")
+      .select("channel_id")
+      .eq("user_id", auth.userId);
+
+    const callerIds = (callerChannels || []).map((c: any) => c.channel_id);
+    if (callerIds.length > 0) {
+      const { data: shared } = await admin
+        .from("channel_members")
+        .select("channel_id")
+        .eq("user_id", userId)
+        .in("channel_id", callerIds);
+
+      const sharedIds = (shared || []).map((s: any) => s.channel_id);
+      if (sharedIds.length > 0) {
+        const { data: dmChannel } = await admin
+          .from("channels")
+          .select("id")
+          .eq("type", "dm")
+          .eq("org_id", auth.orgId)
+          .in("id", sharedIds)
+          .limit(1)
+          .maybeSingle();
+        if (dmChannel) dm_channel_id = dmChannel.id;
+      }
+    }
+  }
+
+  return apiSuccess({ ...profile, role: membership.role, dm_channel_id });
 });
 
 /**

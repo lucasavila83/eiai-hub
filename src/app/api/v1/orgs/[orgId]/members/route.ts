@@ -37,11 +37,42 @@ export const GET = apiHandler(async (req: NextRequest, auth) => {
     return apiError(ApiErrorCode.INTERNAL_ERROR, error.message, 500);
   }
 
+  // Build map of otherUserId -> dm_channel_id for DMs the caller is part of
+  const dmMap = new Map<string, string>();
+  const { data: callerChannels } = await admin
+    .from("channel_members")
+    .select("channel_id")
+    .eq("user_id", auth.userId);
+
+  const callerChannelIds = (callerChannels || []).map((c: any) => c.channel_id);
+  if (callerChannelIds.length > 0) {
+    const { data: dmChannels } = await admin
+      .from("channels")
+      .select("id")
+      .eq("type", "dm")
+      .eq("org_id", auth.orgId)
+      .in("id", callerChannelIds);
+
+    const dmChannelIds = (dmChannels || []).map((c: any) => c.id);
+    if (dmChannelIds.length > 0) {
+      const { data: otherMembers } = await admin
+        .from("channel_members")
+        .select("channel_id, user_id")
+        .in("channel_id", dmChannelIds)
+        .neq("user_id", auth.userId);
+
+      (otherMembers || []).forEach((m: any) => {
+        if (!dmMap.has(m.user_id)) dmMap.set(m.user_id, m.channel_id);
+      });
+    }
+  }
+
   const members = (data || []).map((m: any) => ({
     user_id: m.user_id,
     role: m.role,
     joined_at: m.joined_at,
     profile: m.profiles,
+    dm_channel_id: m.user_id === auth.userId ? null : dmMap.get(m.user_id) || null,
   }));
 
   return apiPaginated(members, page, limit, count || 0);
