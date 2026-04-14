@@ -17,7 +17,7 @@ interface Props {
   droppedFiles?: File[];
 }
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_FILES = 5;
 
 // Accept all file types — no MIME restriction
@@ -58,7 +58,7 @@ export function FileUpload({ channelId, onFileUploaded, onClose, droppedFiles }:
       }
       const entries: FileEntry[] = toAdd.map((file) => {
         if (file.size > MAX_FILE_SIZE) {
-          return { file, preview: null, error: "Muito grande (max. 10MB)" };
+          return { file, preview: null, error: "Muito grande (max. 50MB)" };
         }
         return { file, preview: null, error: null };
       });
@@ -183,7 +183,7 @@ export function FileUpload({ channelId, onFileUploaded, onClose, droppedFiles }:
             Clique para selecionar ou arraste arquivos
           </span>
           <span className="text-xs text-muted-foreground/70">
-            Até {MAX_FILES} arquivos, max. 10MB cada
+            Até {MAX_FILES} arquivos, max. 50MB cada
           </span>
         </button>
       ) : (

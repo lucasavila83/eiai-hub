@@ -1,10 +1,10 @@
 -- Create chat-files storage bucket (previously created manually)
 -- No MIME type restriction — accept all file types
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('chat-files', 'chat-files', true, 10485760, NULL)
+VALUES ('chat-files', 'chat-files', true, 52428800, NULL)
 ON CONFLICT (id) DO UPDATE SET
   allowed_mime_types = NULL,
-  file_size_limit = 10485760;
+  file_size_limit = 52428800;
 
 -- Storage policies for chat-files (IF NOT EXISTS to avoid errors if already created manually)
 DO $$ BEGIN
