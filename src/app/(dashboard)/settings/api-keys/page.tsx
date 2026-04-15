@@ -540,7 +540,7 @@ function EndpointBlock({ endpoint }: { endpoint: EndpointDoc }) {
           <div>
             <p className="font-semibold text-foreground mb-1">curl</p>
             <pre className="bg-muted/50 border border-border rounded p-2 overflow-x-auto font-mono text-[11px] text-foreground">
-{`curl -X ${endpoint.method} 'https://hub.eiai.com.br${endpoint.path.replace(/:(\w+)/g, "<$1>")}' \\
+{`curl -X ${endpoint.method} 'https://eiai-hub.vercel.app${endpoint.path.replace(/:(\w+)/g, "<$1>")}' \\
   -H 'X-API-Key: eiai_xxxxxxxxxxxx'${endpoint.body ? ` \\\n  -H 'Content-Type: application/json' \\\n  -d '{...}'` : ""}`}
             </pre>
           </div>
