@@ -109,10 +109,12 @@ export const API_CATALOG: EndpointCategory[] = [
         method: "GET",
         path: "/api/v1/orgs/:orgId/members",
         summary: "Listar membros da organização",
+        description: "Cada item inclui `dm_channel_id` — o id do canal de DM entre o caller e o membro (null se não existir). Passe `ensure_dm=true` para criar automaticamente os DMs que faltarem.",
         scopes: ["read:users"],
         query: [
           { name: "page", type: "number", description: "Página (padrão 1)" },
           { name: "limit", type: "number", description: "Por página, máx 100 (padrão 20)" },
+          { name: "ensure_dm", type: "boolean", description: "Se true, cria DMs entre caller e cada membro quando ainda não existirem" },
         ],
       },
       {
@@ -142,7 +144,11 @@ export const API_CATALOG: EndpointCategory[] = [
         method: "GET",
         path: "/api/v1/users/:userId",
         summary: "Detalhes de um usuário",
+        description: "Retorna o perfil e inclui `dm_channel_id` — id do canal de DM entre o caller e o usuário (null se não existir). Passe `ensure_dm=true` para criar o DM automaticamente.",
         scopes: ["read:users"],
+        query: [
+          { name: "ensure_dm", type: "boolean", description: "Se true, cria o DM entre caller e o usuário quando ainda não existir" },
+        ],
       },
     ],
   },
