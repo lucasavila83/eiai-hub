@@ -25,6 +25,9 @@ import {
   ArrowLeft,
   Settings2,
   LayoutDashboard,
+  History,
+  AlertCircle,
+  CheckCheck,
 } from "lucide-react";
 import { cn, formatDateTime } from "@/lib/utils/helpers";
 
@@ -76,15 +79,47 @@ const INTEGRATION_TYPES = [
   },
 ] as const;
 
-const EVENT_OPTIONS = [
-  { value: "card.created", label: "Tarefa criada" },
-  { value: "card.completed", label: "Tarefa concluída" },
-  { value: "card.moved", label: "Tarefa movida" },
-  { value: "card.overdue", label: "Tarefa atrasada" },
-  { value: "message.sent", label: "Mensagem enviada" },
-  { value: "member.joined", label: "Membro entrou" },
-  { value: "event.created", label: "Evento criado" },
+interface EventOption {
+  value: string;
+  label: string;
+  domain: "kanban" | "bpm" | "chat" | "members" | "calendar";
+}
+
+const EVENT_OPTIONS: EventOption[] = [
+  // Kanban (tarefas em boards)
+  { value: "card.created",        label: "Tarefa criada",          domain: "kanban" },
+  { value: "card.updated",        label: "Tarefa atualizada",      domain: "kanban" },
+  { value: "card.moved",          label: "Tarefa movida de coluna", domain: "kanban" },
+  { value: "card.completed",      label: "Tarefa concluída",       domain: "kanban" },
+  { value: "card.overdue",        label: "Tarefa atrasada",        domain: "kanban" },
+  { value: "card.assigned",       label: "Tarefa atribuída",       domain: "kanban" },
+  { value: "card.unassigned",     label: "Atribuição removida",    domain: "kanban" },
+  { value: "card.comment_added",  label: "Comentário em tarefa",   domain: "kanban" },
+  { value: "card.deleted",        label: "Tarefa deletada",        domain: "kanban" },
+  // BPM (processos)
+  { value: "bpm_card.created",        label: "Processo: card criado",        domain: "bpm" },
+  { value: "bpm_card.moved",          label: "Processo: card movido de fase", domain: "bpm" },
+  { value: "bpm_card.completed",      label: "Processo: card concluído",     domain: "bpm" },
+  { value: "bpm_card.overdue",        label: "Processo: SLA estourado",      domain: "bpm" },
+  { value: "bpm_card.comment_added",  label: "Processo: comentário",         domain: "bpm" },
+  { value: "bpm_card.deleted",        label: "Processo: card deletado",      domain: "bpm" },
+  // Chat
+  { value: "message.sent",        label: "Mensagem enviada",       domain: "chat" },
+  // Members
+  { value: "member.joined",       label: "Membro entrou",          domain: "members" },
+  // Calendar
+  { value: "event.created",       label: "Evento criado",          domain: "calendar" },
+  { value: "event.updated",       label: "Evento atualizado",      domain: "calendar" },
+  { value: "event.deleted",       label: "Evento deletado",        domain: "calendar" },
 ];
+
+const DOMAIN_LABELS: Record<EventOption["domain"], string> = {
+  kanban: "Tarefas (Boards)",
+  bpm: "Processos (BPM)",
+  chat: "Chat",
+  members: "Membros",
+  calendar: "Calendário",
+};
 
 interface IntegrationRow {
   id: string;
@@ -94,10 +129,28 @@ interface IntegrationRow {
   is_active: boolean;
   config: any;
   events: string[];
+  filters: Record<string, string | null> | null;
   created_by: string | null;
   last_triggered_at: string | null;
   trigger_count: number;
   created_at: string;
+}
+
+interface BpmPipeOption { id: string; name: string }
+interface BpmPhaseOption { id: string; name: string; pipe_id: string; position: number }
+interface BoardOption { id: string; name: string }
+interface ColumnOption { id: string; name: string; board_id: string; position: number }
+
+interface DeliveryRow {
+  id: string;
+  event_type: string;
+  target_url: string;
+  response_status: number | null;
+  error: string | null;
+  duration_ms: number | null;
+  delivered_at: string;
+  request_body: any;
+  response_body: string | null;
 }
 
 export default function IntegrationsPage() {
@@ -116,9 +169,22 @@ export default function IntegrationsPage() {
   const [formName, setFormName] = useState("");
   const [formConfig, setFormConfig] = useState<Record<string, string>>({});
   const [formEvents, setFormEvents] = useState<Set<string>>(new Set());
+  const [formFilters, setFormFilters] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Data for filter selectors
+  const [pipes, setPipes] = useState<BpmPipeOption[]>([]);
+  const [phases, setPhases] = useState<BpmPhaseOption[]>([]);
+  const [boards, setBoards] = useState<BoardOption[]>([]);
+  const [columns, setColumns] = useState<ColumnOption[]>([]);
+
+  // Delivery history modal
+  const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyDeliveries, setHistoryDeliveries] = useState<DeliveryRow[]>([]);
+  const [expandedDelivery, setExpandedDelivery] = useState<string | null>(null);
 
   // Google Calendar OAuth
   const [gcalStatus, setGcalStatus] = useState<"loading" | "disconnected" | "connected">("loading");
@@ -148,17 +214,57 @@ export default function IntegrationsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) setCurrentUserId(user.id);
 
-    const { data } = await supabase
-      .from("integrations")
-      .select("*")
-      .eq("org_id", activeOrgId!)
-      .order("created_at", { ascending: false });
+    const [integRes, pipesRes, phasesRes, boardsRes, columnsRes] = await Promise.all([
+      supabase
+        .from("integrations")
+        .select("*")
+        .eq("org_id", activeOrgId!)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("bpm_pipes")
+        .select("id, name")
+        .eq("org_id", activeOrgId!)
+        .eq("is_archived", false)
+        .order("name"),
+      supabase
+        .from("bpm_phases")
+        .select("id, name, pipe_id, position")
+        .order("position"),
+      supabase
+        .from("boards")
+        .select("id, name")
+        .eq("org_id", activeOrgId!)
+        .eq("is_archived", false)
+        .order("name"),
+      supabase
+        .from("columns")
+        .select("id, name, board_id, position")
+        .order("position"),
+    ]);
 
-    setIntegrations(data || []);
+    setIntegrations(integRes.data || []);
+    setPipes(pipesRes.data || []);
+    setPhases(phasesRes.data || []);
+    setBoards(boardsRes.data || []);
+    setColumns(columnsRes.data || []);
     setLoading(false);
 
     // Check Google Calendar status
     loadGcalStatus();
+  }
+
+  async function openHistory(integrationId: string) {
+    setHistoryOpenId(integrationId);
+    setHistoryLoading(true);
+    setExpandedDelivery(null);
+    try {
+      const res = await fetch(`/api/integrations/deliveries?integration_id=${integrationId}&limit=100`);
+      const data = await res.json();
+      setHistoryDeliveries(data.deliveries || []);
+    } catch {
+      setHistoryDeliveries([]);
+    }
+    setHistoryLoading(false);
   }
 
   async function loadGcalStatus() {
@@ -285,6 +391,7 @@ export default function IntegrationsPage() {
     setFormName("");
     setFormConfig({});
     setFormEvents(new Set());
+    setFormFilters({});
     setError(null);
     setShowModal(true);
   }
@@ -296,6 +403,12 @@ export default function IntegrationsPage() {
     setFormName(integ.name);
     setFormConfig(integ.config || {});
     setFormEvents(new Set(integ.events || []));
+    // Filters: filter nulls/empties for the form
+    const f: Record<string, string> = {};
+    for (const [k, v] of Object.entries(integ.filters || {})) {
+      if (v) f[k] = String(v);
+    }
+    setFormFilters(f);
     setError(null);
     setShowModal(true);
   }
@@ -323,6 +436,14 @@ export default function IntegrationsPage() {
     setSaving(true);
     setError(null);
 
+    // Only keep filter keys relevant to the currently selected events
+    const cleanFilters: Record<string, string> = {};
+    const ctxKeys = relevantFilterKeys(formEvents);
+    for (const k of ctxKeys) {
+      const v = formFilters[k];
+      if (v && v.trim()) cleanFilters[k] = v;
+    }
+
     try {
       if (editingId) {
         const { error: err } = await supabase
@@ -331,6 +452,7 @@ export default function IntegrationsPage() {
             name: formName.trim(),
             config: formConfig,
             events: Array.from(formEvents),
+            filters: cleanFilters,
             updated_at: new Date().toISOString(),
           })
           .eq("id", editingId);
@@ -343,6 +465,7 @@ export default function IntegrationsPage() {
           is_active: true,
           config: formConfig,
           events: Array.from(formEvents),
+          filters: cleanFilters,
           created_by: currentUserId,
           last_triggered_at: null,
         });
@@ -356,6 +479,45 @@ export default function IntegrationsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  /** Determine which filter keys are relevant given the selected events. */
+  function relevantFilterKeys(events: Set<string>): string[] {
+    const keys = new Set<string>();
+    for (const ev of events) {
+      if (ev.startsWith("bpm_card.")) {
+        keys.add("pipe_id");
+        if (ev === "bpm_card.moved") {
+          keys.add("from_phase_id");
+          keys.add("to_phase_id");
+        } else {
+          keys.add("phase_id");
+        }
+      } else if (ev.startsWith("card.")) {
+        keys.add("board_id");
+        if (ev === "card.moved") {
+          keys.add("from_column_id");
+          keys.add("to_column_id");
+        } else {
+          keys.add("column_id");
+        }
+      }
+    }
+    return Array.from(keys);
+  }
+
+  /** Phases belonging to the currently selected pipe_id filter. */
+  function phasesForSelectedPipe(): BpmPhaseOption[] {
+    const pipeId = formFilters.pipe_id;
+    if (!pipeId) return [];
+    return phases.filter((p) => p.pipe_id === pipeId);
+  }
+
+  /** Columns belonging to the currently selected board_id filter. */
+  function columnsForSelectedBoard(): ColumnOption[] {
+    const boardId = formFilters.board_id;
+    if (!boardId) return [];
+    return columns.filter((c) => c.board_id === boardId);
   }
 
   async function handleToggle(integ: IntegrationRow) {
@@ -655,14 +817,23 @@ export default function IntegrationsPage() {
                     {integ.is_active ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
                   </button>
                   <button
+                    onClick={() => openHistory(integ.id)}
+                    className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent"
+                    title="Histórico de entregas"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                  </button>
+                  <button
                     onClick={() => openEdit(integ)}
                     className="p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent"
+                    title="Editar"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => handleDelete(integ.id)}
                     className="p-1.5 text-muted-foreground hover:text-red-500 transition-colors rounded hover:bg-accent"
+                    title="Deletar"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -880,37 +1051,222 @@ export default function IntegrationsPage() {
                   </div>
                 )}
 
-                {/* Events to listen */}
+                {/* Events to listen — grouped by domain */}
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
                     Eventos para monitorar
                   </label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {EVENT_OPTIONS.map((evt) => {
-                      const isActive = formEvents.has(evt.value);
+                  <div className="space-y-3">
+                    {(Object.keys(DOMAIN_LABELS) as EventOption["domain"][]).map((domain) => {
+                      const opts = EVENT_OPTIONS.filter((e) => e.domain === domain);
                       return (
-                        <button
-                          key={evt.value}
-                          type="button"
-                          onClick={() => toggleEvent(evt.value)}
-                          className={cn(
-                            "flex items-center gap-2 px-3 py-2 rounded-lg text-sm border transition-all text-left",
-                            isActive
-                              ? "border-primary bg-primary/5 text-foreground"
-                              : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
-                          )}
-                        >
-                          {isActive ? (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />
-                          ) : (
-                            <div className="w-3.5 h-3.5 rounded-full border border-border shrink-0" />
-                          )}
-                          {evt.label}
-                        </button>
+                        <div key={domain}>
+                          <p className="text-xs font-medium text-muted-foreground mb-1.5">{DOMAIN_LABELS[domain]}</p>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {opts.map((evt) => {
+                              const isActive = formEvents.has(evt.value);
+                              return (
+                                <button
+                                  key={evt.value}
+                                  type="button"
+                                  onClick={() => toggleEvent(evt.value)}
+                                  className={cn(
+                                    "flex items-center gap-2 px-3 py-2 rounded-lg text-sm border transition-all text-left",
+                                    isActive
+                                      ? "border-primary bg-primary/5 text-foreground"
+                                      : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                                  )}
+                                >
+                                  {isActive ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                                  ) : (
+                                    <div className="w-3.5 h-3.5 rounded-full border border-border shrink-0" />
+                                  )}
+                                  <span className="truncate">{evt.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
                 </div>
+
+                {/* Filters — depend on selected events */}
+                {relevantFilterKeys(formEvents).length > 0 && (
+                  <div className="bg-muted/30 border border-border rounded-lg p-3 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Filtros (opcional)</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Dispara apenas quando os critérios abaixo forem atendidos. Deixe em branco para disparar para qualquer valor.
+                      </p>
+                    </div>
+
+                    {/* BPM: Processo */}
+                    {relevantFilterKeys(formEvents).includes("pipe_id") && (
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">Processo</label>
+                        <select
+                          value={formFilters.pipe_id || ""}
+                          onChange={(e) => {
+                            // Changing pipe invalidates any phase filters
+                            const pipe_id = e.target.value;
+                            setFormFilters((prev) => ({
+                              ...prev,
+                              pipe_id,
+                              phase_id: "",
+                              from_phase_id: "",
+                              to_phase_id: "",
+                            }));
+                          }}
+                          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        >
+                          <option value="">— Todos os processos —</option>
+                          {pipes.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* BPM: Fase (para eventos que não são move) */}
+                    {relevantFilterKeys(formEvents).includes("phase_id") && (
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">Fase</label>
+                        <select
+                          value={formFilters.phase_id || ""}
+                          onChange={(e) => setFormFilters({ ...formFilters, phase_id: e.target.value })}
+                          disabled={!formFilters.pipe_id}
+                          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                        >
+                          <option value="">— Qualquer fase —</option>
+                          {phasesForSelectedPipe().map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        {!formFilters.pipe_id && (
+                          <p className="text-[10px] text-muted-foreground mt-1">Selecione o processo primeiro</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* BPM: From/To Phase (para move) */}
+                    {relevantFilterKeys(formEvents).includes("from_phase_id") && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs font-medium text-foreground mb-1">Fase de origem</label>
+                          <select
+                            value={formFilters.from_phase_id || ""}
+                            onChange={(e) => setFormFilters({ ...formFilters, from_phase_id: e.target.value })}
+                            disabled={!formFilters.pipe_id}
+                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                          >
+                            <option value="">— Qualquer —</option>
+                            {phasesForSelectedPipe().map((p) => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-foreground mb-1">Fase de destino</label>
+                          <select
+                            value={formFilters.to_phase_id || ""}
+                            onChange={(e) => setFormFilters({ ...formFilters, to_phase_id: e.target.value })}
+                            disabled={!formFilters.pipe_id}
+                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                          >
+                            <option value="">— Qualquer —</option>
+                            {phasesForSelectedPipe().map((p) => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Kanban: Board */}
+                    {relevantFilterKeys(formEvents).includes("board_id") && (
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">Board</label>
+                        <select
+                          value={formFilters.board_id || ""}
+                          onChange={(e) => {
+                            const board_id = e.target.value;
+                            setFormFilters((prev) => ({
+                              ...prev,
+                              board_id,
+                              column_id: "",
+                              from_column_id: "",
+                              to_column_id: "",
+                            }));
+                          }}
+                          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        >
+                          <option value="">— Todos os boards —</option>
+                          {boards.map((b) => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Kanban: Column */}
+                    {relevantFilterKeys(formEvents).includes("column_id") && (
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">Coluna</label>
+                        <select
+                          value={formFilters.column_id || ""}
+                          onChange={(e) => setFormFilters({ ...formFilters, column_id: e.target.value })}
+                          disabled={!formFilters.board_id}
+                          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                        >
+                          <option value="">— Qualquer coluna —</option>
+                          {columnsForSelectedBoard().map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                        {!formFilters.board_id && (
+                          <p className="text-[10px] text-muted-foreground mt-1">Selecione o board primeiro</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Kanban: From/To Column (para move) */}
+                    {relevantFilterKeys(formEvents).includes("from_column_id") && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs font-medium text-foreground mb-1">Coluna de origem</label>
+                          <select
+                            value={formFilters.from_column_id || ""}
+                            onChange={(e) => setFormFilters({ ...formFilters, from_column_id: e.target.value })}
+                            disabled={!formFilters.board_id}
+                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                          >
+                            <option value="">— Qualquer —</option>
+                            {columnsForSelectedBoard().map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-foreground mb-1">Coluna de destino</label>
+                          <select
+                            value={formFilters.to_column_id || ""}
+                            onChange={(e) => setFormFilters({ ...formFilters, to_column_id: e.target.value })}
+                            disabled={!formFilters.board_id}
+                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                          >
+                            <option value="">— Qualquer —</option>
+                            {columnsForSelectedBoard().map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2 pt-2">
                   <button
@@ -934,6 +1290,104 @@ export default function IntegrationsPage() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Delivery History Modal */}
+      {historyOpenId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-border rounded-xl w-full max-w-3xl shadow-xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-muted-foreground" />
+                <h3 className="font-semibold text-foreground">Histórico de Entregas</h3>
+                <span className="text-xs text-muted-foreground">· últimas 100</span>
+              </div>
+              <button
+                onClick={() => { setHistoryOpenId(null); setHistoryDeliveries([]); }}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4">
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : historyDeliveries.length === 0 ? (
+                <div className="text-center py-12 text-sm text-muted-foreground">
+                  Nenhum evento disparado ainda. Crie/mova um card para testar.
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {historyDeliveries.map((d) => {
+                    const ok = d.response_status !== null && d.response_status >= 200 && d.response_status < 300;
+                    const isExpanded = expandedDelivery === d.id;
+                    return (
+                      <div
+                        key={d.id}
+                        className={cn(
+                          "border rounded-lg overflow-hidden",
+                          ok ? "border-green-500/20 bg-green-500/5" : "border-red-500/20 bg-red-500/5"
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setExpandedDelivery(isExpanded ? null : d.id)}
+                          className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-black/5 transition-colors"
+                        >
+                          {ok ? (
+                            <CheckCheck className="w-4 h-4 text-green-500 shrink-0" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                          )}
+                          <span className="text-xs font-mono bg-background border border-border rounded px-1.5 py-0.5 shrink-0">
+                            {d.event_type}
+                          </span>
+                          <span className="text-xs text-muted-foreground truncate flex-1">{d.target_url}</span>
+                          <span className={cn(
+                            "text-xs font-medium shrink-0",
+                            ok ? "text-green-500" : "text-red-500"
+                          )}>
+                            {d.response_status ?? "ERR"}
+                          </span>
+                          <span className="text-xs text-muted-foreground shrink-0">{d.duration_ms ?? "-"}ms</span>
+                          <span className="text-xs text-muted-foreground/70 shrink-0">
+                            {formatDateTime(d.delivered_at)}
+                          </span>
+                        </button>
+                        {isExpanded && (
+                          <div className="border-t border-border bg-background px-3 py-2 space-y-2">
+                            {d.error && (
+                              <div>
+                                <p className="text-xs font-medium text-red-500 mb-1">Erro</p>
+                                <pre className="text-xs text-red-400 whitespace-pre-wrap">{d.error}</pre>
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-xs font-medium text-foreground mb-1">Payload enviado</p>
+                              <pre className="text-[11px] text-muted-foreground bg-muted/50 rounded p-2 overflow-x-auto max-h-60 whitespace-pre">
+                                {JSON.stringify(d.request_body, null, 2)}
+                              </pre>
+                            </div>
+                            {d.response_body && (
+                              <div>
+                                <p className="text-xs font-medium text-foreground mb-1">Resposta</p>
+                                <pre className="text-[11px] text-muted-foreground bg-muted/50 rounded p-2 overflow-x-auto max-h-40 whitespace-pre-wrap">
+                                  {d.response_body}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
