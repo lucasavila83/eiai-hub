@@ -394,14 +394,17 @@ function PipeKanbanContent() {
   }
 
   async function handleDeleteCard(cardId: string) {
-    // Delete related data: values, history, comments, task links
-    await Promise.all([
-      supabase.from("bpm_card_values").delete().eq("card_id", cardId),
-      supabase.from("bpm_card_history").delete().eq("card_id", cardId),
-      supabase.from("bpm_card_comments").delete().eq("card_id", cardId),
-      supabase.from("bpm_task_links").delete().eq("bpm_card_id", cardId),
-    ]);
-    await supabase.from("bpm_cards").delete().eq("id", cardId);
+    // bpm_cards has ON DELETE CASCADE for values/history/comments/task_links,
+    // so we don't need to delete them manually (doing so would hit RLS
+    // policies that may silently reject, leading to ghost-resurrection of
+    // the card on the next realtime refresh).
+    const { error } = await supabase.from("bpm_cards").delete().eq("id", cardId);
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error("[deleteCard] failed:", error);
+      alert(`Não foi possível apagar o card: ${error.message}`);
+      return;
+    }
     setCards((prev) => prev.filter((c) => c.id !== cardId));
     setSelectedCard(null);
   }
