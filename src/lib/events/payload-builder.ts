@@ -66,23 +66,85 @@ async function fetchPhase(admin: SupabaseClient, phaseId: string | null) {
   return data;
 }
 
-async function fetchBpmFieldValues(admin: SupabaseClient, cardId: string) {
-  const { data } = await admin
-    .from("bpm_card_values")
-    .select("field_id, value, bpm_fields:field_id(field_key, label, field_type)")
-    .eq("card_id", cardId);
-  const result: Record<string, any> = {};
-  for (const row of data || []) {
-    const field = (row as any).bpm_fields;
-    if (field?.field_key) {
-      result[field.field_key] = {
-        label: field.label,
-        type: field.field_type,
-        value: (row as any).value,
-      };
-    }
+/**
+ * Return a flat array with EVERY field defined in the pipe (across all phases),
+ * each already joined with its current value on this card (or null if not filled).
+ *
+ * This lets consumers do empty-value checks without round-tripping.
+ */
+async function fetchAllFieldsWithValues(
+  admin: SupabaseClient,
+  pipeId: string,
+  cardId: string
+) {
+  // 1. All phases of the pipe
+  const { data: phasesData } = await admin
+    .from("bpm_phases")
+    .select("id, name, position")
+    .eq("pipe_id", pipeId)
+    .order("position");
+
+  if (!phasesData || phasesData.length === 0) {
+    return { fields: [] as any[], field_values: {} as Record<string, any> };
   }
-  return result;
+
+  const phaseIds = phasesData.map((p: any) => p.id);
+
+  // 2. All fields across those phases
+  const { data: fieldsData } = await admin
+    .from("bpm_fields")
+    .select("id, phase_id, field_key, field_type, label, placeholder, help_text, is_required, options, position")
+    .in("phase_id", phaseIds)
+    .order("position");
+
+  // 3. All values currently stored for this card
+  const { data: valuesData } = await admin
+    .from("bpm_card_values")
+    .select("field_id, value, updated_at")
+    .eq("card_id", cardId);
+
+  const valueByField = new Map<string, any>();
+  for (const v of valuesData || []) valueByField.set((v as any).field_id, v);
+  const phaseById = new Map<string, any>();
+  for (const p of phasesData) phaseById.set((p as any).id, p);
+
+  // 4. Build the array (one entry per field, even if value is null)
+  const fields: any[] = [];
+  const fieldValues: Record<string, any> = {};
+  for (const f of fieldsData || []) {
+    const row: any = f;
+    const v = valueByField.get(row.id);
+    const phase = phaseById.get(row.phase_id);
+    const entry = {
+      id: row.id,
+      field_key: row.field_key,
+      label: row.label,
+      type: row.field_type,
+      placeholder: row.placeholder,
+      help_text: row.help_text,
+      is_required: row.is_required,
+      options: row.options || [],
+      position: row.position,
+      phase: phase
+        ? { id: phase.id, name: phase.name, position: phase.position }
+        : null,
+      value: v?.value ?? null,
+      filled: v?.value != null && v?.value !== "" &&
+              !(Array.isArray(v?.value) && v.value.length === 0),
+      updated_at: v?.updated_at ?? null,
+    };
+    fields.push(entry);
+    // Also expose a convenience map by field_key (may collide across phases —
+    // last one wins; use `fields` array if you need conflict-safe access)
+    fieldValues[row.field_key] = {
+      label: row.label,
+      type: row.field_type,
+      value: entry.value,
+      filled: entry.filled,
+    };
+  }
+
+  return { fields, field_values: fieldValues };
 }
 
 async function fetchChannel(admin: SupabaseClient, channelId: string) {
@@ -135,12 +197,12 @@ export async function buildBpmCardPayload(
   admin: SupabaseClient,
   bpmCard: any
 ) {
-  const [pipe, phase, assignee, creator, fieldValues] = await Promise.all([
+  const [pipe, phase, assignee, creator, fieldsData] = await Promise.all([
     fetchPipe(admin, bpmCard.pipe_id),
     fetchPhase(admin, bpmCard.current_phase_id),
     fetchProfile(admin, bpmCard.assignee_id),
     fetchProfile(admin, bpmCard.created_by),
-    fetchBpmFieldValues(admin, bpmCard.id),
+    fetchAllFieldsWithValues(admin, bpmCard.pipe_id, bpmCard.id),
   ]);
 
   return {
@@ -154,12 +216,16 @@ export async function buildBpmCardPayload(
       is_archived: bpmCard.is_archived,
       created_at: bpmCard.created_at,
       updated_at: bpmCard.updated_at,
+      metadata: bpmCard.metadata || {},
     },
     pipe: pipe ? { id: pipe.id, name: pipe.name, org_id: pipe.org_id } : null,
-    phase: phase,
+    phase,
     assignee,
     created_by: creator,
-    field_values: fieldValues,
+    // Every field defined in the pipe, with its current value (or null if empty).
+    fields: fieldsData.fields,
+    // Convenience: same data keyed by field_key (may lose entries if keys collide across phases)
+    field_values: fieldsData.field_values,
   };
 }
 
