@@ -68,8 +68,13 @@ interface IntegrationRow {
 
 /**
  * Check whether an integration's `filters` match the current event context.
- * A filter key with a non-empty value must equal the matching context key.
- * Missing / empty filter keys are treated as wildcard.
+ *
+ * Rules:
+ *   - A filter key with empty/null value = wildcard (ignore).
+ *   - A filter key whose name doesn't exist at all in the event context = ignored
+ *     (filter is irrelevant for this event — e.g. `to_phase_id` is meaningful
+ *     only for `bpm_card.moved`, not for `bpm_card.created`).
+ *   - Otherwise filter value must equal context value.
  */
 function filtersMatch(
   filters: Record<string, string | null> | null | undefined,
@@ -79,9 +84,11 @@ function filtersMatch(
   const c = ctx || {};
   for (const [k, v] of Object.entries(filters)) {
     if (v == null || v === "") continue; // wildcard
+    // If the key isn't part of this event's context at all, treat as irrelevant.
+    if (!(k in c)) continue;
     // @ts-expect-error dynamic key
     const ctxVal = c[k];
-    if (ctxVal == null) return false;
+    if (ctxVal == null) continue; // context has the key but value is null → treat as N/A for this event
     if (String(ctxVal) !== String(v)) return false;
   }
   return true;
