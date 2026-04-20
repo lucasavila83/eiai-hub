@@ -259,6 +259,49 @@ export async function buildEventPayload(admin: SupabaseClient, event: any) {
   };
 }
 
+/**
+ * Payload for `bpm_card.field_filled` / `bpm_card.field_updated`.
+ *
+ * `value` is the bpm_card_values row (has card_id, field_id, value, updated_at).
+ * `old_value` is the previous value (optional — only for UPDATE).
+ */
+export async function buildBpmCardFieldPayload(
+  admin: SupabaseClient,
+  value: any,
+  oldValue: any | null
+) {
+  const [cardRes, fieldRes] = await Promise.all([
+    admin.from("bpm_cards").select("*").eq("id", value.card_id).maybeSingle(),
+    admin
+      .from("bpm_fields")
+      .select("id, phase_id, field_key, field_type, label, is_required, options")
+      .eq("id", value.field_id)
+      .maybeSingle(),
+  ]);
+  const cardRow = (cardRes as any)?.data;
+  const fieldRow = (fieldRes as any)?.data;
+  const cardPayload = cardRow ? await buildBpmCardPayload(admin, cardRow) : {};
+
+  return {
+    ...cardPayload,
+    field: fieldRow
+      ? {
+          id: fieldRow.id,
+          field_key: fieldRow.field_key,
+          label: fieldRow.label,
+          type: fieldRow.field_type,
+          is_required: fieldRow.is_required,
+          options: fieldRow.options,
+        }
+      : { id: value.field_id },
+    field_value: {
+      new: value.value,
+      old: oldValue?.value ?? null,
+      updated_at: value.updated_at,
+    },
+  };
+}
+
 export async function buildCardAssigneePayload(admin: SupabaseClient, row: any) {
   const [user, card] = await Promise.all([
     fetchProfile(admin, row.user_id),

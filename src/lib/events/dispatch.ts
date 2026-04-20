@@ -26,6 +26,8 @@ export type EventType =
   | "bpm_card.overdue"
   | "bpm_card.deleted"
   | "bpm_card.comment_added"
+  | "bpm_card.field_filled"
+  | "bpm_card.field_updated"
   | "message.sent"
   | "member.joined"
   | "event.created"
@@ -46,6 +48,8 @@ export interface FilterContext {
   column_id?: string | null;
   from_column_id?: string | null;
   to_column_id?: string | null;
+  field_id?: string | null;
+  field_key?: string | null;
 }
 
 export interface DispatchInput {

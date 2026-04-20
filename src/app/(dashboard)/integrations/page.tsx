@@ -101,6 +101,8 @@ const EVENT_OPTIONS: EventOption[] = [
   { value: "bpm_card.moved",          label: "Processo: card movido de fase", domain: "bpm" },
   { value: "bpm_card.completed",      label: "Processo: card concluído",     domain: "bpm" },
   { value: "bpm_card.overdue",        label: "Processo: SLA estourado",      domain: "bpm" },
+  { value: "bpm_card.field_filled",   label: "Processo: campo preenchido",   domain: "bpm" },
+  { value: "bpm_card.field_updated",  label: "Processo: campo atualizado",   domain: "bpm" },
   { value: "bpm_card.comment_added",  label: "Processo: comentário",         domain: "bpm" },
   { value: "bpm_card.deleted",        label: "Processo: card deletado",      domain: "bpm" },
   // Chat
@@ -138,6 +140,7 @@ interface IntegrationRow {
 
 interface BpmPipeOption { id: string; name: string }
 interface BpmPhaseOption { id: string; name: string; pipe_id: string; position: number }
+interface BpmFieldOption { id: string; label: string; field_key: string; field_type: string; phase_id: string }
 interface BoardOption { id: string; name: string }
 interface ColumnOption { id: string; name: string; board_id: string; position: number }
 
@@ -177,6 +180,7 @@ export default function IntegrationsPage() {
   // Data for filter selectors
   const [pipes, setPipes] = useState<BpmPipeOption[]>([]);
   const [phases, setPhases] = useState<BpmPhaseOption[]>([]);
+  const [bpmFields, setBpmFields] = useState<BpmFieldOption[]>([]);
   const [boards, setBoards] = useState<BoardOption[]>([]);
   const [columns, setColumns] = useState<ColumnOption[]>([]);
 
@@ -214,7 +218,7 @@ export default function IntegrationsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) setCurrentUserId(user.id);
 
-    const [integRes, pipesRes, phasesRes, boardsRes, columnsRes] = await Promise.all([
+    const [integRes, pipesRes, phasesRes, fieldsRes, boardsRes, columnsRes] = await Promise.all([
       supabase
         .from("integrations")
         .select("*")
@@ -231,6 +235,10 @@ export default function IntegrationsPage() {
         .select("id, name, pipe_id, position")
         .order("position"),
       supabase
+        .from("bpm_fields")
+        .select("id, label, field_key, field_type, phase_id")
+        .order("position"),
+      supabase
         .from("boards")
         .select("id, name")
         .eq("org_id", activeOrgId!)
@@ -245,6 +253,7 @@ export default function IntegrationsPage() {
     setIntegrations(integRes.data || []);
     setPipes(pipesRes.data || []);
     setPhases(phasesRes.data || []);
+    setBpmFields(fieldsRes.data || []);
     setBoards(boardsRes.data || []);
     setColumns(columnsRes.data || []);
     setLoading(false);
@@ -490,6 +499,9 @@ export default function IntegrationsPage() {
         if (ev === "bpm_card.moved") {
           keys.add("from_phase_id");
           keys.add("to_phase_id");
+        } else if (ev === "bpm_card.field_filled" || ev === "bpm_card.field_updated") {
+          keys.add("phase_id");
+          keys.add("field_id");
         } else {
           keys.add("phase_id");
         }
@@ -504,6 +516,19 @@ export default function IntegrationsPage() {
       }
     }
     return Array.from(keys);
+  }
+
+  /** BPM fields available for the currently selected pipe (and optionally phase). */
+  function fieldsForSelectedPipe(): BpmFieldOption[] {
+    const pipeId = formFilters.pipe_id;
+    if (!pipeId) return [];
+    const phaseIds = phases.filter((p) => p.pipe_id === pipeId).map((p) => p.id);
+    const filtered = bpmFields.filter((f) => phaseIds.includes(f.phase_id));
+    // If a specific phase is filtered, narrow further
+    if (formFilters.phase_id) {
+      return filtered.filter((f) => f.phase_id === formFilters.phase_id);
+    }
+    return filtered;
   }
 
   /** Phases belonging to the currently selected pipe_id filter. */
@@ -1147,6 +1172,37 @@ export default function IntegrationsPage() {
                         </select>
                         {!formFilters.pipe_id && (
                           <p className="text-[10px] text-muted-foreground mt-1">Selecione o processo primeiro</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* BPM: Campo específico (para field_filled / field_updated) */}
+                    {relevantFilterKeys(formEvents).includes("field_id") && (
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">Campo</label>
+                        <select
+                          value={formFilters.field_id || ""}
+                          onChange={(e) => setFormFilters({ ...formFilters, field_id: e.target.value })}
+                          disabled={!formFilters.pipe_id}
+                          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                        >
+                          <option value="">— Qualquer campo —</option>
+                          {fieldsForSelectedPipe().map((f) => {
+                            const phase = phases.find((p) => p.id === f.phase_id);
+                            return (
+                              <option key={f.id} value={f.id}>
+                                {f.label} ({f.field_type}){phase ? ` — ${phase.name}` : ""}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        {!formFilters.pipe_id && (
+                          <p className="text-[10px] text-muted-foreground mt-1">Selecione o processo primeiro</p>
+                        )}
+                        {formFilters.pipe_id && fieldsForSelectedPipe().length === 0 && (
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            Esse processo não tem campos configurados{formFilters.phase_id ? " nessa fase" : ""}.
+                          </p>
                         )}
                       </div>
                     )}

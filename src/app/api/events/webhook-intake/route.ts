@@ -11,6 +11,7 @@ import { createClient as createAdmin } from "@supabase/supabase-js";
 import { dispatchEvent, type EventType, type FilterContext } from "@/lib/events/dispatch";
 import {
   buildBpmCardCommentPayload,
+  buildBpmCardFieldPayload,
   buildBpmCardPayload,
   buildCardAssigneePayload,
   buildCardCommentPayload,
@@ -286,6 +287,62 @@ async function routeEvent(
         payload: { event: oldRecord },
       });
       fired.push({ event: "event.deleted", dispatched: r.dispatched });
+    }
+    return fired;
+  }
+
+  // -------------------- BPM CARD VALUES (campos) --------------------
+  if (table === "bpm_card_values" && (op === "INSERT" || op === "UPDATE")) {
+    const row = record;
+    // Resolve the owning BPM card for org/pipe/phase context
+    const { data: cardRow } = await admin
+      .from("bpm_cards")
+      .select("id, org_id, pipe_id, current_phase_id")
+      .eq("id", row.card_id)
+      .maybeSingle();
+    if (!cardRow) return fired;
+    const { data: fieldRow } = await admin
+      .from("bpm_fields")
+      .select("id, field_key, phase_id")
+      .eq("id", row.field_id)
+      .maybeSingle();
+
+    const payload = await buildBpmCardFieldPayload(admin, row, oldRecord);
+    const filterCtx: FilterContext = {
+      pipe_id: cardRow.pipe_id,
+      phase_id: cardRow.current_phase_id,
+      field_id: row.field_id,
+      field_key: fieldRow?.field_key || null,
+    };
+
+    const newVal = row.value;
+    const oldVal = oldRecord?.value;
+    const wasEmpty = oldVal == null || oldVal === "" ||
+                     (typeof oldVal === "object" && Array.isArray(oldVal) && oldVal.length === 0);
+    const isFilled = newVal != null && newVal !== "" &&
+                     !(Array.isArray(newVal) && newVal.length === 0);
+
+    // field_filled: vazio → preenchido (ou INSERT com valor)
+    if (isFilled && (op === "INSERT" || wasEmpty)) {
+      const r = await dispatchEvent(admin, {
+        orgId: cardRow.org_id,
+        eventType: "bpm_card.field_filled",
+        payload,
+        filterContext: filterCtx,
+      });
+      fired.push({ event: "bpm_card.field_filled", dispatched: r.dispatched });
+    }
+
+    // field_updated: sempre que o valor mudar (inclui INSERT se quiser ver "novo valor")
+    const changed = op === "INSERT" ? isFilled : JSON.stringify(oldVal) !== JSON.stringify(newVal);
+    if (changed) {
+      const r = await dispatchEvent(admin, {
+        orgId: cardRow.org_id,
+        eventType: "bpm_card.field_updated",
+        payload,
+        filterContext: filterCtx,
+      });
+      fired.push({ event: "bpm_card.field_updated", dispatched: r.dispatched });
     }
     return fired;
   }
