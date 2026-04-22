@@ -24,7 +24,13 @@ function curlExample(ep: EndpointDoc): string {
   if (ep.body) {
     lines[lines.length - 1] += ` \\`;
     lines.push(`  -H 'Content-Type: application/json' \\`);
-    lines.push(`  -d '{...}'`);
+    if (ep.body_example) {
+      // Inline the example body, escaping single quotes for shell
+      const escaped = ep.body_example.replace(/'/g, `'\\''`);
+      lines.push(`  -d '${escaped}'`);
+    } else {
+      lines.push(`  -d '{...}'`);
+    }
   }
   return lines.join("\n");
 }
@@ -91,6 +97,14 @@ function EndpointBlock({ ep }: { ep: EndpointDoc }) {
       )}
       <ParamTable title="Query parameters" params={ep.query} />
       <ParamTable title="Body" params={ep.body} />
+      {ep.body_example && (
+        <div className="mt-3">
+          <p className="font-semibold text-sm mb-1">Exemplo de body</p>
+          <pre className="bg-neutral-50 border border-neutral-200 text-xs font-mono rounded p-3 overflow-x-auto text-neutral-800">
+{ep.body_example}
+          </pre>
+        </div>
+      )}
       <div className="mt-3">
         <p className="font-semibold text-sm mb-1">curl</p>
         <pre className="bg-neutral-900 text-neutral-100 text-xs font-mono rounded p-3 overflow-x-auto">

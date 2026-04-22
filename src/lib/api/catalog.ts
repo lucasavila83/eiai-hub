@@ -22,6 +22,8 @@ export interface EndpointDoc {
   scopes?: string[]; // Required scopes for API Key auth (Bearer = full access)
   query?: EndpointParam[];
   body?: EndpointParam[];
+  /** JSON string with a realistic example body (shown in docs + curl). */
+  body_example?: string;
   response_example?: string;
 }
 
@@ -78,6 +80,10 @@ export const API_CATALOG: EndpointCategory[] = [
           { name: "email", type: "string", required: true, description: "Email do usuário" },
           { name: "password", type: "string", required: true, description: "Senha" },
         ],
+        body_example: `{
+  "email": "usuario@empresa.com",
+  "password": "senha-segura-aqui"
+}`,
         response_example: `{ "data": { "access_token": "...", "refresh_token": "...", "user": {...} } }`,
       },
       {
@@ -85,6 +91,9 @@ export const API_CATALOG: EndpointCategory[] = [
         path: "/api/v1/auth/refresh",
         summary: "Renovar access token",
         body: [{ name: "refresh_token", type: "string", required: true, description: "Refresh token recebido no login" }],
+        body_example: `{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIs..."
+}`,
       },
       {
         method: "GET",
@@ -179,6 +188,10 @@ export const API_CATALOG: EndpointCategory[] = [
           { name: "name", type: "string", required: true, description: "Nome do board" },
           { name: "description", type: "string", description: "Descrição" },
         ],
+        body_example: `{
+  "name": "Time de Vendas",
+  "description": "Pipeline de oportunidades 2026"
+}`,
       },
       {
         method: "GET",
@@ -254,6 +267,15 @@ export const API_CATALOG: EndpointCategory[] = [
           { name: "due_date", type: "ISO date", description: "Data de vencimento" },
           { name: "assignee_ids", type: "uuid[]", description: "IDs de usuários a atribuir" },
         ],
+        body_example: `{
+  "board_id": "b1c2d3e4-5678-90ab-cdef-111111111111",
+  "column_id": "c1c2d3e4-5678-90ab-cdef-222222222222",
+  "title": "Revisar contrato do cliente Y",
+  "description": "Verificar cláusulas 4.2 e 7.1 com jurídico",
+  "priority": "high",
+  "due_date": "2026-05-10",
+  "assignee_ids": ["71c613f4-6fe6-45ab-ad2d-890e95e1e47c"]
+}`,
       },
       {
         method: "GET",
@@ -266,6 +288,7 @@ export const API_CATALOG: EndpointCategory[] = [
         path: "/api/v1/cards/:cardId",
         summary: "Atualizar card",
         scopes: ["write:cards"],
+        description: "Todos os campos são opcionais. Envie apenas o que quiser alterar.",
         body: [
           { name: "title", type: "string", description: "Novo título" },
           { name: "description", type: "string", description: "Nova descrição" },
@@ -275,6 +298,11 @@ export const API_CATALOG: EndpointCategory[] = [
           { name: "position", type: "number", description: "Reordenar" },
           { name: "is_archived", type: "boolean", description: "Arquivar" },
         ],
+        body_example: `{
+  "column_id": "c9d0e1f2-3456-7890-abcd-333333333333",
+  "priority": "urgent",
+  "due_date": "2026-04-30"
+}`,
       },
       {
         method: "DELETE",
@@ -423,6 +451,10 @@ export const API_CATALOG: EndpointCategory[] = [
           { name: "reply_to", type: "uuid", description: "ID da mensagem a responder (thread)" },
           { name: "mentions", type: "uuid[]", description: "IDs de usuários mencionados" },
         ],
+        body_example: `{
+  "content": "Bom dia! Segue o resumo da reunião: **3 decisões** tomadas.",
+  "mentions": ["71c613f4-6fe6-45ab-ad2d-890e95e1e47c"]
+}`,
       },
     ],
   },
@@ -488,8 +520,21 @@ export const API_CATALOG: EndpointCategory[] = [
           { name: "title", type: "string", required: true, description: "Título" },
           { name: "assignee_id", type: "uuid", description: "Responsável" },
           { name: "priority", type: "urgent|high|medium|low|none", description: "Prioridade" },
-          { name: "values", type: "object", description: "Valores dos campos da fase inicial: { field_id: value }" },
+          { name: "values", type: "object", description: "Valores dos campos da fase inicial: { field_id ou field_key: value }" },
         ],
+        body_example: `{
+  "pipe_id": "954f1e8b-1ee6-4518-ab59-0f80b45392d9",
+  "title": "Amostra cliente João da Silva",
+  "assignee_id": "71c613f4-6fe6-45ab-ad2d-890e95e1e47c",
+  "priority": "high",
+  "values": {
+    "estado": "SP",
+    "bairro": "Vila Mariana",
+    "numero": "1234",
+    "telefone": "11987654321",
+    "tamanho_das_caixas": ["cx_media"]
+  }
+}`,
       },
       {
         method: "GET",
@@ -505,9 +550,19 @@ export const API_CATALOG: EndpointCategory[] = [
         body: [
           { name: "current_phase_id", type: "uuid", description: "Mover para fase" },
           { name: "assignee_id", type: "uuid", description: "Reatribuir" },
-          { name: "priority", type: "string", description: "Prioridade" },
-          { name: "values", type: "object", description: "Atualizar valores de campos" },
+          { name: "priority", type: "string", description: "Prioridade (urgent/high/medium/low/none)" },
+          { name: "title", type: "string", description: "Novo título" },
+          { name: "values", type: "object", description: "Atualizar valores de campos: { field_key ou field_id: value }" },
         ],
+        description: "Todos os campos do body são opcionais — envie apenas o que quiser atualizar. `values` faz merge com os valores existentes (não sobrescreve campos não enviados).",
+        body_example: `{
+  "current_phase_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "priority": "urgent",
+  "values": {
+    "estado": "RJ",
+    "tamanho_das_caixas": ["cx_grande"]
+  }
+}`,
       },
       {
         method: "DELETE",
@@ -608,6 +663,15 @@ export const API_CATALOG: EndpointCategory[] = [
           { name: "card_id", type: "uuid", description: "Card vinculado" },
           { name: "participant_ids", type: "uuid[]", description: "Participantes" },
         ],
+        body_example: `{
+  "title": "Reunião comercial — Cliente Y",
+  "start_at": "2026-05-10T14:00:00-03:00",
+  "end_at": "2026-05-10T15:00:00-03:00",
+  "description": "Apresentação da proposta final",
+  "location": "Sala virtual (Meet)",
+  "color": "#3b82f6",
+  "participant_ids": ["71c613f4-6fe6-45ab-ad2d-890e95e1e47c"]
+}`,
       },
       {
         method: "GET",

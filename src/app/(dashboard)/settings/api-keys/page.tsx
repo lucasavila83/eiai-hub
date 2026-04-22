@@ -529,6 +529,13 @@ function EndpointBlock({ endpoint }: { endpoint: EndpointDoc }) {
             <ParamTable title="Body" params={endpoint.body} />
           )}
 
+          {endpoint.body_example && (
+            <div>
+              <p className="font-semibold text-foreground mb-1">Exemplo de body</p>
+              <pre className="bg-muted/50 border border-border rounded p-2 overflow-x-auto font-mono text-[11px] text-foreground">{endpoint.body_example}</pre>
+            </div>
+          )}
+
           {endpoint.response_example && (
             <div>
               <p className="font-semibold text-foreground mb-1">Resposta exemplo</p>
@@ -541,7 +548,13 @@ function EndpointBlock({ endpoint }: { endpoint: EndpointDoc }) {
             <p className="font-semibold text-foreground mb-1">curl</p>
             <pre className="bg-muted/50 border border-border rounded p-2 overflow-x-auto font-mono text-[11px] text-foreground">
 {`curl -X ${endpoint.method} 'https://eiai-hub.vercel.app${endpoint.path.replace(/:(\w+)/g, "<$1>")}' \\
-  -H 'X-API-Key: eiai_xxxxxxxxxxxx'${endpoint.body ? ` \\\n  -H 'Content-Type: application/json' \\\n  -d '{...}'` : ""}`}
+  -H 'X-API-Key: eiai_xxxxxxxxxxxx'${endpoint.body
+    ? ` \\\n  -H 'Content-Type: application/json' \\\n  -d '${
+        endpoint.body_example
+          ? endpoint.body_example.replace(/'/g, "'\\''")
+          : "{...}"
+      }'`
+    : ""}`}
             </pre>
           </div>
         </div>
