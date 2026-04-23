@@ -15,6 +15,7 @@ import { cn, getInitials, generateColor } from "@/lib/utils/helpers";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useNotificationStore } from "@/lib/stores/notification-store";
+import { setFaviconBadge } from "@/lib/utils/favicon-badge";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import type { Profile, Organization, Channel } from "@/lib/types/database";
 // Sound, toast and desktop notifications handled by NotificationListener
@@ -32,15 +33,17 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const { sidebarOpen, setSidebarOpen, toggleSidebar, setActiveOrgId, isMobile } = useUIStore();
   const notifUnread = useNotificationStore((s) => s.unreadCount);
 
-  // Reflect total unread count in the browser tab title: "(N) Lesco-Hub"
+  // Show number of CHATS with unread messages in tab title + favicon badge.
+  // Counts channels/DMs that have at least one unread message (not total messages).
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const chatUnread = Object.values(unreadCounts).reduce((sum, n) => sum + (n || 0), 0);
-    const total = chatUnread + (notifUnread || 0);
+    const chatsWithUnread = Object.values(unreadCounts).filter((n) => (n || 0) > 0).length;
     // Strip any previous "(N) " prefix and rebuild from the underlying title.
     const base = document.title.replace(/^\(\d+\)\s+/, "") || "Lesco-Hub";
-    document.title = total > 0 ? `(${total}) ${base}` : base;
-  }, [unreadCounts, notifUnread]);
+    document.title = chatsWithUnread > 0 ? `(${chatsWithUnread}) ${base}` : base;
+    // Draw a red badge on the favicon too (clears when count = 0)
+    setFaviconBadge(chatsWithUnread);
+  }, [unreadCounts]);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(
     organizations[0] || null
   );
