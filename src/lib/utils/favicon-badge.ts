@@ -79,44 +79,49 @@ function restoreOriginals() {
   }
 }
 
-function drawBase(ctx: CanvasRenderingContext2D, size: number, loaded: boolean) {
+/**
+ * Layout for badge mode: logo on the LEFT half, badge on the RIGHT half.
+ * Canvas is 64×64; each half gets a 32×32 slot so neither element crops the
+ * other. Uses the full right-side square for the badge so it stays big and
+ * legible even when the browser shrinks it to 16×16.
+ */
+function drawBaseLeftHalf(ctx: CanvasRenderingContext2D, size: number, loaded: boolean) {
+  const half = size / 2;
   if (loaded && originalImg) {
-    ctx.drawImage(originalImg, 0, 0, size, size);
+    // Keep logo as a 32x32 square centered vertically in the left half
+    ctx.drawImage(originalImg, 0, (size - half) / 2, half, half);
     return;
   }
-  // Fallback: solid rounded square with a single letter
+  // Fallback: branded square with a single letter in the left half
   ctx.fillStyle = FALLBACK_COLOR;
-  const r = 10;
+  const r = 6;
+  const x = 0, y = (size - half) / 2, w = half, h = half;
   ctx.beginPath();
-  ctx.moveTo(r, 0);
-  ctx.lineTo(size - r, 0);
-  ctx.quadraticCurveTo(size, 0, size, r);
-  ctx.lineTo(size, size - r);
-  ctx.quadraticCurveTo(size, size, size - r, size);
-  ctx.lineTo(r, size);
-  ctx.quadraticCurveTo(0, size, 0, size - r);
-  ctx.lineTo(0, r);
-  ctx.quadraticCurveTo(0, 0, r, 0);
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 42px Arial, sans-serif";
+  ctx.font = "bold 22px Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(FALLBACK_LETTER, size / 2, size / 2 + 2);
+  ctx.fillText(FALLBACK_LETTER, half / 2, size / 2 + 1);
 }
 
-function drawBadge(ctx: CanvasRenderingContext2D, size: number, count: number) {
-  const badgeRadius = 22;
-  const cx = size - badgeRadius - 2;
-  const cy = badgeRadius + 2;
-
-  // Outer white halo for contrast
-  ctx.beginPath();
-  ctx.arc(cx, cy, badgeRadius + 3, 0, Math.PI * 2);
-  ctx.fillStyle = "#ffffff";
-  ctx.fill();
+/** Full-size red badge occupying the right half of the favicon. */
+function drawBadgeRightHalf(ctx: CanvasRenderingContext2D, size: number, count: number) {
+  const half = size / 2;
+  const badgeRadius = 15; // Biggest that still fits the 32×32 right half
+  const cx = half + half / 2; // center of right half
+  const cy = size / 2;
 
   // Red fill
   ctx.beginPath();
@@ -124,10 +129,15 @@ function drawBadge(ctx: CanvasRenderingContext2D, size: number, count: number) {
   ctx.fillStyle = "#ef4444";
   ctx.fill();
 
-  // Count text (cap at "9+")
-  const text = count > 9 ? "9+" : String(count);
+  // White border for contrast
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Count text (cap at "99")
+  const text = count > 99 ? "99" : String(count);
   ctx.fillStyle = "#ffffff";
-  ctx.font = `bold ${text.length > 1 ? 24 : 32}px Arial, sans-serif`;
+  ctx.font = `bold ${text.length > 1 ? 16 : 22}px Arial, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, cx, cy + 1);
@@ -158,8 +168,8 @@ export async function setFaviconBadge(count: number): Promise<void> {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  drawBase(ctx, size, loaded);
-  drawBadge(ctx, size, count);
+  drawBaseLeftHalf(ctx, size, loaded);
+  drawBadgeRightHalf(ctx, size, count);
 
   let dataUrl: string;
   try {
@@ -167,8 +177,8 @@ export async function setFaviconBadge(count: number): Promise<void> {
   } catch {
     // Tainted canvas (CORS). Redraw fallback only and retry.
     ctx.clearRect(0, 0, size, size);
-    drawBase(ctx, size, false);
-    drawBadge(ctx, size, count);
+    drawBaseLeftHalf(ctx, size, false);
+    drawBadgeRightHalf(ctx, size, count);
     dataUrl = canvas.toDataURL("image/png");
   }
 
