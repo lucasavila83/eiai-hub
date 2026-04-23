@@ -80,15 +80,32 @@ function restoreOriginals() {
 }
 
 /**
- * Dominant badge: when there are unread chats, the whole favicon becomes
- * a big red circle with the count. This is the only way to be legible at
- * the ~16×16 size the browser actually renders in the tab. (The Lesco
- * logo is restored automatically when unread drops to 0.)
+ * Side-by-side layout: Lesco logo on the left half, red badge on the right.
+ * Both elements are sized to fill their own half (32×32 of a 64×64 canvas),
+ * so when Chrome shrinks to 16×16 each gets ~8 pixels of real estate.
  */
-function drawFullBadge(ctx: CanvasRenderingContext2D, size: number, count: number) {
-  const cx = size / 2;
+function drawLogoLeft(ctx: CanvasRenderingContext2D, size: number, loaded: boolean) {
+  const halfW = size / 2;
+  if (loaded && originalImg) {
+    // Fill the entire left half vertically — maximizes logo visibility
+    ctx.drawImage(originalImg, 0, 0, halfW, size);
+    return;
+  }
+  // Fallback: solid left-half with a big "L"
+  ctx.fillStyle = FALLBACK_COLOR;
+  ctx.fillRect(0, 0, halfW, size);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 36px Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(FALLBACK_LETTER, halfW / 2, size / 2 + 1);
+}
+
+function drawBadgeRight(ctx: CanvasRenderingContext2D, size: number, count: number) {
+  const halfW = size / 2;
+  const cx = halfW + halfW / 2; // center of right half
   const cy = size / 2;
-  const r = size / 2 - 2; // fills the canvas almost edge-to-edge
+  const r = halfW / 2 - 1; // fills the right half almost edge-to-edge
 
   // Red fill
   ctx.beginPath();
@@ -96,18 +113,18 @@ function drawFullBadge(ctx: CanvasRenderingContext2D, size: number, count: numbe
   ctx.fillStyle = "#ef4444";
   ctx.fill();
 
-  // Thin white border for contrast on any tab color
+  // Thin white border for contrast against the logo
   ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Large white count
+  // Count — as big as fits
   const text = count > 99 ? "99" : String(count);
   ctx.fillStyle = "#ffffff";
-  ctx.font = `bold ${text.length > 1 ? 40 : 48}px Arial, sans-serif`;
+  ctx.font = `bold ${text.length > 1 ? 20 : 26}px Arial, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(text, cx, cy + 2);
+  ctx.fillText(text, cx, cy + 1);
 }
 
 export async function setFaviconBadge(count: number): Promise<void> {
@@ -135,21 +152,19 @@ export async function setFaviconBadge(count: number): Promise<void> {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  drawFullBadge(ctx, size, count);
+  drawLogoLeft(ctx, size, loaded);
+  drawBadgeRight(ctx, size, count);
 
   let dataUrl: string;
   try {
     dataUrl = canvas.toDataURL("image/png");
   } catch {
-    // Tainted canvas (CORS) — shouldn't happen since we no longer draw the
-    // source image in badge mode, but keep the safety net.
+    // Tainted canvas (CORS) fallback: logo fallback + badge
     ctx.clearRect(0, 0, size, size);
-    drawFullBadge(ctx, size, count);
+    drawLogoLeft(ctx, size, false);
+    drawBadgeRight(ctx, size, count);
     dataUrl = canvas.toDataURL("image/png");
   }
-
-  // Silence unused-var lint now that we don't need the preloaded image
-  void loaded;
 
   // Replace every icon link with a single data-URL icon so the browser can't
   // pick a stale one.
