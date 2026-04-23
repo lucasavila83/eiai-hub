@@ -1,50 +1,29 @@
 /**
- * Favicon with unread badge.
+ * Favicon with unread badge — widescreen SVG layout.
  *
- * Draws a red circle (with the count inside) on top of the site's original
- * favicon, then swaps it into the document.
+ * To keep BOTH the Lesco mark and a large red unread badge visible in the
+ * tab, we render the favicon as an SVG with a 3:2 viewBox (96×64):
  *
- * Design notes:
- *   - The page layout declares several favicon <link>s (16x16, 32x32, .ico,
- *     apple-touch-icon). When we only updated one of them, Chrome would often
- *     pick a different one and ignore our change. So when we apply a badge we
- *     REMOVE all existing icon links and insert a single data-URL icon.
- *   - We keep a cached copy of the original links so we can restore them when
- *     the unread count drops to 0.
- *   - If loading the original favicon fails (CORS, 404, etc.), we fall back
- *     to drawing a branded placeholder (indigo square + "L") so the badge is
- *     still visible.
+ *   ┌──────────┬───────────────┐
+ *   │          │               │
+ *   │   LESCO  │     🔴 3      │
+ *   │          │               │
+ *   └──────────┴───────────────┘
  *
- * Usage:
- *   setFaviconBadge(3);   // favicon with "3" in a red badge
- *   setFaviconBadge(0);   // restores the original favicon
+ * Chrome respects the SVG viewBox aspect ratio when rendering the tab icon,
+ * so the badge stays big instead of being crushed to ~8 pixels like it would
+ * in a square canvas split in half.
+ *
+ * When count = 0 we restore the original <link rel="icon"> tags.
  */
 
-const SOURCE_FAVICON = "/favicon-32x32.png";
-const FALLBACK_COLOR = "#6366f1"; // indigo-500 — matches themeColor
-const FALLBACK_LETTER = "L";
+const LESCO_PINK = "#ec4899"; // matches the pink square in the sidebar logo
+const LESCO_LETTER = "L";
 
-type IconSnapshot = { element: HTMLLinkElement; rel: string; href: string; type: string | null; sizes: string | null };
+type IconSnapshot = { rel: string; href: string; type: string | null; sizes: string | null };
 
-let originalImg: HTMLImageElement | null = null;
-let originalLoaded: Promise<boolean> | null = null;
 let originalsSnapshot: IconSnapshot[] | null = null;
 let currentBadgedCount = 0;
-
-function loadOriginalImage(): Promise<boolean> {
-  if (originalLoaded) return originalLoaded;
-  originalLoaded = new Promise<boolean>((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      originalImg = img;
-      resolve(true);
-    };
-    img.onerror = () => resolve(false);
-    img.src = SOURCE_FAVICON;
-  });
-  return originalLoaded;
-}
 
 function snapshotOriginals() {
   if (originalsSnapshot) return;
@@ -52,7 +31,6 @@ function snapshotOriginals() {
     document.querySelectorAll<HTMLLinkElement>("link[rel~='icon'], link[rel='shortcut icon']")
   );
   originalsSnapshot = links.map((el) => ({
-    element: el,
     rel: el.rel,
     href: el.href,
     type: el.getAttribute("type"),
@@ -79,52 +57,29 @@ function restoreOriginals() {
   }
 }
 
-/**
- * Side-by-side layout: Lesco logo on the left half, red badge on the right.
- * Both elements are sized to fill their own half (32×32 of a 64×64 canvas),
- * so when Chrome shrinks to 16×16 each gets ~8 pixels of real estate.
- */
-function drawLogoLeft(ctx: CanvasRenderingContext2D, size: number, loaded: boolean) {
-  const halfW = size / 2;
-  if (loaded && originalImg) {
-    // Fill the entire left half vertically — maximizes logo visibility
-    ctx.drawImage(originalImg, 0, 0, halfW, size);
-    return;
-  }
-  // Fallback: solid left-half with a big "L"
-  ctx.fillStyle = FALLBACK_COLOR;
-  ctx.fillRect(0, 0, halfW, size);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 36px Arial, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(FALLBACK_LETTER, halfW / 2, size / 2 + 1);
+/** Build the SVG string with logo-box on the left and red badge on the right. */
+function buildSvg(count: number): string {
+  const text = count > 99 ? "99" : String(count);
+  // Digit text size shrinks a bit when there are 2 digits so it still fits
+  const badgeFontSize = text.length > 1 ? 34 : 44;
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 64">
+  <!-- Lesco mark: pink rounded square with an "L" -->
+  <rect x="2" y="2" width="36" height="60" rx="8" fill="${LESCO_PINK}"/>
+  <text x="20" y="34" fill="#ffffff" font-family="Arial, sans-serif" font-weight="bold"
+        font-size="44" text-anchor="middle" dominant-baseline="middle">${LESCO_LETTER}</text>
+
+  <!-- Red unread badge, takes the full right side -->
+  <circle cx="66" cy="32" r="28" fill="#ef4444" stroke="#ffffff" stroke-width="3"/>
+  <text x="66" y="34" fill="#ffffff" font-family="Arial, sans-serif" font-weight="bold"
+        font-size="${badgeFontSize}" text-anchor="middle" dominant-baseline="middle">${text}</text>
+</svg>`.trim();
 }
 
-function drawBadgeRight(ctx: CanvasRenderingContext2D, size: number, count: number) {
-  const halfW = size / 2;
-  const cx = halfW + halfW / 2; // center of right half
-  const cy = size / 2;
-  const r = halfW / 2 - 1; // fills the right half almost edge-to-edge
-
-  // Red fill
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = "#ef4444";
-  ctx.fill();
-
-  // Thin white border for contrast against the logo
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Count — as big as fits
-  const text = count > 99 ? "99" : String(count);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `bold ${text.length > 1 ? 20 : 26}px Arial, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, cx, cy + 1);
+function svgDataUrl(svg: string): string {
+  // Use URI-encoded SVG (no base64) to keep the URL compact and avoid btoa
+  // issues with unicode.
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 export async function setFaviconBadge(count: number): Promise<void> {
@@ -140,39 +95,16 @@ export async function setFaviconBadge(count: number): Promise<void> {
     return;
   }
 
-  // No-op when the count hasn't changed
   if (count === currentBadgedCount) return;
 
-  const loaded = await loadOriginalImage();
+  const svg = buildSvg(count);
+  const href = svgDataUrl(svg);
 
-  const size = 64;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  drawLogoLeft(ctx, size, loaded);
-  drawBadgeRight(ctx, size, count);
-
-  let dataUrl: string;
-  try {
-    dataUrl = canvas.toDataURL("image/png");
-  } catch {
-    // Tainted canvas (CORS) fallback: logo fallback + badge
-    ctx.clearRect(0, 0, size, size);
-    drawLogoLeft(ctx, size, false);
-    drawBadgeRight(ctx, size, count);
-    dataUrl = canvas.toDataURL("image/png");
-  }
-
-  // Replace every icon link with a single data-URL icon so the browser can't
-  // pick a stale one.
   removeAllIconLinks();
   const link = document.createElement("link");
   link.rel = "icon";
-  link.type = "image/png";
-  link.href = dataUrl;
+  link.type = "image/svg+xml";
+  link.href = href;
   document.head.appendChild(link);
 
   currentBadgedCount = count;
