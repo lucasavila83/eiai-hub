@@ -31,6 +31,16 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const { channels, setChannels, unreadCounts, setUnreadCount, incrementUnread } = useChatStore();
   const { sidebarOpen, setSidebarOpen, toggleSidebar, setActiveOrgId, isMobile } = useUIStore();
   const notifUnread = useNotificationStore((s) => s.unreadCount);
+
+  // Reflect total unread count in the browser tab title: "(N) Lesco-Hub"
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const chatUnread = Object.values(unreadCounts).reduce((sum, n) => sum + (n || 0), 0);
+    const total = chatUnread + (notifUnread || 0);
+    // Strip any previous "(N) " prefix and rebuild from the underlying title.
+    const base = document.title.replace(/^\(\d+\)\s+/, "") || "Lesco-Hub";
+    document.title = total > 0 ? `(${total}) ${base}` : base;
+  }, [unreadCounts, notifUnread]);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(
     organizations[0] || null
   );
