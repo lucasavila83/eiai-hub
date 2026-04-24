@@ -634,11 +634,16 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                       className="group/channel relative"
                       onContextMenu={(e) => handleChannelContextMenu(e, channel)}
                     >
-                      <Link
+                      <a
                         href={`/chat/${channel.id}`}
-                        onClick={handleMobileNavClose}
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                          e.preventDefault();
+                          handleMobileNavClose();
+                          router.push(`/chat/${channel.id}`);
+                        }}
                         className={cn(
-                          "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
+                          "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors cursor-pointer",
                           isActive
                             ? "bg-primary/10 text-primary font-medium"
                             : unread > 0
@@ -660,7 +665,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                             </span>
                           </div>
                         )}
-                      </Link>
+                      </a>
                       {/* Hover settings icon */}
                       <button
                         onClick={(e) => {
@@ -723,12 +728,23 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                       {showDivider && (
                         <div className="border-t border-border my-1.5 mx-2" />
                       )}
-                      <Link
+                      <a
                         href={`/chat/${dm.id}`}
-                        onClick={handleMobileNavClose}
+                        onClick={(e) => {
+                          // Use imperative router.push instead of <Link>:
+                          // the default Link does an async transition that
+                          // can get canceled by a re-render in the same tick
+                          // (that's the "need to click twice" bug). Pushing
+                          // synchronously in the onClick guarantees the nav
+                          // actually happens on the first click.
+                          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                          e.preventDefault();
+                          handleMobileNavClose();
+                          router.push(`/chat/${dm.id}`);
+                        }}
                         onContextMenu={(e) => handleDMContextMenu(e, dm)}
                         className={cn(
-                          "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
+                          "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors cursor-pointer",
                           isActive
                             ? "bg-primary/10 text-primary font-medium"
                             : unread > 0
@@ -763,7 +779,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
                             </span>
                           </div>
                         )}
-                      </Link>
+                      </a>
                     </div>
                   );
                 })}
