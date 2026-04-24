@@ -254,16 +254,21 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     return () => { supabase.removeChannel(sub); };
   }, [orgId, profileId]); // Only string IDs — stable across re-renders
 
-  // Safety-net polling. The realtime subscription above handles the common
-  // case (new messages arriving); this just catches missed events (e.g. after
-  // a reconnect). 15s is enough and avoids hammering the DB every 3s.
+  // Polling was removed — every tick re-created arrays that re-rendered
+  // the sidebar and occasionally swallowed the user's first click. The
+  // realtime subscription above already covers the common case (new
+  // messages, membership changes). If we ever find that realtime is
+  // missing events in practice, add back a poll with a MUCH longer
+  // interval (e.g. 60s) gated on document.visibilityState.
+  // Refresh once on tab focus as a cheap recovery path after a long sleep.
   useEffect(() => {
     if (!profileId || !orgId) return;
-    const interval = setInterval(() => {
+    function onFocus() {
       loadUnreadCounts();
       loadDMs(orgId);
-    }, 15000);
-    return () => clearInterval(interval);
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [profileId, orgId, loadUnreadCounts]);
 
   async function loadChannels(orgId: string) {

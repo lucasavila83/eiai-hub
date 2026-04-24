@@ -9,40 +9,31 @@
  * What it deliberately does NOT do:
  *   - Cache fetches. If we intercept requests and return stale responses,
  *     a broken deploy can leave a phone "stuck loading" with no easy way
- *     to recover (exactly the bug we just fixed). Every request goes
- *     straight to the network, same as any other SW-less page.
+ *     to recover. Every request goes straight to the network, same as
+ *     any other SW-less page.
  *   - Run any app code. No imports, no bundles. The browser fetches this
  *     file directly and runs it in a Worker, so anything that breaks here
  *     can brick the app for everyone until they clear site data.
+ *   - Call skipWaiting() / clients.claim(). Those two together force the
+ *     new SW to take over open tabs mid-session, which re-triggered a
+ *     click-swallowing bug on desktop. Now the SW follows the default
+ *     lifecycle: new versions wait until every tab has been closed or
+ *     navigated before they take over.
  *
- * If you need to roll this back, replace the file with a kill-switch that
- * calls self.registration.unregister() inside `activate` — see git history
- * for `sw.js` around the mobile-PWA debugging sessions.
+ * If you need a kill-switch, replace this file with one that calls
+ * self.registration.unregister() inside `activate` — see git history
+ * around the mobile-PWA debugging sessions.
  */
 
-const SW_VERSION = "v2-push-2026-04-24";
+const SW_VERSION = "v3-passive-2026-04-24";
 
 self.addEventListener("install", () => {
-  // Take over immediately so a new version is active on first reload.
-  self.skipWaiting();
+  // Intentionally empty — the new SW just waits its turn.
 });
 
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      // Wipe any cache a previous SW version might have left behind. We
-      // intentionally don't create new ones — see note at top of file.
-      try {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
-      } catch (_) {}
-
-      // Start controlling open pages immediately (no need to reload).
-      try {
-        await self.clients.claim();
-      } catch (_) {}
-    })()
-  );
+self.addEventListener("activate", () => {
+  // Intentionally empty — no cache cleanup because we don't create caches,
+  // and no clients.claim() so live tabs keep their existing SW (if any).
 });
 
 // No fetch handler on purpose.
@@ -76,7 +67,6 @@ self.addEventListener("push", (event) => {
     vibrate: [80, 40, 80],
     data: {
       url: payload.url || "/",
-      // so notificationclick can look it up
       ts: Date.now(),
     },
   };
@@ -99,9 +89,6 @@ self.addEventListener("notificationclick", (event) => {
       for (const c of all) {
         try {
           const url = new URL(c.url);
-          // Match anything on the same origin — better UX than strict URL
-          // equality since we want to reuse the PWA window regardless of
-          // which page it was on.
           if (url.origin === self.location.origin) {
             await c.focus();
             try {
@@ -111,7 +98,6 @@ self.addEventListener("notificationclick", (event) => {
           }
         } catch (_) {}
       }
-      // No Hub tab open — open a fresh one.
       try {
         await self.clients.openWindow(targetUrl);
       } catch (_) {}
