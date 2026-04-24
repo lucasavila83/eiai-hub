@@ -506,9 +506,16 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }, 200);
   }
 
-  // On mobile, close sidebar when navigating
+  // On mobile, close sidebar when navigating.
+  // Read window.innerWidth directly instead of trusting the `isMobile`
+  // store slice — the store slice is set async-after-mount, and if the
+  // user manages to tap a DM before React flushes that state update the
+  // check would be false and the drawer would stay open. The viewport
+  // width is never stale.
   function handleMobileNavClose() {
-    if (isMobile) setSidebarOpen(false);
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
   }
 
   return (
