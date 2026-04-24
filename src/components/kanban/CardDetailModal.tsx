@@ -1740,10 +1740,15 @@ export function CardDetailModal({
           )}
         </div>
 
-        {/* Two-column layout */}
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* ── LEFT COLUMN: Card content ── */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 min-w-0" style={{ flex: "0 0 65%" }}>
+        {/* Two-column on desktop, stacked on mobile. The original hard-
+            coded `flex: 0 0 65%` forced both columns to exist side-by-
+            side at 65/35, which on a 375px screen put the card content
+            into a 240px column and crushed the chat panel on top of it.
+            Now on <md screens we flex-col so the card content takes the
+            full width and the activity panel drops below. */}
+        <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
+          {/* ── LEFT COLUMN (or TOP on mobile): Card content ── */}
+          <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-6 min-w-0 md:!flex-[0_0_65%]">
             {/* Title */}
             <div>
               {editingTitle ? (
@@ -1780,8 +1785,10 @@ export function CardDetailModal({
               </div>
             )}
 
-            {/* Properties grid */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+            {/* Properties grid — one column on mobile so STATUS/RESPONSÁVEIS/
+                DATAS/PRIORIDADE don't stack their labels on top of each other
+                in a 170px-wide half-column; two columns on md+ as before. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
               {/* Status / Column */}
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
@@ -2842,11 +2849,8 @@ export function CardDetailModal({
             </div>
           </div>
 
-          {/* ── RIGHT COLUMN: Activity sidebar ── */}
-          <div
-            className="border-l border-border flex flex-col bg-accent/10 overflow-hidden"
-            style={{ flex: "0 0 35%" }}
-          >
+          {/* ── RIGHT COLUMN (or BOTTOM on mobile): Activity sidebar ── */}
+          <div className="border-t md:border-t-0 md:border-l border-border flex flex-col bg-accent/10 overflow-hidden shrink-0 h-[45vh] md:h-auto md:!flex-[0_0_35%]">
             {/* Sidebar header with tabs */}
             <div className="border-b border-border shrink-0">
               <div className="flex px-2 pt-2 gap-0.5">
