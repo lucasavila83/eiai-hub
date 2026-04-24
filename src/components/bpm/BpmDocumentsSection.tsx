@@ -32,7 +32,7 @@ interface Props {
   canEdit: boolean;
 }
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

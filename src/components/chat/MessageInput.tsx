@@ -12,7 +12,7 @@ import { MentionAutocomplete } from "./MentionAutocomplete";
 import { AudioRecorder } from "./AudioRecorder";
 import { createClient } from "@/lib/supabase/client";
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
 const MAX_PENDING_FILES = 5;
 
 interface PendingFile {
@@ -85,7 +85,7 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
       const toAdd = newFiles.slice(0, remaining);
       const entries: PendingFile[] = toAdd.map((file) => {
         if (file.size > MAX_FILE_SIZE) {
-          return { file, preview: null, error: "Muito grande (max. 50MB)" };
+          return { file, preview: null, error: "Muito grande (max. 200MB)" };
         }
         return { file, preview: null, error: null };
       });
