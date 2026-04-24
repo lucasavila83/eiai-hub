@@ -229,12 +229,12 @@ export default function SharePage() {
     setSending(true);
     try {
       // Need a column (status) to drop the card into — pick the leftmost
-      // non-archived one. Boards always have at least one column.
+      // one. Boards don't have an is_archived flag on columns, so just
+      // sort by position and grab the first.
       const { data: cols } = await supabase
         .from("columns")
         .select("id, position")
         .eq("board_id", boardId)
-        .eq("is_archived", false)
         .order("position", { ascending: true })
         .limit(1);
       const columnId = cols?.[0]?.id;
@@ -283,7 +283,10 @@ export default function SharePage() {
       }
 
       await clearPayloadCookie();
-      router.replace(`/boards/${(cardRow as any).board_id}`);
+      // Pass ?card=<id> so BoardView auto-opens the detail modal — user
+      // lands on the task they just created, with their attachment
+      // already in place, ready to edit.
+      router.replace(`/boards/${(cardRow as any).board_id}?card=${(cardRow as any).id}`);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[share] createCardOnBoard failed:", err);
@@ -322,7 +325,9 @@ export default function SharePage() {
       }
 
       await clearPayloadCookie();
-      router.replace(`/boards/${card.board_id}`);
+      // Same as new-card flow: open the target card's detail modal so
+      // the user can see/tweak the attachments they just added.
+      router.replace(`/boards/${card.board_id}?card=${card.id}`);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[share] attachToCard failed:", err);

@@ -348,26 +348,26 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-3 border-b border-border flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="px-3 md:px-6 py-3 border-b border-border flex flex-wrap items-center justify-between gap-y-2 gap-x-3 shrink-0">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
           <Link
             href="/boards"
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0"
             title="Voltar aos boards"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h2 className="font-bold text-foreground text-lg flex items-center gap-2">
-            {board.name}
+          <h2 className="font-bold text-foreground text-base md:text-lg flex items-center gap-2 min-w-0 truncate">
+            <span className="truncate">{board.name}</span>
             {(board as any).hub_user_id && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-yellow-500/10 text-yellow-500">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-yellow-500/10 text-yellow-500 shrink-0">
                 <Crown className="w-2.5 h-2.5" />
                 Hub
               </span>
             )}
           </h2>
           {/* View tabs */}
-          <div className="flex items-center bg-muted rounded-lg p-0.5">
+          <div className="hidden sm:flex items-center bg-muted rounded-lg p-0.5 shrink-0">
             <button
               onClick={() => setActiveView("kanban")}
               className={cn(
@@ -627,7 +627,7 @@ export function BoardView({ board, initialColumns, initialCards, currentUserId }
         <div
           ref={provided.innerRef}
           {...provided.droppableProps}
-          className="flex gap-4 p-6 overflow-x-auto flex-1 min-h-0"
+          className="flex gap-3 md:gap-4 p-3 md:p-6 overflow-x-auto flex-1 min-h-0"
         >
           {boardColumns.map((column, colIndex) => (
             <Draggable key={column.id} draggableId={`col-${column.id}`} index={colIndex}>
