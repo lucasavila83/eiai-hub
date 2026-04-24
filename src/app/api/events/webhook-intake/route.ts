@@ -254,6 +254,37 @@ async function routeEvent(
     return fired;
   }
 
+  // -------------------- NOTIFICATIONS (in-app → browser push) --------------------
+  // Every row we insert into the `notifications` table has a specific
+  // user_id; we piggy-back here to also fire a Web Push to that user so
+  // they see the notification on their phone's lock screen, not just in
+  // the bell in the top bar. The bell itself is still fed by the
+  // realtime subscription in NotificationListener.tsx.
+  if (table === "notifications" && op === "INSERT") {
+    try {
+      const userId: string | undefined = record.user_id;
+      const title: string = record.title || "Lesco-Hub";
+      const body: string = record.body || "";
+      const link: string | undefined = record.link || undefined;
+      const type: string = record.type || "notification";
+
+      if (userId) {
+        await sendPushToUsers([userId], {
+          title,
+          body,
+          url: link || "/notifications",
+          // Coalesce repeated notifications of the same kind on the same
+          // target so the user doesn't see 20 stacked banners for one event.
+          tag: `notif-${type}-${record.id}`,
+        });
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[intake] push-on-notification failed:", err);
+    }
+    return fired;
+  }
+
   // -------------------- ORG MEMBERS --------------------
   if (table === "org_members" && op === "INSERT") {
     const orgId = record.org_id;

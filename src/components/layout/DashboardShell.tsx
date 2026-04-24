@@ -8,10 +8,8 @@ import { PresenceTracker } from "@/components/layout/PresenceTracker";
 import { NotificationListener } from "@/components/layout/NotificationListener";
 import { ToastNotifications } from "@/components/layout/ToastNotifications";
 import { DailyAgenda } from "@/components/layout/DailyAgenda";
-// PWA components temporarily disabled while we diagnose the mobile
-// "site keeps loading" issue. Re-enable after we confirm the culprit.
-// import { PWARegister } from "@/components/layout/PWARegister";
-// import { PushNotificationsPrompt } from "@/components/layout/PushNotificationsPrompt";
+import { PWARegister } from "@/components/layout/PWARegister";
+import { PushNotificationsPrompt } from "@/components/layout/PushNotificationsPrompt";
 import { useUIStore } from "@/lib/stores/ui-store";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -40,7 +38,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <NotificationListener />
       <ToastNotifications />
       <DailyAgenda />
-      {/* <PWARegister /> <PushNotificationsPrompt /> — disabled, mobile debug */}
+      <PWARegister />
+      <PushNotificationsPrompt />
 
 
       {/* Mobile: sidebar as overlay */}
