@@ -14,59 +14,29 @@
  * stale content.
  */
 
-const VERSION = "v1";
-const CACHE = `lesco-hub-static-${VERSION}`;
-const STATIC_ASSETS = [
-  "/manifest.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/apple-touch-icon.png",
-];
+const VERSION = "v2-minimal";
 
+// Minimal install: do NOT precache anything. The earlier version tried to
+// cache.addAll() on install; if any asset 404'd briefly during deploy the
+// SW would enter "redundant" state on some mobile Chromes and get stuck.
+// We'd rather have no offline cache than a broken SW.
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(STATIC_ASSETS).catch(() => {}))
-  );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    )
+    // Clear every old cache from the v1 SW so nothing stale lingers.
+    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
   );
   self.clients.claim();
 });
 
-// Static assets only — everything else goes to the network (live data)
-self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  if (req.method !== "GET") return;
-  const url = new URL(req.url);
-  // Same-origin static assets
-  if (
-    url.origin === self.location.origin &&
-    (url.pathname.startsWith("/icons/") ||
-      url.pathname === "/manifest.json" ||
-      url.pathname === "/apple-touch-icon.png" ||
-      url.pathname.endsWith(".png") ||
-      url.pathname.endsWith(".svg") ||
-      url.pathname.endsWith(".ico"))
-  ) {
-    event.respondWith(
-      caches.match(req).then(
-        (cached) =>
-          cached ||
-          fetch(req).then((res) => {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
-            return res;
-          })
-      )
-    );
-  }
-});
+// No fetch handler at all — let the network serve everything. The only
+// reason we keep this SW alive is for push notifications, which still work
+// without any caching logic. If the SW has no fetch listener, the browser
+// treats requests exactly as if there were no SW, which is the safest
+// mode while PWA usage is still stabilizing.
 
 // --------------- PUSH NOTIFICATIONS ---------------
 
