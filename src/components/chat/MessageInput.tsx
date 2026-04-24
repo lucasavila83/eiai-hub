@@ -131,16 +131,17 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
       }
     }
 
+    // Capture what we're sending BEFORE clearing, so we can restore on error
+    const contentToSend = trimmed;
+    const filesToSend = validFiles;
+
     setSending(true);
-    setContent("");
-    setPendingFiles([]);
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     try {
       // Upload pending files first
-      if (validFiles.length > 0 && channelId) {
+      if (filesToSend.length > 0 && channelId) {
         const supabase = createClient();
-        for (const entry of validFiles) {
+        for (const entry of filesToSend) {
           const timestamp = Date.now();
           const safeName = entry.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
           const path = `${channelId}/${timestamp}_${safeName}`;
@@ -160,11 +161,24 @@ export function MessageInput({ onSend, channelName, onCreateTask, isDM, channelI
       }
 
       // Send text message (if any)
-      if (trimmed) {
-        await onSend(trimmed);
+      if (contentToSend) {
+        await onSend(contentToSend);
       }
+
+      // Only clear the input on successful send — never before.
+      // Previously we cleared content BEFORE the await and any failure
+      // (network glitch, rate limit, concurrent polling collision) silently
+      // wiped the user's text. Now the draft stays in the input until the
+      // message is actually on the server.
+      setContent("");
+      setPendingFiles([]);
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
     } catch (err) {
       console.error("Erro ao enviar:", err);
+      alert(
+        "Não foi possível enviar a mensagem. Seu texto continua no campo — tente de novo.\n\n" +
+          (err instanceof Error ? err.message : String(err))
+      );
     } finally {
       setSending(false);
       textareaRef.current?.focus();

@@ -205,13 +205,15 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     return () => { supabase.removeChannel(sub); };
   }, [orgId, profileId]); // Only string IDs — stable across re-renders
 
-  // Poll unread counts + DM list every few seconds for instant updates
+  // Safety-net polling. The realtime subscription above handles the common
+  // case (new messages arriving); this just catches missed events (e.g. after
+  // a reconnect). 15s is enough and avoids hammering the DB every 3s.
   useEffect(() => {
     if (!profileId || !orgId) return;
     const interval = setInterval(() => {
       loadUnreadCounts();
       loadDMs(orgId);
-    }, 3000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [profileId, orgId, loadUnreadCounts]);
 
@@ -263,25 +265,25 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
       });
       setDmChannels(enriched);
 
-      // Load last message timestamp for each DM (for sorting)
+      // Load last message timestamp for each DM (for sorting).
+      // Single query — fetch recent messages from all DMs and keep the max
+      // per channel client-side. Previously did N parallel queries which
+      // caused noticeable main-thread blocking with many DMs.
       const dmIds = enriched.map((ch: any) => ch.id);
       if (dmIds.length > 0) {
-        const lastMsgResults = await Promise.all(
-          dmIds.map((id: string) =>
-            supabase
-              .from("messages")
-              .select("created_at")
-              .eq("channel_id", id)
-              .order("created_at", { ascending: false })
-              .limit(1)
-              .single()
-              .then((res) => ({ channelId: id, at: res.data?.created_at || null }))
-          )
-        );
+        const { data: recentMsgs } = await supabase
+          .from("messages")
+          .select("channel_id, created_at")
+          .in("channel_id", dmIds)
+          .order("created_at", { ascending: false })
+          .limit(dmIds.length * 3); // a few per channel is enough to find the latest
+
         const map: Record<string, string> = {};
-        lastMsgResults.forEach(({ channelId, at }) => {
-          if (at) map[channelId] = at;
-        });
+        for (const m of recentMsgs || []) {
+          const id = (m as any).channel_id;
+          const at = (m as any).created_at;
+          if (!map[id] || at > map[id]) map[id] = at;
+        }
         setLastMessageAt(map);
       }
     }

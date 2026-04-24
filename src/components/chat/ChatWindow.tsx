@@ -374,7 +374,10 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       }
     }
 
-    const pollInterval = setInterval(pollMessages, 2000);
+    // Safety-net poll. Realtime + broadcast cover real-time delivery; this
+    // only catches missed events on reconnects. Too-frequent polling blocked
+    // the main thread and made clicks feel laggy.
+    const pollInterval = setInterval(pollMessages, 8000);
 
     // Also listen for broadcast for instant delivery (when it works)
     const unsub = onChatBroadcast(async (msg: any) => {
