@@ -217,8 +217,13 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         }
       })
       .subscribe((status) => {
+        // Do NOT manually re-subscribe on CHANNEL_ERROR. Supabase's realtime
+        // client already handles socket reconnection with exponential
+        // backoff. Re-subscribing on a broken socket every 3s just burned
+        // CPU and blocked the main thread enough to swallow the first click
+        // on a sidebar link ("need to click twice" bug). Just log once.
         if (status === "CHANNEL_ERROR") {
-          setTimeout(() => sub.subscribe(), 3000);
+          console.warn("[Sidebar] realtime CHANNEL_ERROR — waiting for client auto-reconnect");
         }
       });
 

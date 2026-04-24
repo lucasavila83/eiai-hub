@@ -275,8 +275,12 @@ export function NotificationListener() {
         }
       )
       .subscribe((status) => {
+        // Do NOT manually re-subscribe on CHANNEL_ERROR. Supabase's realtime
+        // client already reconnects the WebSocket with exponential backoff.
+        // Re-subscribing every 3s on a broken socket just spammed the
+        // console and burned main-thread cycles. Just log once.
         if (status === "CHANNEL_ERROR") {
-          setTimeout(() => channel.subscribe(), 3000);
+          console.warn("[NotificationListener] realtime CHANNEL_ERROR — waiting for auto-reconnect");
         }
       });
 
