@@ -29,7 +29,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  const { channels, setChannels, unreadCounts, setUnreadCount, incrementUnread } = useChatStore();
+  const { channels, setChannels, unreadCounts, setUnreadCount, setAllUnreadCounts, incrementUnread } = useChatStore();
   const { sidebarOpen, setSidebarOpen, toggleSidebar, setActiveOrgId, isMobile } = useUIStore();
   const notifUnread = useNotificationStore((s) => s.unreadCount);
 
@@ -86,7 +86,10 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }
   }, [activeOrg]);
 
-  // Load unread counts — all channels in parallel
+  // Load unread counts — single aggregate query (was N parallel queries, one
+  // per channel, which blocked the main thread during polling and made the
+  // whole UI feel sluggish). Batched state update via setAllUnreadCounts
+  // skips the re-render when nothing changed.
   const loadUnreadCounts = useCallback(async () => {
     if (!profile) return;
     const { data: memberships } = await supabase
@@ -94,23 +97,40 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
       .select("channel_id, last_read_at")
       .eq("user_id", profile.id);
 
-    if (!memberships || memberships.length === 0) return;
+    if (!memberships || memberships.length === 0) {
+      setAllUnreadCounts({});
+      return;
+    }
 
-    const results = await Promise.all(
-      memberships.map((m: any) => {
-        let query = supabase
-          .from("messages")
-          .select("*", { count: "exact", head: true })
-          .eq("channel_id", m.channel_id)
-          .neq("user_id", profile.id);
-        if (m.last_read_at) {
-          query = query.gt("created_at", m.last_read_at);
-        }
-        return query.then((res) => ({ channelId: m.channel_id, count: res.count || 0 }));
-      })
-    );
-    results.forEach(({ channelId, count }) => setUnreadCount(channelId, count));
-  }, [profile]);
+    const channelIds = memberships.map((m: any) => m.channel_id);
+    // Fetch messages from all member channels in one query. We cap at 30 days
+    // back so the result set stays bounded; older unread mentions are rare
+    // enough that the "99+" cap will already be showing anyway.
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: msgs } = await supabase
+      .from("messages")
+      .select("channel_id, created_at, user_id")
+      .in("channel_id", channelIds)
+      .neq("user_id", profile.id)
+      .gte("created_at", cutoff);
+
+    const lastReadMap: Record<string, string | null> = {};
+    for (const m of memberships) {
+      lastReadMap[(m as any).channel_id] = (m as any).last_read_at || null;
+    }
+
+    const counts: Record<string, number> = {};
+    for (const id of channelIds) counts[id] = 0;
+    for (const m of msgs || []) {
+      const cid = (m as any).channel_id;
+      const createdAt = (m as any).created_at;
+      const lastRead = lastReadMap[cid];
+      if (lastRead && createdAt <= lastRead) continue;
+      counts[cid] = (counts[cid] || 0) + 1;
+    }
+
+    setAllUnreadCounts(counts);
+  }, [profile, setAllUnreadCounts]);
 
   useEffect(() => {
     loadUnreadCounts();
@@ -263,12 +283,34 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
           otherUser: otherMember?.profiles || null,
         };
       });
-      setDmChannels(enriched);
+
+      // Only update state if the DM list actually changed. Polling creates
+      // a fresh array every time, which would re-render every <Link> — and
+      // if the user clicked exactly at that moment, the click handler was
+      // being recycled and the navigation "missed" (required a 2nd click).
+      setDmChannels((prev) => {
+        if (prev.length === enriched.length) {
+          let same = true;
+          for (let i = 0; i < prev.length; i++) {
+            const a = prev[i];
+            const b = enriched[i];
+            if (
+              a.id !== b.id ||
+              a.otherUser?.id !== b.otherUser?.id ||
+              a.otherUser?.status !== b.otherUser?.status ||
+              a.otherUser?.avatar_url !== b.otherUser?.avatar_url ||
+              a.otherUser?.full_name !== b.otherUser?.full_name
+            ) {
+              same = false;
+              break;
+            }
+          }
+          if (same) return prev; // identical — keep the same ref, avoid re-render
+        }
+        return enriched;
+      });
 
       // Load last message timestamp for each DM (for sorting).
-      // Single query — fetch recent messages from all DMs and keep the max
-      // per channel client-side. Previously did N parallel queries which
-      // caused noticeable main-thread blocking with many DMs.
       const dmIds = enriched.map((ch: any) => ch.id);
       if (dmIds.length > 0) {
         const { data: recentMsgs } = await supabase
@@ -276,7 +318,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
           .select("channel_id, created_at")
           .in("channel_id", dmIds)
           .order("created_at", { ascending: false })
-          .limit(dmIds.length * 3); // a few per channel is enough to find the latest
+          .limit(dmIds.length * 3);
 
         const map: Record<string, string> = {};
         for (const m of recentMsgs || []) {
@@ -284,7 +326,16 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
           const at = (m as any).created_at;
           if (!map[id] || at > map[id]) map[id] = at;
         }
-        setLastMessageAt(map);
+        // Same-content guard for lastMessageAt so polling doesn't
+        // reshuffle-and-rerender when nothing changed.
+        setLastMessageAt((prev) => {
+          const prevKeys = Object.keys(prev);
+          const newKeys = Object.keys(map);
+          if (prevKeys.length === newKeys.length && newKeys.every((k) => prev[k] === map[k])) {
+            return prev;
+          }
+          return map;
+        });
       }
     }
   }
