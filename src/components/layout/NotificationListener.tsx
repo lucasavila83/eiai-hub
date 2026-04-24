@@ -192,6 +192,10 @@ export function NotificationListener() {
       const notif = new Notification(sender.name, {
         body,
         icon: sender.avatar || "/lesco-icon.png",
+        // `badge` is what Android uses for the monochrome status-bar icon.
+        // Without it, Android converted the full-color PNG to a plain
+        // white square (the thing Lucas flagged in Print 1).
+        badge: "/icons/badge-96.png",
         tag: `msg-${msg.channel_id}-${msg.id}`,
         silent: true,
       });
@@ -262,6 +266,7 @@ export function NotificationListener() {
             const n = new Notification(notif.title, {
               body: notif.body,
               icon: "/lesco-icon.png",
+              badge: "/icons/badge-96.png",
               tag: `notif-${notif.id}`,
               silent: true,
             });
