@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
@@ -136,6 +136,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (data) setState((prev) => prev ? { ...prev, profile: data } : prev);
   }, [state?.user, supabase]);
 
+  // Memoise the context value so consumers don't re-render on every
+  // AuthProvider re-render. Without this, any time Next.js re-rendered
+  // the tree (e.g. on navigation, when the router context updates), the
+  // value object got a new identity → every consumer of useAuth() —
+  // Sidebar, TopBar, NotificationListener, ChatWindow — re-rendered
+  // even though nothing they care about actually changed. That cascade
+  // was re-creating sidebar <Link> fibers mid-click and swallowing the
+  // first tap.
+  // (Must run before the conditional early-returns below to keep hook
+  // order stable across renders.)
+  const value = useMemo(
+    () => (state ? { ...state, supabase, refreshProfile } : null),
+    [state, supabase, refreshProfile]
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -144,10 +159,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!state) return null;
+  if (!value) return null;
 
   return (
-    <AuthContext.Provider value={{ ...state, supabase, refreshProfile }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
