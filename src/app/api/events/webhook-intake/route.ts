@@ -22,6 +22,7 @@ import {
   resolveOrgIdForCard,
   resolveOrgIdForChannel,
 } from "@/lib/events/payload-builder";
+import { sendPushToUsers } from "@/lib/push/web-push";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -215,6 +216,41 @@ async function routeEvent(
       orgId, eventType: "message.sent", payload,
     });
     fired.push({ event: "message.sent", dispatched: r.dispatched });
+
+    // Also fan out a web-push notification to every channel member except
+    // the sender. Non-blocking — if push isn't configured yet, we just log.
+    try {
+      const senderId = record.user_id as string;
+      const channelId = record.channel_id as string;
+      const { data: members } = await admin
+        .from("channel_members")
+        .select("user_id")
+        .eq("channel_id", channelId)
+        .eq("is_hidden", false);
+
+      const targets = (members || [])
+        .map((m: any) => m.user_id as string)
+        .filter((uid) => uid && uid !== senderId);
+
+      if (targets.length > 0) {
+        const sender: any = (payload as any).sender || {};
+        const channel: any = (payload as any).channel || {};
+        const senderName = sender.full_name || sender.email || "Alguém";
+        const channelName =
+          channel.type === "dm" ? senderName : channel.name ? `#${channel.name}` : "Chat";
+        const preview = (payload as any).message?.preview || "Nova mensagem";
+        await sendPushToUsers(targets, {
+          title: channelName,
+          body: `${senderName}: ${preview}`,
+          url: `/chat/${channelId}`,
+          tag: `chat-${channelId}`,
+        });
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[intake] push-on-message failed:", err);
+    }
+
     return fired;
   }
 

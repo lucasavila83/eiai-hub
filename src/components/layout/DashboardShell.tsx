@@ -8,6 +8,8 @@ import { PresenceTracker } from "@/components/layout/PresenceTracker";
 import { NotificationListener } from "@/components/layout/NotificationListener";
 import { ToastNotifications } from "@/components/layout/ToastNotifications";
 import { DailyAgenda } from "@/components/layout/DailyAgenda";
+import { PWARegister } from "@/components/layout/PWARegister";
+import { PushNotificationsPrompt } from "@/components/layout/PushNotificationsPrompt";
 import { useUIStore } from "@/lib/stores/ui-store";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -36,6 +38,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <NotificationListener />
       <ToastNotifications />
       <DailyAgenda />
+      <PWARegister />
+      <PushNotificationsPrompt />
+
 
       {/* Mobile: sidebar as overlay */}
       {isMobile ? (

@@ -36,6 +36,7 @@
     "recharts": "^3.8.0",
     "resend": "^6.9.4",
     "tailwind-merge": "^3.0.2",
+    "web-push": "^3.6.7",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
@@ -43,6 +44,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "^15.2.3",
     "pg": "^8.20.0",
