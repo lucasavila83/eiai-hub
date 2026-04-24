@@ -17,6 +17,23 @@ export default function ChannelPage() {
   const { user } = useAuth();
 
   useEffect(() => {
+    // Reset state immediately when channelId changes so the UI flips to
+    // "Loading…" the moment the user clicks. Without this reset, the
+    // previous channel's `channel`/`messages` stay on screen until the
+    // new fetch resolves — 200–500 ms where the user thinks "my click
+    // didn't do anything" and clicks again. That's the "need to click
+    // twice" behaviour Lucas kept reporting.
+    setLoading(true);
+    setChannel(null);
+    setMessages([]);
+    setHasMore(false);
+    setAccessDenied(false);
+
+    // `aborted` flag — if the user clicks yet another channel before
+    // this fetch returns, we drop the stale response on the floor so it
+    // can't overwrite the newer channel's state.
+    let aborted = false;
+
     (async () => {
       // Load channel and messages via server API (bypasses RLS)
       const res = await fetch("/api/chat/load-channel", {
@@ -24,6 +41,7 @@ export default function ChannelPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channelId }),
       });
+      if (aborted) return;
 
       if (res.status === 403) {
         setAccessDenied(true);
@@ -37,11 +55,16 @@ export default function ChannelPage() {
       }
 
       const data = await res.json();
+      if (aborted) return;
       setChannel(data.channel);
       setMessages(data.messages || []);
       setHasMore(data.hasMore || false);
       setLoading(false);
     })();
+
+    return () => {
+      aborted = true;
+    };
   }, [channelId]);
 
   if (accessDenied) {
