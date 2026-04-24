@@ -77,20 +77,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { profile: profileRes.data, organizations: orgs, orgId: memberships[0]?.org_id || "" };
     }
 
-    // Initial session check
+    // Initial session check — hard-cap at 15s so a hung network (the
+    // classic mobile-data hiccup) can't leave the user staring at a
+    // spinner forever. If the check doesn't return in time, bounce them
+    // to /login and let them retry from a fresh page.
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const timeout = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("auth-timeout")), 15000);
+      });
 
-      if (!session?.user) {
+      try {
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          timeout,
+        ]);
+        const session = (sessionResult as any)?.data?.session;
+
+        if (!session?.user) {
+          router.replace("/login");
+          return;
+        }
+
+        const result = await Promise.race([
+          loadUser(session.user.id, session.user.email),
+          timeout,
+        ]);
+        if (!mounted || !result) return;
+
+        setState({ user: session.user, ...result });
+        setLoading(false);
+      } catch (err) {
+        if (!mounted) return;
+        // eslint-disable-next-line no-console
+        console.warn("[Auth] session check failed/timed out:", err);
         router.replace("/login");
-        return;
       }
-
-      const result = await loadUser(session.user.id, session.user.email);
-      if (!mounted || !result) return;
-
-      setState({ user: session.user, ...result });
-      setLoading(false);
     })();
 
     // Listen for auth state changes (token refresh failures, sign out, etc.)
