@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
@@ -15,6 +16,7 @@ import { useUIStore } from "@/lib/stores/ui-store";
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const { user, profile, organizations } = useAuth();
   const { isMobile, sidebarOpen, setIsMobile, setSidebarOpen } = useUIStore();
+  const pathname = usePathname();
 
   // Detect mobile on resize
   useEffect(() => {
@@ -23,7 +25,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       const wasMobile = useUIStore.getState().isMobile;
       if (mobile !== wasMobile) {
         setIsMobile(mobile);
-        if (mobile) setSidebarOpen(false);
+        // Only auto-close when FLIPPING to mobile. The per-route default
+        // below handles the initial-landing case.
+        if (mobile && wasMobile === false) setSidebarOpen(false);
       }
     }
     window.addEventListener("resize", handleResize);
@@ -31,6 +35,20 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     handleResize();
     return () => window.removeEventListener("resize", handleResize);
   }, [setIsMobile, setSidebarOpen]);
+
+  // On mobile, /chat (no specific channel yet) and / should land with the
+  // drawer OPEN so the user sees the chat list immediately instead of the
+  // empty "select a channel" placeholder. Any specific route (/chat/:id,
+  // /boards, etc.) keeps the drawer closed so the main content fills the
+  // viewport.
+  useEffect(() => {
+    if (!isMobile) return;
+    const isChatLanding = pathname === "/chat" || pathname === "/" || pathname === "";
+    // Only change state if we need to — avoids churn + unexpected re-renders.
+    const current = useUIStore.getState().sidebarOpen;
+    if (isChatLanding && !current) setSidebarOpen(true);
+    if (!isChatLanding && current) setSidebarOpen(false);
+  }, [pathname, isMobile, setSidebarOpen]);
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
