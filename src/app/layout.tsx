@@ -25,8 +25,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className="dark">
-      <body className="antialiased">{children}</body>
+    <html lang="pt-BR" className="dark" suppressHydrationWarning>
+      <body className="antialiased" suppressHydrationWarning>
+        {children}
+        {/*
+          Dedicated root for React portals (toasts, modals, the daily
+          agenda). Pointing createPortal at this stable div — instead of
+          directly at document.body — isolates React's reconciliation
+          from anything else that might mutate the body (browser
+          extensions, translation tools, analytics scripts). Without it
+          we hit "Cannot read properties of null (reading 'removeChild')"
+          during commit, which aborts the render mid-click and looks like
+          the click-swallowing / "need to click twice" bug.
+        */}
+        <div id="portal-root" />
+      </body>
     </html>
   );
 }

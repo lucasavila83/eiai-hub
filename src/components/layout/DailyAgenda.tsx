@@ -199,6 +199,13 @@ export function DailyAgenda() {
   const todayCards = cards.filter((c) => c.due_date && c.due_date.slice(0, 10) === today);
   const noDueCards = cards.filter((c) => !c.due_date);
 
+  // Use a dedicated portal root so browser extensions / translation
+  // tools that mutate document.body can't break React's reconciliation.
+  const portalTarget =
+    (typeof document !== "undefined" && document.getElementById("portal-root")) ||
+    (typeof document !== "undefined" ? document.body : null);
+  if (!portalTarget) return null;
+
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShow(false)} />
@@ -318,7 +325,7 @@ export function DailyAgenda() {
         </div>
       </div>
     </div>,
-    document.body
+    portalTarget
   );
 }
 

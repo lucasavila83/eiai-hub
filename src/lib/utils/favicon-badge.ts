@@ -1,54 +1,32 @@
 /**
- * Favicon with unread badge — big red circle filling the favicon.
+ * Favicon with unread badge — big red circle overlaying the original
+ * favicon by simply prepending an extra <link> to <head>.
  *
- * Why not show logo AND badge side by side?
- *   The browser renders the tab favicon at ~16×16 pixels. Splitting that
- *   square between a logo and a badge gives each ~8 pixels of real estate,
- *   which makes the unread count unreadable. SVG + widescreen viewBox is
- *   inconsistently supported by Chrome (it letterboxes or squashes).
+ * Important: this used to wipe every <link rel="icon"> from <head> and
+ * re-create them from a snapshot. That was catastrophic — Next.js
+ * manages icon links from `metadata` in layout.tsx, and removing those
+ * from under React's nose caused "Cannot read properties of null
+ * (reading 'removeChild')" on the next commit, which aborted renders
+ * mid-click and made the sidebar feel like it needed two taps to
+ * navigate. Now we only ever touch a <link data-badge="true"> element
+ * that we own; React's icons are left alone.
  *
- *   So: while there are unread chats, the favicon becomes a big red circle
- *   with the count — same pattern as WhatsApp Web / Discord. When the
- *   count goes back to 0 we restore the original Lesco favicon.
+ * Why red circle instead of badge-on-logo?
+ *   The browser renders the tab favicon at ~16×16 pixels. Splitting
+ *   that between a logo and a badge makes both unreadable. So while
+ *   there are unread chats, the favicon becomes a big red circle with
+ *   the count — same pattern as WhatsApp Web / Discord. When it goes
+ *   back to 0 we remove our badge link and the React-managed icons
+ *   take over again (they were never removed).
  */
 
-const FALLBACK_COLOR = "#ef4444"; // used only if the canvas path fails
-
-type IconSnapshot = { rel: string; href: string; type: string | null; sizes: string | null };
-
-let originalsSnapshot: IconSnapshot[] | null = null;
+const BADGE_ATTR = "data-lesco-badge";
 let currentBadgedCount = 0;
 
-function snapshotOriginals() {
-  if (originalsSnapshot) return;
-  const links = Array.from(
-    document.querySelectorAll<HTMLLinkElement>("link[rel~='icon'], link[rel='shortcut icon']")
-  );
-  originalsSnapshot = links.map((el) => ({
-    rel: el.rel,
-    href: el.href,
-    type: el.getAttribute("type"),
-    sizes: el.getAttribute("sizes"),
-  }));
-}
-
-function removeAllIconLinks() {
-  document
-    .querySelectorAll<HTMLLinkElement>("link[rel~='icon'], link[rel='shortcut icon']")
-    .forEach((el) => el.remove());
-}
-
-function restoreOriginals() {
-  if (!originalsSnapshot || originalsSnapshot.length === 0) return;
-  removeAllIconLinks();
-  for (const snap of originalsSnapshot) {
-    const link = document.createElement("link");
-    link.rel = snap.rel;
-    link.href = snap.href;
-    if (snap.type) link.setAttribute("type", snap.type);
-    if (snap.sizes) link.setAttribute("sizes", snap.sizes);
-    document.head.appendChild(link);
-  }
+/** Find our badge link element, if it has been inserted. */
+function findBadgeLink(): HTMLLinkElement | null {
+  if (typeof document === "undefined") return null;
+  return document.querySelector<HTMLLinkElement>(`link[${BADGE_ATTR}]`);
 }
 
 /** Draws a big red circle with the count across the whole canvas. */
@@ -60,7 +38,7 @@ function drawFullBadge(ctx: CanvasRenderingContext2D, size: number, count: numbe
   // Red fill
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = FALLBACK_COLOR;
+  ctx.fillStyle = "#ef4444";
   ctx.fill();
 
   // Thin white border for contrast
@@ -80,38 +58,46 @@ function drawFullBadge(ctx: CanvasRenderingContext2D, size: number, count: numbe
 export async function setFaviconBadge(count: number): Promise<void> {
   if (typeof document === "undefined") return;
 
-  snapshotOriginals();
+  const existing = findBadgeLink();
 
-  // count = 0 → restore original Lesco favicon
+  // count = 0 → pull our badge link off so the original favicon shows
+  // through. React's icon <link>s were never removed, so nothing to
+  // reinstate.
   if (!count || count <= 0) {
-    if (currentBadgedCount > 0) {
-      restoreOriginals();
-      currentBadgedCount = 0;
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
     }
+    currentBadgedCount = 0;
     return;
   }
 
-  // Same count → nothing to do
-  if (count === currentBadgedCount) return;
+  // Same count, badge already drawn → nothing to do.
+  if (count === currentBadgedCount && existing) return;
 
-  // Draw red badge on a PNG canvas
+  // Draw red badge on a canvas and encode as a data URL.
   const size = 64;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-
   drawFullBadge(ctx, size, count);
-
   const dataUrl = canvas.toDataURL("image/png");
 
-  removeAllIconLinks();
-  const link = document.createElement("link");
-  link.rel = "icon";
-  link.type = "image/png";
-  link.href = dataUrl;
-  document.head.appendChild(link);
+  if (existing) {
+    // Reuse the same link element so browsers just swap the bitmap.
+    existing.setAttribute("href", dataUrl);
+  } else {
+    // First time we're badging — create our link and append LAST so it
+    // wins the "use this icon" tiebreaker against the React-managed
+    // ones that were already there.
+    const link = document.createElement("link");
+    link.setAttribute(BADGE_ATTR, "true");
+    link.rel = "icon";
+    link.type = "image/png";
+    link.href = dataUrl;
+    document.head.appendChild(link);
+  }
 
   currentBadgedCount = count;
 }

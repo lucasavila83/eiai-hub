@@ -13,6 +13,14 @@ export function ToastNotifications() {
 
   if (toasts.length === 0) return null;
 
+  // Portal into the dedicated #portal-root div (see src/app/layout.tsx).
+  // Falls back to document.body for the brief moment before the root
+  // element mounts — harmless because there are no toasts at that point.
+  const target =
+    (typeof document !== "undefined" && document.getElementById("portal-root")) ||
+    (typeof document !== "undefined" ? document.body : null);
+  if (!target) return null;
+
   return createPortal(
     <div className="fixed bottom-4 right-4 z-[9999] flex flex-col-reverse gap-2 pointer-events-none" style={{ maxWidth: 380 }}>
       {toasts.map((toast) => {
@@ -82,6 +90,6 @@ export function ToastNotifications() {
         );
       })}
     </div>,
-    document.body
+    target
   );
 }
