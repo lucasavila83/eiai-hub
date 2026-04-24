@@ -8,7 +8,10 @@ export default function RootDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/dashboard");
+    // Landing on "/" drops the user straight into chat — that's where
+    // they spend most of their time and what the PWA start_url now
+    // points at (manifest.json). Keeps desktop and mobile consistent.
+    router.replace("/chat");
   }, [router]);
 
   return (

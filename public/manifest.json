@@ -63,7 +63,7 @@
     }
   ],
   "share_target": {
-    "action": "/chat",
+    "action": "/api/share",
     "method": "POST",
     "enctype": "multipart/form-data",
     "params": {
@@ -73,7 +73,7 @@
       "files": [
         {
           "name": "files",
-          "accept": ["image/*", "video/*", "audio/*", "application/pdf", ".doc", ".docx", ".xls", ".xlsx"]
+          "accept": ["image/*", "video/*", "audio/*", "application/pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt", ".csv", ".zip"]
         }
       ]
     }

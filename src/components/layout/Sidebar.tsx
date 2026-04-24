@@ -232,6 +232,25 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         }
       })
       .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "channel_members",
+      }, (payload: any) => {
+        // Cross-device read-sync. When the user reads a channel on one
+        // device we UPDATE channel_members.last_read_at. Other devices
+        // get that UPDATE here and zero out their local unread count
+        // for the same channel — so the "you have 1 unread" bubble on
+        // the desktop disappears the moment the phone catches up.
+        const cm = payload.new;
+        const oldCm = payload.old;
+        if (!cm || cm.user_id !== profileRef.current?.id) return;
+        const newRead = cm.last_read_at;
+        const oldRead = oldCm?.last_read_at;
+        if (newRead && newRead !== oldRead) {
+          useChatStore.getState().markAsRead(cm.channel_id);
+        }
+      })
+      .on("postgres_changes", {
         event: "INSERT",
         schema: "public",
         table: "messages",
