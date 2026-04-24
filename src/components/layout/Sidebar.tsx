@@ -146,6 +146,18 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const dmChannelsRef = useRef(dmChannels);
   useEffect(() => { dmChannelsRef.current = dmChannels; }, [dmChannels]);
 
+  // Set of channel IDs the user is actually a member of. Used by the
+  // realtime message INSERT handler to skip messages for channels we don't
+  // care about (org has many channels, only a few are in this user's
+  // sidebar).
+  const myChannelIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const ids = new Set<string>();
+    channels.forEach((c) => ids.add(c.id));
+    dmChannels.forEach((c) => ids.add(c.id));
+    myChannelIdsRef.current = ids;
+  }, [channels, dmChannels]);
+
   // Stable IDs for subscription deps (avoid object reference changes)
   const profileId = profile?.id;
   const orgId = activeOrg?.id;
@@ -200,8 +212,20 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         table: "messages",
       }, async (payload: any) => {
         const msg = payload.new;
-        // Update last message timestamp for sorting
-        setLastMessageAt((prev) => ({ ...prev, [msg.channel_id]: msg.created_at }));
+        // Only care about channels this user is actually in. Without this
+        // filter, every message in the entire org re-renders the sidebar →
+        // swallows clicks ("need to click twice" bug).
+        const myChannels = myChannelIdsRef.current;
+        if (myChannels && !myChannels.has(msg.channel_id)) return;
+
+        // Update last message timestamp for sorting — but ONLY if the date
+        // actually changed (avoid spurious re-renders when the same event
+        // gets delivered twice or the value is already set).
+        setLastMessageAt((prev) => {
+          if (prev[msg.channel_id] === msg.created_at) return prev;
+          return { ...prev, [msg.channel_id]: msg.created_at };
+        });
+
         if (msg.user_id === profileRef.current?.id) return;
         // Increment unread if user is not viewing this channel
         if (pathnameRef.current !== `/chat/${msg.channel_id}`) {
@@ -270,13 +294,17 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
     const myChannelIds = myChannelMembers.map((cm: any) => cm.channel_id);
 
-    // Then load only DM channels the user belongs to (no is_archived filter — use is_hidden instead)
+    // Then load only DM channels the user belongs to. `.order("id")` makes
+    // the response order deterministic across polls — without it, Postgres
+    // is free to return rows in different orders, which would defeat the
+    // same-content guard below and re-render every <Link> every 15s.
     const { data } = await supabase
       .from("channels")
       .select("*, channel_members(user_id, profiles:user_id(id, full_name, avatar_url, email, status))")
       .eq("org_id", orgId)
       .eq("type", "dm")
-      .in("id", myChannelIds);
+      .in("id", myChannelIds)
+      .order("id");
 
     if (data) {
       const enriched = data.map((ch: any) => {
@@ -289,30 +317,28 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         };
       });
 
-      // Only update state if the DM list actually changed. Polling creates
-      // a fresh array every time, which would re-render every <Link> — and
-      // if the user clicked exactly at that moment, the click handler was
-      // being recycled and the navigation "missed" (required a 2nd click).
+      // Only update state if the DM list actually changed. Compare by ID
+      // map (not positional) so that even if Postgres did return rows in a
+      // different order we still detect "nothing changed" and skip the
+      // re-render. A spurious re-render here races with the user's click
+      // on a sidebar <Link> and swallows it — the origin of the old
+      // "need to click twice" bug.
       setDmChannels((prev) => {
-        if (prev.length === enriched.length) {
-          let same = true;
-          for (let i = 0; i < prev.length; i++) {
-            const a = prev[i];
-            const b = enriched[i];
-            if (
-              a.id !== b.id ||
-              a.otherUser?.id !== b.otherUser?.id ||
-              a.otherUser?.status !== b.otherUser?.status ||
-              a.otherUser?.avatar_url !== b.otherUser?.avatar_url ||
-              a.otherUser?.full_name !== b.otherUser?.full_name
-            ) {
-              same = false;
-              break;
-            }
+        if (prev.length !== enriched.length) return enriched;
+        const prevById = new Map(prev.map((dm: any) => [dm.id, dm]));
+        for (const b of enriched) {
+          const a = prevById.get(b.id);
+          if (
+            !a ||
+            a.otherUser?.id !== b.otherUser?.id ||
+            a.otherUser?.status !== b.otherUser?.status ||
+            a.otherUser?.avatar_url !== b.otherUser?.avatar_url ||
+            a.otherUser?.full_name !== b.otherUser?.full_name
+          ) {
+            return enriched;
           }
-          if (same) return prev; // identical — keep the same ref, avoid re-render
         }
-        return enriched;
+        return prev; // identical — keep the same ref, avoid re-render
       });
 
       // Load last message timestamp for each DM (for sorting).
@@ -350,7 +376,29 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
       .from("org_members")
       .select("user_id, role, profiles:user_id(id, full_name, avatar_url, email, status)")
       .eq("org_id", orgId);
-    if (data) setOrgMembers(data);
+    if (!data) return;
+    // Idempotency guard — org_members realtime events fire whenever anyone
+    // joins/leaves any team. Without this check, every such event replaced
+    // `orgMembers` with a new array ref and re-rendered the whole sidebar.
+    setOrgMembers((prev) => {
+      if (prev.length !== data.length) return data;
+      const prevById = new Map(prev.map((m: any) => [m.user_id, m]));
+      for (const m of data) {
+        const p = prevById.get((m as any).user_id);
+        const mp = (m as any).profiles;
+        const pp = p?.profiles;
+        if (
+          !p ||
+          p.role !== (m as any).role ||
+          pp?.full_name !== mp?.full_name ||
+          pp?.avatar_url !== mp?.avatar_url ||
+          pp?.status !== mp?.status
+        ) {
+          return data;
+        }
+      }
+      return prev; // no change
+    });
   }
 
   async function handleLogout() {

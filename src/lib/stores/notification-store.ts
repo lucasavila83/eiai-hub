@@ -61,7 +61,29 @@ export const useNotificationStore = create<NotificationState>((set) => ({
       unreadCount: s.unreadCount + 1,
     })),
 
-  setRecentNotifications: (items) => set({ recentNotifications: items }),
+  setRecentNotifications: (items) =>
+    set((state) => {
+      // Idempotency guard: the NotificationListener polls every 30s and
+      // would otherwise replace `recentNotifications` with a fresh array
+      // even when nothing changed. That forces the TopBar <NotificationBell/>
+      // to re-render, which briefly swaps its DOM nodes and swallows any
+      // click that lands in that window.
+      const prev = state.recentNotifications;
+      if (prev.length !== items.length) return { recentNotifications: items };
+      for (let i = 0; i < items.length; i++) {
+        const a = prev[i];
+        const b = items[i];
+        if (
+          a.id !== b.id ||
+          a.is_read !== b.is_read ||
+          a.title !== b.title ||
+          a.body !== b.body
+        ) {
+          return { recentNotifications: items };
+        }
+      }
+      return {}; // no change
+    }),
 
   addToast: (toast) => {
     const id = `toast-${++toastCounter}-${Date.now()}`;

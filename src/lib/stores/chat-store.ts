@@ -25,7 +25,30 @@ export const useChatStore = create<ChatState>((set) => ({
   activeChannelId: null,
   messages: {},
   unreadCounts: {},
-  setChannels: (channels) => set({ channels }),
+  setChannels: (channels) =>
+    set((state) => {
+      // Idempotency guard: loadChannels() in the sidebar runs on every
+      // realtime event that touches the channels table. Without this
+      // check, each of those events would create a brand-new `channels`
+      // array reference → re-render every <Link> in the sidebar → swallow
+      // any click that lands in that window ("need to click twice" bug).
+      const prev = state.channels;
+      if (prev.length !== channels.length) return { channels };
+      const prevById = new Map(prev.map((c) => [c.id, c]));
+      for (const c of channels) {
+        const p = prevById.get(c.id);
+        if (
+          !p ||
+          p.name !== c.name ||
+          p.type !== c.type ||
+          (p as any).description !== (c as any).description ||
+          (p as any).is_archived !== (c as any).is_archived
+        ) {
+          return { channels };
+        }
+      }
+      return {}; // no change
+    }),
   setActiveChannel: (channelId) => set({ activeChannelId: channelId }),
   addMessage: (channelId, message) =>
     set((state) => ({
