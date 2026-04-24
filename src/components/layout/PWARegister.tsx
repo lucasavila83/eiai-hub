@@ -51,23 +51,36 @@ export function PWARegister() {
   const [showIOSHelp, setShowIOSHelp] = useState(false);
   const [installing, setInstalling] = useState(false);
 
-  // Register the service worker
+  // Register the service worker — deferred until after the page has loaded
+  // so SW registration can never block the initial render on slow mobile
+  // networks.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator)) return;
     // Only register on secure origins (localhost is treated as secure)
     if (window.location.protocol !== "https:" && window.location.hostname !== "localhost") return;
 
-    navigator.serviceWorker
-      .register("/sw.js", { scope: "/" })
-      .then((reg) => {
-        // eslint-disable-next-line no-console
-        console.log("[PWA] service worker registered:", reg.scope);
-      })
-      .catch((err) => {
-        // eslint-disable-next-line no-console
-        console.warn("[PWA] service worker registration failed:", err);
-      });
+    function register() {
+      navigator.serviceWorker
+        .register("/sw.js", { scope: "/" })
+        .then((reg) => {
+          // eslint-disable-next-line no-console
+          console.log("[PWA] service worker registered:", reg.scope);
+        })
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn("[PWA] service worker registration failed:", err);
+        });
+    }
+
+    // Wait until the page is fully loaded (or 5s as a cap) before registering.
+    if (document.readyState === "complete") {
+      setTimeout(register, 1500);
+    } else {
+      const onLoad = () => setTimeout(register, 1500);
+      window.addEventListener("load", onLoad, { once: true });
+      return () => window.removeEventListener("load", onLoad);
+    }
   }, []);
 
   // Catch the install prompt (Android/Chrome/Edge)
