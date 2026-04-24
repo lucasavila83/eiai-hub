@@ -33,8 +33,9 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   const { sidebarOpen, setSidebarOpen, toggleSidebar, setActiveOrgId, isMobile } = useUIStore();
   const notifUnread = useNotificationStore((s) => s.unreadCount);
 
-  // Show number of CHATS with unread messages in tab title + favicon badge.
-  // Counts channels/DMs that have at least one unread message (not total messages).
+  // Show number of CHATS with unread messages in tab title + favicon badge +
+  // installed-PWA app badge. Counts channels/DMs that have at least one unread
+  // message (not total messages).
   useEffect(() => {
     if (typeof document === "undefined") return;
     const chatsWithUnread = Object.values(unreadCounts).filter((n) => (n || 0) > 0).length;
@@ -43,6 +44,30 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     document.title = chatsWithUnread > 0 ? `(${chatsWithUnread}) ${base}` : base;
     // Draw a red badge on the favicon too (clears when count = 0)
     setFaviconBadge(chatsWithUnread);
+
+    // Installed PWA: set/clear the OS-level app icon badge (the number that
+    // showed up stale on Lucas's phone). Supported on Android/Chrome and
+    // recent Edge. Unsupported browsers ignore the calls.
+    if (typeof navigator !== "undefined") {
+      const nav = navigator as any;
+      try {
+        if (chatsWithUnread > 0 && typeof nav.setAppBadge === "function") {
+          nav.setAppBadge(chatsWithUnread).catch(() => {});
+        } else if (chatsWithUnread === 0 && typeof nav.clearAppBadge === "function") {
+          nav.clearAppBadge().catch(() => {});
+          // Also tell the SW to close any chat notifications still sitting
+          // in the tray — otherwise Android keeps the badge visible on the
+          // app icon even after the OS-level badge was cleared.
+          if (nav.serviceWorker?.controller) {
+            nav.serviceWorker.controller.postMessage({
+              type: "close-all-notifications",
+            });
+          }
+        }
+      } catch (_) {
+        // Browser without App Badge API — nothing to do.
+      }
+    }
   }, [unreadCounts]);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(
     organizations[0] || null

@@ -155,6 +155,16 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
 
     markAsRead(channel.id);
 
+    // Close any pending push notifications for this channel so the OS
+    // lock-screen and app-icon badge don't linger after the user has
+    // already read it.
+    if (typeof navigator !== "undefined" && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "close-notifications",
+        tag: `chat-${channel.id}`,
+      });
+    }
+
     // Fetch channel members (for DM other-user detection + read receipts)
     supabase
       .from("channel_members")

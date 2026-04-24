@@ -2,7 +2,7 @@
   "name": "Lesco-Hub",
   "short_name": "Lesco-Hub",
   "description": "Plataforma de gestão integrada — chat, boards, processos e notificações",
-  "start_url": "/",
+  "start_url": "/chat",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],

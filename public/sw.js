@@ -105,9 +105,40 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
-// Small liveness ping — lets us verify the SW is alive from DevTools.
+// Messages from the page.
 self.addEventListener("message", (event) => {
-  if (event.data === "ping") {
+  const data = event.data;
+
+  // Liveness ping — lets us verify the SW is alive from DevTools.
+  if (data === "ping") {
     event.source && event.source.postMessage({ pong: true, version: SW_VERSION });
+    return;
+  }
+
+  if (data && typeof data === "object") {
+    // Close every notification matching a given tag (usually "chat-<id>")
+    // so the OS icon-badge stops showing a stale count after the user has
+    // already read the channel in-app.
+    if (data.type === "close-notifications" && data.tag) {
+      event.waitUntil(
+        self.registration
+          .getNotifications({ tag: data.tag })
+          .then((list) => list.forEach((n) => n.close()))
+          .catch(() => {})
+      );
+      return;
+    }
+
+    // Close all notifications at once — used when the app's global unread
+    // count hits zero.
+    if (data.type === "close-all-notifications") {
+      event.waitUntil(
+        self.registration
+          .getNotifications()
+          .then((list) => list.forEach((n) => n.close()))
+          .catch(() => {})
+      );
+      return;
+    }
   }
 });
