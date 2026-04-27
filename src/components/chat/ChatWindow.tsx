@@ -13,6 +13,7 @@ import {
   Hash, Lock, MessageSquare, ListTodo, Search,
   Kanban, CheckCircle2, Clock, AlertCircle,
   CheckSquare, Square, X, Mail, Loader2, Reply,
+  Image as ImageIcon, FileText, Download,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils/helpers";
 import { usePermissions } from "@/lib/hooks/usePermissions";
@@ -49,6 +50,41 @@ function isDifferentDay(d1: string, d2: string): boolean {
   );
 }
 
+// Same regex MessageBubble uses to detect file attachments. Messages
+// with file uploads carry a "📎 **filename**\nhttps://..." or
+// "📎 Arquivo: **filename**\nhttps://..." body.
+// `s` (dotAll) flag intentionally omitted — tsconfig target ES2017 doesn't
+// know about it. Our pattern doesn't need `.` to match newlines because the
+// gap between filename and URL is the explicit `\n`.
+const FILE_URL_REGEX = /^📎\s*(?:Arquivo:\s*)?\*\*(.+?)\*\*\n(https?:\/\/.+)$/;
+const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"];
+
+interface ChannelAttachment {
+  msgId: string;
+  msgUserId: string;
+  fileName: string;
+  fileUrl: string;
+  isImage: boolean;
+  createdAt: string;
+}
+
+function extractAttachment(msg: { id: string; user_id: string; content: string; created_at: string }): ChannelAttachment | null {
+  const m = (msg.content || "").match(FILE_URL_REGEX);
+  if (!m) return null;
+  const fileName = m[1];
+  const fileUrl = m[2];
+  const lower = fileName.toLowerCase();
+  const isImage = IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+  return {
+    msgId: msg.id,
+    msgUserId: msg.user_id,
+    fileName,
+    fileUrl,
+    isImage,
+    createdAt: msg.created_at,
+  };
+}
+
 const priorityConfig: Record<string, { color: string; icon: any; label: string }> = {
   urgent: { color: "text-red-500", icon: AlertCircle, label: "Urgente" },
   high: { color: "text-orange-500", icon: AlertCircle, label: "Alta" },
@@ -69,6 +105,7 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
   const [loadingMore, setLoadingMore] = useState(false);
   const [activeTab, setActiveTab] = useState<"chat" | "tasks" | "search">("chat");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchSubTab, setSearchSubTab] = useState<"messages" | "media" | "files">("messages");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [lastReadAt, setLastReadAt] = useState<string | null>(null);
@@ -1074,87 +1111,226 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
           )}
         </div>
       ) : (
-        /* Search Tab */
-        <div className="flex flex-col h-full">
-          <div className="px-4 pt-3 pb-2 border-b border-border shrink-0">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar no chat..."
-                className="w-full pl-9 pr-8 py-2 bg-muted border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-            {searchQuery.trim() && (
-              <p className="text-xs text-muted-foreground mt-1.5">
-                {channelMessages.filter((m: any) => m.content.toLowerCase().includes(searchQuery.toLowerCase())).length} resultado(s)
-              </p>
-            )}
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-1">
-            {!searchQuery.trim() ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <Search className="w-10 h-10 text-muted-foreground mb-2" />
-                <h3 className="font-semibold text-foreground">Buscar no chat</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Digite para buscar mensagens nesta conversa
-                </p>
-              </div>
-            ) : (() => {
-              const filtered = channelMessages.filter((m: any) =>
-                m.content.toLowerCase().includes(searchQuery.toLowerCase())
-              );
-              if (filtered.length === 0) {
-                return (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <Search className="w-10 h-10 text-muted-foreground mb-2" />
-                    <h3 className="font-semibold text-foreground">Nenhum resultado</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Nenhuma mensagem contém &quot;{searchQuery}&quot;
-                    </p>
-                  </div>
-                );
-              }
-              return filtered.map((msg: any, i: number) => {
-                const prev = filtered[i - 1] as any;
-                const showDateSep = !prev || isDifferentDay(prev.created_at, msg.created_at);
-                return (
-                  <div key={msg.id}>
-                    {showDateSep && (
-                      <div className="flex items-center gap-3 py-3">
-                        <div className="flex-1 border-t border-border" />
-                        <span className="text-xs font-medium text-muted-foreground bg-background px-2">
-                          {getDateLabel(msg.created_at)}
+        /* Search Tab — like WhatsApp: Mensagens / Mídia / Arquivos */
+        (() => {
+          // Pre-compute attachment list once per render
+          const allAttachments: ChannelAttachment[] = (channelMessages as any[])
+            .map((m) => extractAttachment(m))
+            .filter((a): a is ChannelAttachment => a !== null);
+          const allMedia = allAttachments.filter((a) => a.isImage);
+          const allFiles = allAttachments.filter((a) => !a.isImage);
+          const q = searchQuery.trim().toLowerCase();
+          const filteredMessages = q
+            ? (channelMessages as any[]).filter((m) => m.content.toLowerCase().includes(q))
+            : [];
+          const filteredMedia = q
+            ? allMedia.filter((a) => a.fileName.toLowerCase().includes(q))
+            : allMedia;
+          const filteredFiles = q
+            ? allFiles.filter((a) => a.fileName.toLowerCase().includes(q))
+            : allFiles;
+
+          const placeholder =
+            searchSubTab === "media"
+              ? "Filtrar mídia por nome..."
+              : searchSubTab === "files"
+              ? "Filtrar arquivos por nome..."
+              : "Buscar mensagens...";
+
+          return (
+            <div className="flex flex-col h-full">
+              <div className="px-4 pt-3 pb-2 border-b border-border shrink-0 space-y-2">
+                {/* Sub-tabs */}
+                <div className="flex bg-muted rounded-lg p-0.5 gap-0.5">
+                  {([
+                    { key: "messages" as const, label: "Mensagens", count: q ? filteredMessages.length : null, icon: MessageSquare },
+                    { key: "media" as const, label: "Mídia", count: allMedia.length, icon: ImageIcon },
+                    { key: "files" as const, label: "Arquivos", count: allFiles.length, icon: FileText },
+                  ]).map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => setSearchSubTab(t.key)}
+                      className={cn(
+                        "flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors",
+                        searchSubTab === t.key
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <t.icon className="w-3.5 h-3.5" />
+                      <span>{t.label}</span>
+                      {t.count !== null && t.count > 0 && (
+                        <span className={cn(
+                          "text-[10px] px-1 rounded",
+                          searchSubTab === t.key ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                        )}>
+                          {t.count}
                         </span>
-                        <div className="flex-1 border-t border-border" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full pl-9 pr-8 py-2 bg-muted border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {/* MESSAGES TAB */}
+                {searchSubTab === "messages" && (
+                  <div className="p-4 space-y-1">
+                    {!q ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center pt-12">
+                        <Search className="w-10 h-10 text-muted-foreground mb-2" />
+                        <h3 className="font-semibold text-foreground">Buscar no chat</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Digite para buscar mensagens nesta conversa
+                        </p>
                       </div>
+                    ) : filteredMessages.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center pt-12">
+                        <Search className="w-10 h-10 text-muted-foreground mb-2" />
+                        <h3 className="font-semibold text-foreground">Nenhum resultado</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Nenhuma mensagem contém &quot;{searchQuery}&quot;
+                        </p>
+                      </div>
+                    ) : (
+                      filteredMessages.map((msg: any, i: number) => {
+                        const prev = filteredMessages[i - 1] as any;
+                        const showDateSep = !prev || isDifferentDay(prev.created_at, msg.created_at);
+                        return (
+                          <div key={msg.id}>
+                            {showDateSep && (
+                              <div className="flex items-center gap-3 py-3">
+                                <div className="flex-1 border-t border-border" />
+                                <span className="text-xs font-medium text-muted-foreground bg-background px-2">
+                                  {getDateLabel(msg.created_at)}
+                                </span>
+                                <div className="flex-1 border-t border-border" />
+                              </div>
+                            )}
+                            <MessageBubble
+                              message={msg}
+                              showHeader={true}
+                              isOwn={msg.user_id === currentUserId}
+                              isRead={false}
+                              readBy={0}
+                              totalOthers={0}
+                              onCreateTask={handleContextCreateTask}
+                              onEmail={handleContextEmail}
+                              onForward={handleContextForward}
+                              onReply={(m) => { setActiveTab("chat"); setReplyTo(m); setFocusTrigger(t => t + 1); }}
+                            />
+                          </div>
+                        );
+                      })
                     )}
-                    <MessageBubble
-                      message={msg}
-                      showHeader={true}
-                      isOwn={msg.user_id === currentUserId}
-                      isRead={false}
-                      readBy={0}
-                      totalOthers={0}
-                      onCreateTask={handleContextCreateTask}
-                      onEmail={handleContextEmail}
-                      onForward={handleContextForward}
-                      onReply={(m) => { setActiveTab("chat"); setReplyTo(m); setFocusTrigger(t => t + 1); }}
-                    />
                   </div>
-                );
-              });
-            })()}
-          </div>
-        </div>
+                )}
+
+                {/* MEDIA TAB — image grid */}
+                {searchSubTab === "media" && (
+                  filteredMedia.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center pt-12 px-4">
+                      <ImageIcon className="w-10 h-10 text-muted-foreground mb-2" />
+                      <h3 className="font-semibold text-foreground">
+                        {q ? "Nenhuma mídia encontrada" : "Sem mídia ainda"}
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {q
+                          ? `Nenhum nome de imagem contém "${searchQuery}"`
+                          : "Imagens enviadas nesta conversa aparecem aqui"}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-1 p-1">
+                      {filteredMedia
+                        .slice()
+                        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                        .map((m) => (
+                          <a
+                            key={m.msgId}
+                            href={m.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="relative aspect-square bg-muted overflow-hidden group"
+                            title={`${m.fileName} · ${getDateLabel(m.createdAt)}`}
+                          >
+                            <img
+                              src={m.fileUrl}
+                              alt={m.fileName}
+                              loading="lazy"
+                              className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                            />
+                          </a>
+                        ))}
+                    </div>
+                  )
+                )}
+
+                {/* FILES TAB — list */}
+                {searchSubTab === "files" && (
+                  filteredFiles.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center pt-12 px-4">
+                      <FileText className="w-10 h-10 text-muted-foreground mb-2" />
+                      <h3 className="font-semibold text-foreground">
+                        {q ? "Nenhum arquivo encontrado" : "Sem arquivos ainda"}
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {q
+                          ? `Nenhum nome de arquivo contém "${searchQuery}"`
+                          : "Arquivos enviados nesta conversa aparecem aqui"}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {filteredFiles
+                        .slice()
+                        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                        .map((f) => (
+                          <a
+                            key={f.msgId}
+                            href={f.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download={f.fileName}
+                            className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors group"
+                          >
+                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                              <FileText className="w-5 h-5 text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{f.fileName}</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {getDateLabel(f.createdAt)}
+                              </p>
+                            </div>
+                            <Download className="w-4 h-4 text-muted-foreground group-hover:text-foreground shrink-0" />
+                          </a>
+                        ))}
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+          );
+        })()
       )}
 
       {/* Task Creation Modal (from context menu) */}
