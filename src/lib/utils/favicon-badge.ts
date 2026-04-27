@@ -1,102 +1,132 @@
 /**
- * Favicon with unread badge — big red circle overlaying the original
- * favicon by simply prepending an extra <link> to <head>.
+ * Favicon with unread badge — big red circle covering the favicon.
  *
- * Important: this used to wipe every <link rel="icon"> from <head> and
- * re-create them from a snapshot. That was catastrophic — Next.js
- * manages icon links from `metadata` in layout.tsx, and removing those
- * from under React's nose caused "Cannot read properties of null
- * (reading 'removeChild')" on the next commit, which aborted renders
- * mid-click and made the sidebar feel like it needed two taps to
- * navigate. Now we only ever touch a <link data-badge="true"> element
- * that we own; React's icons are left alone.
+ * Strategy (after a couple of failed iterations):
  *
- * Why red circle instead of badge-on-logo?
- *   The browser renders the tab favicon at ~16×16 pixels. Splitting
- *   that between a logo and a badge makes both unreadable. So while
- *   there are unread chats, the favicon becomes a big red circle with
- *   the count — same pattern as WhatsApp Web / Discord. When it goes
- *   back to 0 we remove our badge link and the React-managed icons
- *   take over again (they were never removed).
+ *   When count > 0:
+ *     1. Generate a high-DPI red-circle PNG with the count drawn on it.
+ *     2. Walk every existing <link rel="icon"> and stash its current
+ *        href on the element itself, then point the href at our PNG.
+ *     3. Also append our own <link rel="icon"> as a belt-and-suspenders
+ *        — sized 16/32/48/64 so Chrome picks it whichever slot it's
+ *        rendering, and last in <head> so it wins same-size ties.
+ *
+ *   When count = 0:
+ *     1. Restore each link's stashed href.
+ *     2. Remove our extra link.
+ *
+ * We deliberately don't *remove* React-managed link elements — that's
+ * what triggered the "Cannot read properties of null (reading
+ * 'removeChild')" crash earlier in the debugging session — we just
+ * mutate their href, which React doesn't track because it doesn't
+ * read the attribute back from the DOM.
  */
 
 const BADGE_ATTR = "data-lesco-badge";
+const ORIGINAL_HREF_ATTR = "data-lesco-original-href";
 let currentBadgedCount = 0;
+let cachedDataUrl: string | null = null;
 
-/** Find our badge link element, if it has been inserted. */
-function findBadgeLink(): HTMLLinkElement | null {
+function isBadgeLink(el: Element): boolean {
+  return el.hasAttribute(BADGE_ATTR);
+}
+
+function getReactIconLinks(): HTMLLinkElement[] {
+  if (typeof document === "undefined") return [];
+  return Array.from(
+    document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"], link[rel="shortcut icon"]')
+  ).filter((el) => !isBadgeLink(el));
+}
+
+function getOurBadgeLink(): HTMLLinkElement | null {
   if (typeof document === "undefined") return null;
   return document.querySelector<HTMLLinkElement>(`link[${BADGE_ATTR}]`);
 }
 
-/** Draws a big red circle with the count across the whole canvas. */
+/** Big red circle with the count, painted across the whole canvas. */
 function drawFullBadge(ctx: CanvasRenderingContext2D, size: number, count: number) {
   const cx = size / 2;
   const cy = size / 2;
-  const r = size / 2 - 2;
+  const r = size / 2 - Math.max(2, size / 32);
 
-  // Red fill
+  ctx.fillStyle = "#ef4444";
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = "#ef4444";
   ctx.fill();
 
-  // Thin white border for contrast
   ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = Math.max(2, size / 32);
   ctx.stroke();
 
-  // Big white count
   const text = count > 99 ? "99" : String(count);
   ctx.fillStyle = "#ffffff";
-  ctx.font = `bold ${text.length > 1 ? 40 : 48}px Arial, sans-serif`;
+  // Bigger font so it's still legible at 16x16
+  const fontSize = text.length > 1 ? Math.round(size * 0.62) : Math.round(size * 0.75);
+  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(text, cx, cy + 2);
+  ctx.fillText(text, cx, cy + size * 0.04);
+}
+
+function buildBadgePngDataUrl(count: number): string | null {
+  // 256 px source so even the 64-px tab slot Chrome may pick stays sharp
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  drawFullBadge(ctx, size, count);
+  return canvas.toDataURL("image/png");
 }
 
 export async function setFaviconBadge(count: number): Promise<void> {
   if (typeof document === "undefined") return;
 
-  const existing = findBadgeLink();
+  const ourLink = getOurBadgeLink();
+  const reactLinks = getReactIconLinks();
 
-  // count = 0 → pull our badge link off so the original favicon shows
-  // through. React's icon <link>s were never removed, so nothing to
-  // reinstate.
   if (!count || count <= 0) {
-    if (existing && existing.parentNode) {
-      existing.parentNode.removeChild(existing);
+    // Restore React-managed icons to their original hrefs.
+    for (const link of reactLinks) {
+      const original = link.getAttribute(ORIGINAL_HREF_ATTR);
+      if (original) {
+        link.setAttribute("href", original);
+        link.removeAttribute(ORIGINAL_HREF_ATTR);
+      }
+    }
+    // Remove our extra link.
+    if (ourLink && ourLink.parentNode) {
+      ourLink.parentNode.removeChild(ourLink);
     }
     currentBadgedCount = 0;
+    cachedDataUrl = null;
     return;
   }
 
-  // Same count, badge already drawn → nothing to do.
-  if (count === currentBadgedCount && existing) return;
+  // Count unchanged AND we still have a cached PNG AND our link is in
+  // the DOM → nothing to do.
+  if (count === currentBadgedCount && cachedDataUrl && ourLink) return;
 
-  // Draw red badge on a canvas and encode as a data URL.
-  const size = 64;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  drawFullBadge(ctx, size, count);
-  const dataUrl = canvas.toDataURL("image/png");
+  const dataUrl = buildBadgePngDataUrl(count);
+  if (!dataUrl) return;
+  cachedDataUrl = dataUrl;
 
-  if (existing) {
-    // Reuse the same link element so browsers just swap the bitmap.
-    existing.setAttribute("href", dataUrl);
+  // Patch the existing React icons. Stash the original href the first
+  // time we touch them so we can restore on un-badge.
+  for (const link of reactLinks) {
+    if (!link.hasAttribute(ORIGINAL_HREF_ATTR)) {
+      link.setAttribute(ORIGINAL_HREF_ATTR, link.getAttribute("href") || "");
+    }
+    link.setAttribute("href", dataUrl);
+  }
+
+  // Plus our own dedicated link, last in the head, sized to match the
+  // common tab-icon slots so Chrome's tiebreaker (same-size → last in
+  // document order) lands on us.
+  if (ourLink) {
+    ourLink.setAttribute("href", dataUrl);
   } else {
-    // Chrome's favicon algorithm:
-    //   1. Filter <link rel="icon"> by sizes attribute relevant to the
-    //      rendering slot (tab strip → 16/32 px).
-    //   2. Among matches with the same size, pick the LAST one in
-    //      document order.
-    // So to win the tab icon we need (a) sizes that overlap what
-    // Chrome wants AND (b) be appended AFTER React's icon links.
-    // Declare the common tab sizes so we always tie one of them, then
-    // appendChild so we're last in the head.
     const link = document.createElement("link");
     link.setAttribute(BADGE_ATTR, "true");
     link.rel = "icon";
