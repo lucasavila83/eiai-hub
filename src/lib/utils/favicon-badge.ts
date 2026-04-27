@@ -88,15 +88,22 @@ export async function setFaviconBadge(count: number): Promise<void> {
     // Reuse the same link element so browsers just swap the bitmap.
     existing.setAttribute("href", dataUrl);
   } else {
-    // First time we're badging — create our link and append LAST so it
-    // wins the "use this icon" tiebreaker against the React-managed
-    // ones that were already there.
+    // First time we're badging — create our link. Chrome picks among
+    // multiple <link rel="icon"> by best-size match for the slot it's
+    // drawing (16-px tab strip). We declare the badge as `sizes="any"`
+    // and put it AT THE TOP of <head> so Chrome considers it before
+    // it commits to the React-managed 16x16/32x32 ones.
     const link = document.createElement("link");
     link.setAttribute(BADGE_ATTR, "true");
     link.rel = "icon";
     link.type = "image/png";
+    link.setAttribute("sizes", "any");
     link.href = dataUrl;
-    document.head.appendChild(link);
+    if (document.head.firstChild) {
+      document.head.insertBefore(link, document.head.firstChild);
+    } else {
+      document.head.appendChild(link);
+    }
   }
 
   currentBadgedCount = count;
