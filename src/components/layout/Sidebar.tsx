@@ -256,27 +256,40 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
         table: "messages",
       }, async (payload: any) => {
         const msg = payload.new;
-        // Only care about channels this user is actually in. Without this
-        // filter, every message in the entire org re-renders the sidebar →
-        // swallows clicks ("need to click twice" bug).
-        const myChannels = myChannelIdsRef.current;
-        if (myChannels && !myChannels.has(msg.channel_id)) return;
 
-        // Update last message timestamp for sorting — but ONLY if the date
-        // actually changed (avoid spurious re-renders when the same event
-        // gets delivered twice or the value is already set).
-        setLastMessageAt((prev) => {
-          if (prev[msg.channel_id] === msg.created_at) return prev;
-          return { ...prev, [msg.channel_id]: msg.created_at };
-        });
-
+        // Skip own messages right away — they don't bump unread counts
+        // and we never want to mark our own writes as unread.
         if (msg.user_id === profileRef.current?.id) return;
-        // Increment unread if user is not viewing this channel
+
+        // The earlier "skip if not in my channel set" filter was too
+        // aggressive: a brand-new DM (or a hidden DM that just got
+        // auto-unhidden by the message trigger) isn't in `dmChannels`
+        // yet at the moment the message arrives, so we'd drop the
+        // event and the unread badge would never show. Now we only
+        // use the channel-set as a HINT for the lastMessageAt sort
+        // optimisation, never as a filter for the unread count.
+        const myChannels = myChannelIdsRef.current;
+        const isKnownChannel = !myChannels || myChannels.has(msg.channel_id);
+
+        if (isKnownChannel) {
+          // Sort hint — keep guarded so identical timestamps don't
+          // trigger spurious re-renders.
+          setLastMessageAt((prev) => {
+            if (prev[msg.channel_id] === msg.created_at) return prev;
+            return { ...prev, [msg.channel_id]: msg.created_at };
+          });
+        }
+
+        // Increment unread if the user isn't actively viewing the channel.
+        // Run this regardless of whether the channel is already loaded —
+        // the count is keyed by channel_id and will surface as soon as
+        // the sidebar finishes (re)loading the DM list below.
         if (pathnameRef.current !== `/chat/${msg.channel_id}`) {
           incrementUnread(msg.channel_id);
         }
-        // If this channel is NOT in the sidebar DM list, reload DMs
-        // (the DB trigger auto_unarchive_dm_on_message already un-archived it)
+
+        // Pull a fresh DM list if this is a channel we don't have on
+        // screen yet — covers brand-new DMs and DB-trigger-unhidden ones.
         const currentDMs = dmChannelsRef.current;
         const isInSidebar = currentDMs.some((dm: any) => dm.id === msg.channel_id);
         if (!isInSidebar) {
