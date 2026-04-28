@@ -111,10 +111,15 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }
   }, [activeOrg]);
 
-  // Load unread counts — single aggregate query (was N parallel queries, one
-  // per channel, which blocked the main thread during polling and made the
-  // whole UI feel sluggish). Batched state update via setAllUnreadCounts
-  // skips the re-render when nothing changed.
+  // Load unread counts AND last-message timestamps in one pass.
+  //
+  // Previous version queried only messages from OTHER users (for the
+  // count). We now also compute the latest message timestamp PER
+  // channel from the same row set so the DM list sort stays fresh
+  // when realtime hiccups. We DON'T include own messages in the
+  // unread count (.neq below) but the latest-at fall-back is good
+  // enough — own messages bump the channel via the optimistic local
+  // append in ChatWindow anyway.
   const loadUnreadCounts = useCallback(async () => {
     if (!profile) return;
     const { data: memberships } = await supabase
@@ -145,16 +150,35 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }
 
     const counts: Record<string, number> = {};
+    const latestAt: Record<string, string> = {};
     for (const id of channelIds) counts[id] = 0;
     for (const m of msgs || []) {
       const cid = (m as any).channel_id;
       const createdAt = (m as any).created_at;
+      // Sort hint — latest message timestamp seen for this channel
+      if (!latestAt[cid] || createdAt > latestAt[cid]) latestAt[cid] = createdAt;
+      // Unread count — skip messages already read
       const lastRead = lastReadMap[cid];
       if (lastRead && createdAt <= lastRead) continue;
       counts[cid] = (counts[cid] || 0) + 1;
     }
 
     setAllUnreadCounts(counts);
+
+    // Refresh the lastMessageAt sort hint, but ONLY entries that
+    // actually changed — keep the same ref otherwise to avoid a
+    // re-render of every <Link> in the DM list.
+    setLastMessageAt((prev) => {
+      let changed = false;
+      const next: Record<string, string> = { ...prev };
+      for (const cid of Object.keys(latestAt)) {
+        if (next[cid] !== latestAt[cid]) {
+          next[cid] = latestAt[cid];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
   }, [profile, setAllUnreadCounts]);
 
   useEffect(() => {
@@ -311,21 +335,32 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     return () => { supabase.removeChannel(sub); };
   }, [orgId, profileId]); // Only string IDs — stable across re-renders
 
-  // Polling was removed — every tick re-created arrays that re-rendered
-  // the sidebar and occasionally swallowed the user's first click. The
-  // realtime subscription above already covers the common case (new
-  // messages, membership changes). If we ever find that realtime is
-  // missing events in practice, add back a poll with a MUCH longer
-  // interval (e.g. 60s) gated on document.visibilityState.
-  // Refresh once on tab focus as a cheap recovery path after a long sleep.
+  // Safety-net polling for unread counts. The realtime subscription
+  // is the primary path, but the websocket DOES fail in the wild
+  // (saw CHANNEL_ERRORs on users' consoles), and when it does the
+  // unread badges silently stop updating. Fall back to a 20s poll —
+  // we ONLY poll loadUnreadCounts (NOT loadDMs) because:
+  //
+  //   • loadUnreadCounts pushes through setAllUnreadCounts which
+  //     short-circuits when the counts haven't actually changed,
+  //     so a no-op poll stays a no-op render.
+  //   • loadDMs was the polling source that re-rendered every <Link>
+  //     in the sidebar and swallowed the first click — keep that
+  //     out of the timer.
+  //
+  // We also refresh on window focus so a phone coming back from
+  // sleep catches up immediately.
   useEffect(() => {
     if (!profileId || !orgId) return;
-    function onFocus() {
+    function refresh() {
       loadUnreadCounts();
-      loadDMs(orgId);
     }
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    window.addEventListener("focus", refresh);
+    const interval = setInterval(refresh, 20000);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      clearInterval(interval);
+    };
   }, [profileId, orgId, loadUnreadCounts]);
 
   async function loadChannels(orgId: string) {
