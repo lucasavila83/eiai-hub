@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import {
   getCalendarClient,
   refreshIfNeeded,
@@ -13,9 +13,21 @@ import {
  *
  * Called fire-and-forget after card creation, due_date change, or assignee change.
  * Uses admin client so it works regardless of which user triggered it.
+ *
+ * SECURITY: requires an authenticated session. The route writes events
+ * to assignees' Google Calendars on the user's behalf, so we must
+ * confirm the caller is logged in (RLS doesn't apply because we use
+ * the admin client). Anonymous callers could otherwise enumerate card
+ * IDs and spam GCal events.
  */
 export async function POST(req: NextRequest) {
   try {
+    const userClient = await createClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+    }
+
     const { cardId, orgId: passedOrgId } = await req.json();
     if (!cardId) {
       return NextResponse.json({ error: "cardId obrigatório" }, { status: 400 });

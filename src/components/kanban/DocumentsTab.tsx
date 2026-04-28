@@ -1028,7 +1028,18 @@ function markdownToHtml(md: string): string {
 
   html = html.replace(/~~(.+?)~~/g, "<del>$1</del>");
 
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="text-primary underline">$1</a>');
+  // Markdown links — strip dangerous URI schemes BEFORE rendering. Without
+  // this filter, `[click](javascript:alert(1))` would inject an
+  // executable href. Allow only http(s), mailto and explicit relative
+  // links; everything else falls back to "#".
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label: string, url: string) => {
+    const trimmed = url.trim();
+    const safe = /^(https?:\/\/|mailto:|\/|\.\.?\/|#)/i.test(trimmed) ? trimmed : "#";
+    // Escape quotes inside the href just in case the markdown bypassed the
+    // earlier HTML escape (shouldn't happen, but be paranoid here).
+    const safeHref = safe.replace(/"/g, "&quot;");
+    return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="text-primary underline">${label}</a>`;
+  });
 
   html = html.replace(/^---$/gm, '<hr class="border-border my-4" />');
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,9 +9,31 @@ const admin = createClient(
 
 export async function GET(req: NextRequest) {
   try {
+    // SECURITY: this route runs every query through the service-role
+    // client (RLS-bypassing), so we MUST authenticate and authorise the
+    // caller before doing anything. Without these checks, any
+    // unauthenticated visitor could fetch full dashboard data of any
+    // org just by crafting `GET /api/dashboard?org_id=<X>`.
+    const userClient = await createServerClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+    }
+
     const sp = req.nextUrl.searchParams;
     const orgId = sp.get("org_id");
     if (!orgId) return NextResponse.json({ error: "org_id required" }, { status: 400 });
+
+    // Membership check — caller must belong to the requested org.
+    const { data: membership } = await admin
+      .from("org_members")
+      .select("role")
+      .eq("org_id", orgId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!membership) {
+      return NextResponse.json({ error: "Sem acesso a esta organização" }, { status: 403 });
+    }
 
     const userId = sp.get("user_id") || null;
     const teamId = sp.get("team_id") || null;

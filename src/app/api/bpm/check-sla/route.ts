@@ -9,10 +9,19 @@ const adminClient = createClient(
 /**
  * GET /api/bpm/check-sla
  * Verifica cards com SLA vencido ou prestes a vencer.
- * Pode ser chamado por cron job (Vercel Cron ou externo).
+ * Chamado por cron (Vercel Cron / external).
+ *
+ * SECURITY: gated by CRON_SECRET. Otherwise any visitor could spam
+ * the DB scan + create duplicate notifications for every assignee.
  */
 export async function GET(req: NextRequest) {
   try {
+    const auth = req.headers.get("authorization");
+    const expected = `Bearer ${process.env.CRON_SECRET}`;
+    if (!process.env.CRON_SECRET || auth !== expected) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const now = new Date();
     const warningThreshold = new Date(now.getTime() + 4 * 3600000); // 4h antes
 

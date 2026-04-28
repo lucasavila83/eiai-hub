@@ -68,13 +68,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "trigger_type obrigatório" }, { status: 400 });
     }
 
-    // Try to get user from session (client calls), fall back to admin for server calls
+    // SECURITY: this engine runs admin-level side effects (creates
+    // cards, sends emails, fires webhooks, alters BPM data). Allow
+    // either a logged-in session OR a Bearer CRON_SECRET for internal
+    // server-to-server calls. Anything else → 401.
     let userId: string | null = null;
     try {
       const supabase = await createClient();
       const { data: { user } } = await supabase.auth.getUser();
       userId = user?.id || null;
     } catch {}
+
+    const internalAuth = req.headers.get("authorization");
+    const internalExpected = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : null;
+    const isInternalCall = !!internalExpected && internalAuth === internalExpected;
+
+    if (!userId && !isInternalCall) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+    }
 
     // Build query for matching automations
     let query = adminClient

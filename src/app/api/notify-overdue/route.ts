@@ -19,11 +19,20 @@ interface OverdueItem {
 /**
  * GET /api/notify-overdue
  * Busca todas as tarefas/cards atrasados e envia mensagem consolidada
- * no DM de cada responsável.
- * Pode ser chamado por cron ou manualmente.
+ * no DM de cada responsável. Chamado por cron (Vercel Cron / external).
+ *
+ * SECURITY: protected by CRON_SECRET in the Authorization header. Without
+ * this, any visitor could trigger a full DB scan + spam DMs to every
+ * overdue user — DoS + abuse vector.
  */
 export async function GET(req: NextRequest) {
   try {
+    const auth = req.headers.get("authorization");
+    const expected = `Bearer ${process.env.CRON_SECRET}`;
+    if (!process.env.CRON_SECRET || auth !== expected) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const now = new Date();
     const todayStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
 
