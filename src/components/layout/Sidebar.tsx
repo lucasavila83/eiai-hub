@@ -121,25 +121,13 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   // enough — own messages bump the channel via the optimistic local
   // append in ChatWindow anyway.
   const loadUnreadCounts = useCallback(async () => {
-    if (!profile) {
-      // eslint-disable-next-line no-console
-      console.log("[loadUnreadCounts] no profile, skip");
-      return;
-    }
-    const t0 = Date.now();
-    const { data: memberships, error: memErr } = await supabase
+    if (!profile) return;
+    const { data: memberships } = await supabase
       .from("channel_members")
       .select("channel_id, last_read_at")
       .eq("user_id", profile.id);
 
-    if (memErr) {
-      // eslint-disable-next-line no-console
-      console.warn("[loadUnreadCounts] memberships error:", memErr);
-    }
-
     if (!memberships || memberships.length === 0) {
-      // eslint-disable-next-line no-console
-      console.log("[loadUnreadCounts] no memberships, clearing");
       setAllUnreadCounts({});
       return;
     }
@@ -183,13 +171,6 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }
 
     setAllUnreadCounts(counts);
-
-    // eslint-disable-next-line no-console
-    const unreadChannels = Object.entries(counts).filter(([, n]) => n > 0);
-    console.log(
-      `[loadUnreadCounts] ${Date.now() - t0}ms | memberships=${memberships.length} msgs=${(msgs || []).length} unread=${unreadChannels.length}`,
-      unreadChannels.length > 0 ? Object.fromEntries(unreadChannels) : ""
-    );
 
     // Refresh the lastMessageAt sort hint, but ONLY entries that
     // actually changed — keep the same ref otherwise to avoid a
@@ -363,10 +344,11 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
   // Safety-net polling for unread counts. Realtime is the primary
   // path (instant when the websocket is connected), but it does
-  // fail in the wild (CHANNEL_ERRORs in production consoles), and
-  // when it does the unread badges silently stop updating. Poll
-  // every 5s as a tight fallback so worst-case the bubble appears
-  // within ~5s instead of feeling broken. Cheap enough:
+  // fail in the wild (CHANNEL_ERRORs in production consoles for
+  // users on networks that block WSS to *.supabase.co), and when
+  // it does the unread badges silently stop updating. Poll every
+  // 3s as a tight fallback so worst-case the bubble appears within
+  // ~3s instead of feeling broken. Cheap enough:
   //
   //   • loadUnreadCounts pushes through setAllUnreadCounts which
   //     short-circuits when the counts haven't actually changed,
@@ -383,7 +365,7 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
-    const interval = setInterval(refresh, 5000);
+    const interval = setInterval(refresh, 3000);
     return () => {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
