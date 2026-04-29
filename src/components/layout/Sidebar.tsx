@@ -335,30 +335,32 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     return () => { supabase.removeChannel(sub); };
   }, [orgId, profileId]); // Only string IDs — stable across re-renders
 
-  // Safety-net polling for unread counts. The realtime subscription
-  // is the primary path, but the websocket DOES fail in the wild
-  // (saw CHANNEL_ERRORs on users' consoles), and when it does the
-  // unread badges silently stop updating. Fall back to a 20s poll —
-  // we ONLY poll loadUnreadCounts (NOT loadDMs) because:
+  // Safety-net polling for unread counts. Realtime is the primary
+  // path (instant when the websocket is connected), but it does
+  // fail in the wild (CHANNEL_ERRORs in production consoles), and
+  // when it does the unread badges silently stop updating. Poll
+  // every 5s as a tight fallback so worst-case the bubble appears
+  // within ~5s instead of feeling broken. Cheap enough:
   //
   //   • loadUnreadCounts pushes through setAllUnreadCounts which
   //     short-circuits when the counts haven't actually changed,
   //     so a no-op poll stays a no-op render.
-  //   • loadDMs was the polling source that re-rendered every <Link>
-  //     in the sidebar and swallowed the first click — keep that
-  //     out of the timer.
-  //
-  // We also refresh on window focus so a phone coming back from
-  // sleep catches up immediately.
+  //   • loadDMs (heavier — re-renders every <Link>, used to cause
+  //     the click-twice bug) is NOT in the timer.
+  //   • Pause polling while the tab is hidden so a backgrounded
+  //     page doesn't burn DB calls every 5s for no reason.
   useEffect(() => {
     if (!profileId || !orgId) return;
     function refresh() {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       loadUnreadCounts();
     }
     window.addEventListener("focus", refresh);
-    const interval = setInterval(refresh, 20000);
+    document.addEventListener("visibilitychange", refresh);
+    const interval = setInterval(refresh, 5000);
     return () => {
       window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
       clearInterval(interval);
     };
   }, [profileId, orgId, loadUnreadCounts]);
