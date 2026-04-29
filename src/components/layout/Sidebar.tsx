@@ -121,13 +121,25 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
   // enough — own messages bump the channel via the optimistic local
   // append in ChatWindow anyway.
   const loadUnreadCounts = useCallback(async () => {
-    if (!profile) return;
-    const { data: memberships } = await supabase
+    if (!profile) {
+      // eslint-disable-next-line no-console
+      console.log("[loadUnreadCounts] no profile, skip");
+      return;
+    }
+    const t0 = Date.now();
+    const { data: memberships, error: memErr } = await supabase
       .from("channel_members")
       .select("channel_id, last_read_at")
       .eq("user_id", profile.id);
 
+    if (memErr) {
+      // eslint-disable-next-line no-console
+      console.warn("[loadUnreadCounts] memberships error:", memErr);
+    }
+
     if (!memberships || memberships.length === 0) {
+      // eslint-disable-next-line no-console
+      console.log("[loadUnreadCounts] no memberships, clearing");
       setAllUnreadCounts({});
       return;
     }
@@ -164,6 +176,13 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     }
 
     setAllUnreadCounts(counts);
+
+    // eslint-disable-next-line no-console
+    const unreadChannels = Object.entries(counts).filter(([, n]) => n > 0);
+    console.log(
+      `[loadUnreadCounts] ${Date.now() - t0}ms | memberships=${memberships.length} msgs=${(msgs || []).length} unread=${unreadChannels.length}`,
+      unreadChannels.length > 0 ? Object.fromEntries(unreadChannels) : ""
+    );
 
     // Refresh the lastMessageAt sort hint, but ONLY entries that
     // actually changed — keep the same ref otherwise to avoid a
