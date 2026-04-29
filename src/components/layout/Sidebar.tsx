@@ -148,13 +148,20 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
     // Fetch messages from all member channels in one query. We cap at 30 days
     // back so the result set stays bounded; older unread mentions are rare
     // enough that the "99+" cap will already be showing anyway.
+    // Pull recent messages from every channel the user is in. CRITICAL:
+    // we MUST order by created_at desc, otherwise PostgREST's default
+    // 1000-row cap silently returns the OLDEST 1000 messages of the
+    // 30-day window — and busy users (Lucas: 21 channels, >1000 msgs in
+    // 30 days) end up with `unread=0` permanently because the most
+    // recent (= unread) messages were truncated out of the result.
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: msgs } = await supabase
       .from("messages")
       .select("channel_id, created_at, user_id")
       .in("channel_id", channelIds)
       .neq("user_id", profile.id)
-      .gte("created_at", cutoff);
+      .gte("created_at", cutoff)
+      .order("created_at", { ascending: false });
 
     const lastReadMap: Record<string, string | null> = {};
     for (const m of memberships) {
