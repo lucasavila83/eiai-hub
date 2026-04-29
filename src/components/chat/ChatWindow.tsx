@@ -172,7 +172,11 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       );
     }
 
-    // Get last_read_at before updating it (for "Novo" marker), then immediately update
+    // Get last_read_at before updating it (for "Novo" marker), then
+    // immediately update — but only when the tab is actually visible.
+    // Otherwise a backgrounded tab silently marks every chat it has
+    // mounted as read, hiding the unread badge from the tab the user
+    // is actively looking at.
     supabase
       .from("channel_members")
       .select("last_read_at")
@@ -181,16 +185,20 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       .single()
       .then(({ data }) => {
         if (data) setLastReadAt(data.last_read_at);
-        // Update last_read_at after reading it
-        supabase
-          .from("channel_members")
-          .update({ last_read_at: new Date().toISOString() })
-          .eq("channel_id", channel.id)
-          .eq("user_id", currentUserId)
-          .then();
+        if (typeof document === "undefined" || document.visibilityState === "visible") {
+          supabase
+            .from("channel_members")
+            .update({ last_read_at: new Date().toISOString() })
+            .eq("channel_id", channel.id)
+            .eq("user_id", currentUserId)
+            .then();
+        }
       });
 
-    markAsRead(channel.id);
+    // Only zero the local unread count when the tab is actually focused.
+    if (typeof document === "undefined" || document.visibilityState === "visible") {
+      markAsRead(channel.id);
+    }
 
     // Close any pending push notifications for this channel so the OS
     // lock-screen and app-icon badge don't linger after the user has
@@ -411,12 +419,19 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
 
         if (changed) {
           setMessages(channel.id, updated);
-          supabase
-            .from("channel_members")
-            .update({ last_read_at: new Date().toISOString() })
-            .eq("channel_id", channel.id)
-            .eq("user_id", currentUserId)
-            .then();
+          // Only mark as read when the user is ACTUALLY looking at the
+          // tab. Without this gate, a chat left open in a background
+          // tab (or a phone you put down) keeps marking incoming
+          // messages as read, and the sidebar on whatever tab/device
+          // you're actively using never lights up an unread badge.
+          if (typeof document === "undefined" || document.visibilityState === "visible") {
+            supabase
+              .from("channel_members")
+              .update({ last_read_at: new Date().toISOString() })
+              .eq("channel_id", channel.id)
+              .eq("user_id", currentUserId)
+              .then();
+          }
         }
       }
     }
@@ -434,18 +449,36 @@ export function ChatWindow({ channel, initialMessages, initialHasMore, currentUs
       if (existing.some((m: any) => m.id === msg.id || m.content === msg.content)) return;
       const enriched = await enrichMessage(msg);
       addMessage(channel.id, enriched as any);
+      // Same visibility gate as the poller — see comment above.
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        supabase
+          .from("channel_members")
+          .update({ last_read_at: new Date().toISOString() })
+          .eq("channel_id", channel.id)
+          .eq("user_id", currentUserId)
+          .then();
+      }
+    });
+
+    // When the tab becomes visible again, the user is now actively
+    // looking at this chat — catch up by marking as read.
+    function onVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+      markAsRead(channel.id);
       supabase
         .from("channel_members")
         .update({ last_read_at: new Date().toISOString() })
         .eq("channel_id", channel.id)
         .eq("user_id", currentUserId)
         .then();
-    });
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       active = false;
       clearInterval(pollInterval);
       unsub();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [channel.id]);
 
