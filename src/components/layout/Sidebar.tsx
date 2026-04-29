@@ -547,35 +547,38 @@ export function Sidebar({ profile, organizations }: SidebarProps) {
 
   const perms = usePermissions();
 
-  // WhatsApp-style DM ordering: every conversation is sorted by latest
-  // message timestamp (most recent first), regardless of read status.
-  // The unread BADGE still shows next to the DM, but a chat that you've
-  // just been talking in (and that the read marker therefore caught up
-  // with) still stays at the top — that's where the user expects to see
-  // it. Conversations with no messages yet fall to the bottom in
-  // alphabetical order.
+  // DM ordering rule (Lucas's spec):
+  //   1. Unread DMs at the top with the red badge, sorted by most-recent
+  //      message first.
+  //   2. A divider line.
+  //   3. Everything else below, in alphabetical order by name —
+  //      regardless of whether they have message history or not.
   const filteredDMs = dmChannels.filter((dm) => {
     if (!dmSearch.trim()) return true;
     const name = dm.otherUser?.full_name || dm.otherUser?.email || "";
     return name.toLowerCase().includes(dmSearch.toLowerCase());
   });
 
-  const sortedDMs = [...filteredDMs].sort((a, b) => {
-    const lastA = lastMessageAt[a.id] || "";
-    const lastB = lastMessageAt[b.id] || "";
-    if (lastA && lastB && lastA !== lastB) return lastB.localeCompare(lastA);
-    if (lastA && !lastB) return -1;
-    if (!lastA && lastB) return 1;
-    // Both empty (or equal): fall back to alphabetical
-    const nameA = (a.otherUser?.full_name || a.otherUser?.email || "").toLowerCase();
-    const nameB = (b.otherUser?.full_name || b.otherUser?.email || "").toLowerCase();
-    return nameA.localeCompare(nameB, "pt-BR");
-  });
+  const unreadDMs = filteredDMs
+    .filter((dm) => (unreadCounts[dm.id] || 0) > 0)
+    .sort((a, b) => {
+      const lastA = lastMessageAt[a.id] || "";
+      const lastB = lastMessageAt[b.id] || "";
+      if (lastA && lastB && lastA !== lastB) return lastB.localeCompare(lastA);
+      if (lastA && !lastB) return -1;
+      if (!lastA && lastB) return 1;
+      return 0;
+    });
 
-  // Kept around so the divider between unread and read sections renders
-  // correctly. With the new flat-by-recency sort, unread conversations
-  // naturally land at the top because they're the most recent.
-  const unreadDMs = sortedDMs.filter((dm) => (unreadCounts[dm.id] || 0) > 0);
+  const readDMs = filteredDMs
+    .filter((dm) => (unreadCounts[dm.id] || 0) === 0)
+    .sort((a, b) => {
+      const nameA = (a.otherUser?.full_name || a.otherUser?.email || "").toLowerCase();
+      const nameB = (b.otherUser?.full_name || b.otherUser?.email || "").toLowerCase();
+      return nameA.localeCompare(nameB, "pt-BR");
+    });
+
+  const sortedDMs = [...unreadDMs, ...readDMs];
 
   const allNavItems = [
     { href: "/chat", icon: MessageSquare, label: "Chat", visible: true },
